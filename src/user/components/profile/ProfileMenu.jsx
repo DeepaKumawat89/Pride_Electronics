@@ -46,7 +46,7 @@ export default function ProfileMenu({ user, wishlistCount, cartCount, onSelect, 
   return (
     <div ref={containerRef} className="relative">
       <button type="button" onClick={() => setOpen((current) => !current)} className={`flex h-11 items-center gap-2 rounded-full border bg-white p-1 pr-2 transition sm:pr-3 ${open ? 'border-[#ff5c35] ring-4 ring-[#ff5c35]/10' : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'}`} aria-expanded={open} aria-haspopup="menu">
-        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#17211d] text-xs font-extrabold text-white">{getInitials(user.name)}</span>
+        {user.photo ? <img src={user.photo} alt={`${user.name}'s profile`} className="size-9 shrink-0 rounded-full object-cover"/> : <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#17211d] text-xs font-extrabold text-white">{getInitials(user.name)}</span>}
         <span className="hidden max-w-28 truncate text-xs font-extrabold text-slate-800 sm:block">{user.name.split(' ')[0]}</span>
         <ChevronDown size={14} className={`hidden text-slate-400 transition sm:block ${open ? 'rotate-180' : ''}`}/>
       </button>
@@ -55,7 +55,7 @@ export default function ProfileMenu({ user, wishlistCount, cartCount, onSelect, 
         <div role="menu" className="fixed left-3 right-3 top-[116px] z-50 overflow-hidden rounded-[24px] border border-slate-200 bg-white p-2 shadow-[0_24px_70px_rgba(15,23,42,0.22)] sm:absolute sm:left-auto sm:right-0 sm:top-[calc(100%+12px)] sm:w-80">
           <div className="rounded-[18px] bg-[#f4f6f2] px-4 py-4">
             <div className="flex items-center gap-3">
-              <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#ff5c35] text-sm font-extrabold text-white">{getInitials(user.name)}</span>
+              {user.photo ? <img src={user.photo} alt={`${user.name}'s profile`} className="size-11 shrink-0 rounded-full object-cover"/> : <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#ff5c35] text-sm font-extrabold text-white">{getInitials(user.name)}</span>}
               <span className="min-w-0"><strong className="block truncate text-sm font-extrabold text-slate-900">{user.name}</strong><span className="mt-0.5 block truncate text-[11px] text-slate-500">{user.email}</span></span>
             </div>
           </div>

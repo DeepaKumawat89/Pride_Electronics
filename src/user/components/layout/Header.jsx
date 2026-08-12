@@ -5,7 +5,7 @@ import ProfileMenu from '../profile/ProfileMenu'
 
 const navItems = ['New arrivals', 'Best sellers', 'Audio', 'Wearables', 'Components']
 
-export default function Header({ user, cartCount, wishlistCount, onCartOpen, onSearch, onAuthOpen, onCategoryChange, onProfileSelect, onLogout }) {
+export default function Header({ user, defaultAddress, cartCount, wishlistCount, onCartOpen, onSearch, onAuthOpen, onCategoryChange, onProfileSelect, onLogout }) {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const selectNav = (label) => {
@@ -33,8 +33,8 @@ export default function Header({ user, cartCount, wishlistCount, onCartOpen, onS
           </label>
 
           <div className="flex items-center gap-1 sm:gap-2">
-            <button type="button" className="hidden items-center gap-2 rounded-xl px-3 py-2 text-left text-xs text-slate-600 transition hover:bg-white md:flex">
-              <MapPin size={18} /><span><span className="block text-[10px] text-slate-400">Deliver to</span><strong className="text-slate-800">Pune 411057</strong></span>
+            <button type="button" onClick={() => user ? onProfileSelect('address') : onAuthOpen()} className="hidden items-center gap-2 rounded-xl px-3 py-2 text-left text-xs text-slate-600 transition hover:bg-white md:flex">
+              <MapPin size={18} /><span className="min-w-0"><span className="block text-[10px] text-slate-400">Deliver to{defaultAddress?.label ? ` ${defaultAddress.label}` : ''}</span><strong className="block max-w-28 truncate text-slate-800">{defaultAddress ? `${defaultAddress.city} ${defaultAddress.pincode}` : 'Add address'}</strong></span>
             </button>
             {user ? (
               <ProfileMenu user={user} wishlistCount={wishlistCount} cartCount={cartCount} onSelect={onProfileSelect} onLogout={onLogout}/>
