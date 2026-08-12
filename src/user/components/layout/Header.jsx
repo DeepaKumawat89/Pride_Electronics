@@ -1,10 +1,11 @@
 import { Heart, MapPin, Menu, Search, ShoppingBag, UserRound, X } from 'lucide-react'
 import { useState } from 'react'
 import Brand from '../common/Brand'
+import ProfileMenu from '../profile/ProfileMenu'
 
 const navItems = ['New arrivals', 'Best sellers', 'Audio', 'Wearables', 'Components']
 
-export default function Header({ cartCount, wishlistCount, onCartOpen, onSearch, onAuthOpen, onCategoryChange }) {
+export default function Header({ user, cartCount, wishlistCount, onCartOpen, onSearch, onAuthOpen, onCategoryChange, onProfileSelect, onLogout }) {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const selectNav = (label) => {
@@ -35,8 +36,12 @@ export default function Header({ cartCount, wishlistCount, onCartOpen, onSearch,
             <button type="button" className="hidden items-center gap-2 rounded-xl px-3 py-2 text-left text-xs text-slate-600 transition hover:bg-white md:flex">
               <MapPin size={18} /><span><span className="block text-[10px] text-slate-400">Deliver to</span><strong className="text-slate-800">Pune 411057</strong></span>
             </button>
-            <button type="button" onClick={onAuthOpen} className="grid size-10 place-items-center rounded-full transition hover:bg-white" aria-label="Account"><UserRound size={19} /></button>
-            <button type="button" className="relative hidden size-10 place-items-center rounded-full transition hover:bg-white sm:grid" aria-label="Wishlist"><Heart size={19} />{wishlistCount > 0 && <span className="absolute right-0 top-0 grid size-4 place-items-center rounded-full bg-[#ff5c35] text-[9px] font-bold text-white">{wishlistCount}</span>}</button>
+            {user ? (
+              <ProfileMenu user={user} wishlistCount={wishlistCount} cartCount={cartCount} onSelect={onProfileSelect} onLogout={onLogout}/>
+            ) : (
+              <button type="button" onClick={onAuthOpen} className="flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 text-xs font-extrabold text-slate-700 transition hover:border-[#ff5c35] hover:text-[#ff5c35] sm:px-4" aria-label="Login or sign up"><UserRound size={17} /><span className="hidden sm:inline">Login / Signup</span></button>
+            )}
+            <button type="button" onClick={() => user ? onProfileSelect('wishlist') : onAuthOpen()} className="relative hidden size-10 place-items-center rounded-full transition hover:bg-white sm:grid" aria-label="Wishlist"><Heart size={19} />{wishlistCount > 0 && <span className="absolute right-0 top-0 grid size-4 place-items-center rounded-full bg-[#ff5c35] text-[9px] font-bold text-white">{wishlistCount}</span>}</button>
             <button type="button" onClick={onCartOpen} className="relative grid size-10 place-items-center rounded-full bg-slate-950 text-white transition hover:bg-[#ff5c35]" aria-label="Open cart"><ShoppingBag size={18} />{cartCount > 0 && <span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-[#ffb000] text-[10px] font-extrabold text-slate-950">{cartCount}</span>}</button>
             <button type="button" onClick={() => setMobileOpen(!mobileOpen)} className="grid size-10 place-items-center rounded-full xl:hidden" aria-label="Toggle menu">{mobileOpen ? <X size={21} /> : <Menu size={21} />}</button>
           </div>
