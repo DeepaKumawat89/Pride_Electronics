@@ -11,7 +11,8 @@ import ProductCatalog from './components/products/ProductCatalog'
 import ProductDetailsPage from './components/products/ProductDetailsPage'
 import ProductReviewsPage from './components/products/ProductReviewsPage'
 import AuthModal from './components/auth/AuthModal'
-import CheckoutModal from './components/checkout/CheckoutModal'
+import CheckoutPage from './components/checkout/CheckoutPage'
+import OrderSuccessPage from './components/checkout/OrderSuccessPage'
 import AccountPanel, { LogoutConfirmation } from './components/profile/AccountPanel'
 import { useCart } from './hooks/useCart'
 import { formatCurrency } from './utils/currency'
@@ -21,6 +22,9 @@ const ADDRESS_SESSION_KEY = 'pride_saved_addresses'
 const PAYMENT_SESSION_KEY = 'pride_saved_payments'
 const PRODUCT_HASH_PREFIX = '#product-'
 const REVIEWS_HASH_SUFFIX = '-reviews'
+const CHECKOUT_HASH = '#checkout'
+const ORDER_SUCCESS_HASH = '#order-success'
+const ORDER_SUCCESS_SESSION_KEY = 'pride_last_successful_order'
 
 function getSessionUser() {
   try {
@@ -71,6 +75,7 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
   const [reviewsOpen, setReviewsOpen] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
+  const [successfulOrder, setSuccessfulOrder] = useState(null)
   const [pendingCheckout, setPendingCheckout] = useState(false)
   const [pendingCart, setPendingCart] = useState(false)
   const [accountSection, setAccountSection] = useState(null)
@@ -85,9 +90,37 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
   const cartHistoryActive = useRef(false)
   const productReturnSection = useRef(null)
   const productHistoryActive = useRef(false)
+  const checkoutHistoryActive = useRef(false)
+  const orderSuccessHistoryActive = useRef(false)
 
   useEffect(() => {
     const handleHistoryBack = () => {
+      if (window.location.hash === ORDER_SUCCESS_HASH) {
+        const savedOrder = getSessionItems(ORDER_SUCCESS_SESSION_KEY, null)
+        if (savedOrder) {
+          orderSuccessHistoryActive.current = true
+          setSuccessfulOrder(savedOrder)
+          setCheckoutOpen(false)
+          setAccountSection(null)
+          window.scrollTo({ top: 0, behavior: 'auto' })
+          return
+        }
+      }
+      if (orderSuccessHistoryActive.current) {
+        setSuccessfulOrder(null)
+        orderSuccessHistoryActive.current = false
+      }
+      if (window.location.hash === CHECKOUT_HASH) {
+        checkoutHistoryActive.current = true
+        setCheckoutOpen(true)
+        setAccountSection(null)
+        window.scrollTo({ top: 0, behavior: 'auto' })
+        return
+      }
+      if (checkoutHistoryActive.current) {
+        setCheckoutOpen(false)
+        checkoutHistoryActive.current = false
+      }
       if (window.location.hash.startsWith(PRODUCT_HASH_PREFIX)) {
         const productPath = window.location.hash.slice(PRODUCT_HASH_PREFIX.length)
         const isReviewsPage = productPath.endsWith(REVIEWS_HASH_SUFFIX)
@@ -204,6 +237,45 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
     setReviewsOpen(false)
   }
 
+  const navigateToCheckout = () => {
+    if (window.location.hash !== CHECKOUT_HASH) window.history.pushState({ prideCheckout: true }, '', CHECKOUT_HASH)
+    checkoutHistoryActive.current = true
+    setCheckoutOpen(true)
+    setAccountSection(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const closeCheckout = () => {
+    if (window.location.hash === CHECKOUT_HASH) {
+      window.history.back()
+      return
+    }
+    setCheckoutOpen(false)
+  }
+
+  const closeOrderSuccess = () => {
+    if (window.location.hash === ORDER_SUCCESS_HASH) {
+      window.history.back()
+      return
+    }
+    setSuccessfulOrder(null)
+  }
+
+  const viewSuccessfulOrder = () => {
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
+    orderSuccessHistoryActive.current = false
+    checkoutHistoryActive.current = false
+    productHistoryActive.current = false
+    productReturnSection.current = null
+    cartHistoryActive.current = false
+    cartReturnSection.current = null
+    setSuccessfulOrder(null)
+    setSelectedProduct(null)
+    setReviewsOpen(false)
+    setAccountSection('orders')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   const handleBuyNow = (product, quantity) => {
     cart.add(product, quantity)
     notify(`${product.name} is ready for checkout`)
@@ -216,7 +288,7 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
     notify(mode === 'signup' ? `Welcome to Pride, ${authenticatedUser.name.split(' ')[0]}!` : `Welcome back, ${authenticatedUser.name.split(' ')[0]}!`)
     if (pendingCheckout) {
       setPendingCheckout(false)
-      setCheckoutOpen(true)
+      navigateToCheckout()
     }
     if (pendingCart) {
       setPendingCart(false)
@@ -344,18 +416,13 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
   }
 
   const handleAccountCheckout = () => {
-    if (window.location.hash === '#account-cart') {
-      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
-      cartReturnSection.current = null
-      cartHistoryActive.current = false
-    }
     setAccountSection(null)
     handleCheckout()
   }
 
   const handleCheckout = () => {
     if (user) {
-      setCheckoutOpen(true)
+      navigateToCheckout()
       return
     }
     setPendingCheckout(true)
@@ -369,20 +436,28 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
       customer: user?.name || 'Pride customer',
       email: user?.email || '',
       date: new Date().toISOString().slice(0, 10),
-      total: formatCurrency(cart.subtotal),
+      total: formatCurrency(checkoutDetails.total ?? cart.subtotal),
       itemsCount: cart.count,
       status: 'Pending',
       orderTime: new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }),
       deliveryDate: 'Being scheduled',
       paymentStatus: 'Paid',
       shippingAddress: checkoutDetails.address || null,
-      paymentMethod: checkoutDetails.payment?.type || 'Online payment',
+      paymentMethod: checkoutDetails.razorpay ? 'Razorpay Test Mode' : checkoutDetails.payment?.type || 'Online payment',
+      razorpayPaymentId: checkoutDetails.razorpay?.razorpay_payment_id || '',
+      razorpayOrderId: checkoutDetails.razorpay?.razorpay_order_id || '',
       items: cart.items.map(({ product, quantity }) => ({ productName: product.name, image: product.image, qty: quantity, price: product.price })),
     }
     onNewOrder?.(order)
     setOrders((current) => [order, ...current])
     cart.clear()
     setCheckoutOpen(false)
+    checkoutHistoryActive.current = false
+    sessionStorage.setItem(ORDER_SUCCESS_SESSION_KEY, JSON.stringify(order))
+    orderSuccessHistoryActive.current = true
+    window.history.replaceState({ prideOrderSuccess: order.id }, '', ORDER_SUCCESS_HASH)
+    setSuccessfulOrder(order)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
     notify(`Order ${order.id} placed successfully`)
   }
 
@@ -391,7 +466,20 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
       <AnnouncementBar />
       <Header user={user} defaultAddress={savedAddresses.find((address) => address.isDefault) || savedAddresses[0]} cartCount={cart.count} wishlistCount={likedIds.length} onCartOpen={navigateToCart} onSearch={setQuery} onAuthOpen={() => setAuthOpen(true)} onCategoryChange={handleCategory} onProfileSelect={handleProfileSelect} onLogout={() => setLogoutConfirmOpen(true)} />
       <main>
-        {selectedProduct && reviewsOpen ? (
+        {successfulOrder ? (
+          <OrderSuccessPage order={successfulOrder} onContinueShopping={closeOrderSuccess} onViewOrders={viewSuccessfulOrder} />
+        ) : checkoutOpen ? (
+          <CheckoutPage
+            key={`${savedAddresses.find((address) => address.isDefault)?.id || 'no-address'}-${savedPayments.find((payment) => payment.isDefault)?.id || 'no-payment'}`}
+            items={cart.items}
+            subtotal={cart.subtotal}
+            savedAddresses={savedAddresses}
+            savedPayments={savedPayments}
+            user={user}
+            onBack={closeCheckout}
+            onPlaceOrder={handlePlaceOrder}
+          />
+        ) : selectedProduct && reviewsOpen ? (
           <ProductReviewsPage product={selectedProduct} onBack={closeReviews} />
         ) : selectedProduct ? (
           <ProductDetailsPage
@@ -419,7 +507,6 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
       <Footer onBeSellerClick={onBeSellerClick} />
 
       <AuthModal open={authOpen} onClose={() => { setAuthOpen(false); setPendingCheckout(false); setPendingCart(false) }} onSuccess={handleAuthSuccess} />
-      <CheckoutModal key={`${savedAddresses.find((address) => address.isDefault)?.id || 'no-address'}-${savedPayments.find((payment) => payment.isDefault)?.id || 'no-payment'}`} open={checkoutOpen} subtotal={cart.subtotal} savedAddresses={savedAddresses} savedPayments={savedPayments} onClose={() => setCheckoutOpen(false)} onPlaceOrder={handlePlaceOrder} />
       {user && (
         <AccountPanel
           section={accountSection}
