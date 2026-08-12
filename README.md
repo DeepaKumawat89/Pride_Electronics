@@ -1,16 +1,42 @@
-# React + Vite
+# Pride Electronics
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A responsive customer storefront and admin portal built with React, Vite, and Tailwind CSS.
 
-Currently, two official plugins are available:
+## Run locally
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```bash
+npm install
+npm run dev
+```
 
-## React Compiler
+Use `npm run build` for a production build and `npm run lint` to run the code checks.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Storefront structure
 
-## Expanding the ESLint configuration
+```text
+src/user/
+├── UserApp.jsx                  # Storefront composition and cross-feature state
+├── components/
+│   ├── auth/                    # Customer authentication UI
+│   ├── cart/                    # Cart drawer and cart interactions
+│   ├── checkout/                # Checkout and order submission UI
+│   ├── common/                  # Small shared storefront primitives
+│   ├── home/                    # Homepage-only sections
+│   ├── layout/                  # Header, announcement bar, and footer
+│   └── products/                # Catalog, cards, and product details
+├── hooks/                       # Reusable stateful domain logic
+└── utils/                       # Pure formatting and helper functions
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+All storefront styling lives in Tailwind utility classes directly in JSX. `src/styles/index.css` only loads Tailwind and declares the two font tokens; it contains no component styles. Admin styles remain isolated in `src/styles/admin.css` and the existing admin stylesheet.
+
+## Included customer flows
+
+- Responsive desktop and mobile navigation
+- Live product search, category filters, and sorting
+- Wishlist toggling and quick product details
+- Add to cart, quantity updates, removal, and totals
+- Sign-in/sign-up modal
+- Delivery and payment checkout form
+- Order creation passed back to the shared admin data layer
+- Customer benefits, membership promotion, newsletter, and seller handoff

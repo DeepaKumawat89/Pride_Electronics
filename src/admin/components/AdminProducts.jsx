@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Edit2, Trash2, Search, X, Check, Eye, LayoutGrid, List, Sparkles, AlertCircle } from 'lucide-react'
+import { Plus, Edit2, Trash2, X, Check, LayoutGrid, List } from 'lucide-react'
 
 export default function AdminProducts({
   products = [],

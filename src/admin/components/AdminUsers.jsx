@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { UserCheck, ShieldCheck, Mail, Calendar, Users, Award, DollarSign, CheckCircle2, Copy, Check } from 'lucide-react'
+import { ShieldCheck, Users, Award, DollarSign, Copy, Check } from 'lucide-react'
 
 export default function AdminUsers({ customers = [], searchQuery = '' }) {
   const [copiedId, setCopiedId] = useState(null)
@@ -214,4 +214,3 @@ export default function AdminUsers({ customers = [], searchQuery = '' }) {
     </div>
   )
 }
-

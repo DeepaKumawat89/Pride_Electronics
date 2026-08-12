@@ -3,14 +3,13 @@ import UserApp from './user/UserApp'
 import AdminApp from './admin/AdminApp'
 import { products as initialProducts } from './data/products'
 import { initialOrders, initialCustomers } from './data/adminData'
-import { ShoppingBag, ShieldCheck, Sparkles } from 'lucide-react'
 import './styles/App.css'
 
 function App() {
   const [activePortal, setActivePortal] = useState('user') // 'user' | 'admin'
   const [productsList, setProductsList] = useState(initialProducts)
   const [ordersList, setOrdersList] = useState(initialOrders)
-  const [customersList, setCustomersList] = useState(initialCustomers)
+  const [customersList] = useState(initialCustomers)
 
   // Handlers for Admin actions on Products
   const handleAddProduct = (newProduct) => {
@@ -40,9 +39,7 @@ function App() {
   }
 
   return (
-    <div className={`app-root ${activePortal === 'admin' ? 'admin-portal-active' : ''}`}>
-
-
+    <div className={`min-h-screen font-sans text-slate-950 antialiased ${activePortal === 'admin' ? 'app-root admin-portal-active' : 'bg-[#f7f8f5]'}`}>
       {/* Render Selected View */}
       {activePortal === 'user' ? (
         <UserApp

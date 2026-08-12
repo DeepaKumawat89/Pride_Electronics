@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle2, Clock, Truck, PackageCheck, Eye, X, ShieldCheck, CreditCard, Copy, Check, Printer, FileText } from 'lucide-react'
+import { CheckCircle2, Truck, Eye, X, CreditCard, Copy, Check, Printer } from 'lucide-react'
 
 export default function AdminOrders({ orders = [], onUpdateOrderStatus, searchQuery = '' }) {
   const [statusFilter, setStatusFilter] = useState('All')
