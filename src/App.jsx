@@ -3,7 +3,6 @@ import UserApp from './user/UserApp'
 import AdminApp from './admin/AdminApp'
 import { products as initialProducts } from './data/products'
 import { initialOrders, initialCustomers } from './data/adminData'
-import './styles/App.css'
 
 function App() {
   const [activePortal, setActivePortal] = useState('user') // 'user' | 'admin'
@@ -18,7 +17,7 @@ function App() {
 
   const handleUpdateProduct = (updatedProduct) => {
     setProductsList((prev) =>
-      prev.map((p) => (p.id === updatedProduct.id ? updatedProduct : p))
+      prev.map((p) => (p.id === updatedProduct.id ? updatedProduct : p)),
     )
   }
 
@@ -29,7 +28,7 @@ function App() {
   // Handler for Admin action on Order Status
   const handleUpdateOrderStatus = (orderId, newStatus) => {
     setOrdersList((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
+      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)),
     )
   }
 
@@ -39,7 +38,7 @@ function App() {
   }
 
   return (
-    <div className={`min-h-screen font-sans text-slate-950 antialiased ${activePortal === 'admin' ? 'app-root admin-portal-active' : 'bg-[#f7f8f5]'}`}>
+    <div className="min-h-screen bg-[#f7f8f5] font-sans text-slate-950 antialiased">
       {/* Render Selected View */}
       {activePortal === 'user' ? (
         <UserApp

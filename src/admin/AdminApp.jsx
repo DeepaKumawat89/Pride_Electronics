@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
-import AdminHeader from './components/AdminHeader'
-import AdminSidebar from './components/AdminSidebar'
-import AdminDashboard from './components/AdminDashboard'
-import AdminProducts from './components/AdminProducts'
-import AdminOrders from './components/AdminOrders'
-import AdminUsers from './components/AdminUsers'
-import AdminLogin from './components/AdminLogin'
-import '../styles/admin.css'
+import { useAdminAuth } from './hooks/useAdminAuth'
+import AdminLayout from './layouts/AdminLayout'
+import AdminLoginPage from './pages/AdminLoginPage'
+import CustomersPage from './pages/CustomersPage'
+import DashboardPage from './pages/DashboardPage'
+import OrdersPage from './pages/OrdersPage'
+import ProductsPage from './pages/ProductsPage'
 
 export default function AdminApp({
   products = [],
@@ -16,9 +15,9 @@ export default function AdminApp({
   onUpdateProduct,
   onDeleteProduct,
   onUpdateOrderStatus,
-  onSwitchToStore
+  onSwitchToStore,
 }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const { admin, loading, login, logout } = useAdminAuth()
   const [activeTab, setActiveTab] = useState('dashboard')
   const [searchQuery, setSearchQuery] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
@@ -34,14 +33,14 @@ export default function AdminApp({
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [isSidebarOpen])
 
-  const handleLoginSuccess = () => {
-    setIsAuthenticated(true)
+  const handleLogin = async (email, password) => {
+    await login(email, password)
     setActiveTab('dashboard')
   }
 
   const handleLogout = () => {
     setIsSidebarOpen(false)
-    setIsAuthenticated(false)
+    logout()
   }
 
   const handleSelectTab = (tab) => {
@@ -49,70 +48,59 @@ export default function AdminApp({
     setIsSidebarOpen(false)
   }
 
-  if (!isAuthenticated) {
+  if (!admin) {
     return (
-      <AdminLogin
-        onLoginSuccess={handleLoginSuccess}
+      <AdminLoginPage
+        loading={loading}
+        onLogin={handleLogin}
         onSwitchToStore={onSwitchToStore}
       />
     )
   }
 
   return (
-    <div className="admin-app-layout">
-      <div className="admin-body-layout">
-        <AdminSidebar
-          activeTab={activeTab}
-          onSelectTab={handleSelectTab}
-          onLogout={handleLogout}
-          isOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
+    <AdminLayout
+      activeTab={activeTab}
+      admin={admin}
+      sidebarOpen={isSidebarOpen}
+      onCloseSidebar={() => setIsSidebarOpen(false)}
+      onLogout={handleLogout}
+      onOpenSidebar={() => setIsSidebarOpen(true)}
+      onSearch={setSearchQuery}
+      onSelectTab={handleSelectTab}
+      onSwitchToStore={onSwitchToStore}
+      searchQuery={searchQuery}
+    >
+      {activeTab === 'dashboard' && (
+        <DashboardPage
+          products={products}
+          orders={orders}
+          customers={customers}
+          onNavigate={handleSelectTab}
         />
+      )}
 
-        <section className="admin-content-shell">
-          <AdminHeader
-            searchQuery={searchQuery}
-            onSearch={setSearchQuery}
-            onOpenSidebar={() => setIsSidebarOpen(true)}
-          />
+      {activeTab === 'products' && (
+        <ProductsPage
+          products={products}
+          onAddProduct={onAddProduct}
+          onUpdateProduct={onUpdateProduct}
+          onDeleteProduct={onDeleteProduct}
+          searchQuery={searchQuery}
+        />
+      )}
 
-          <main className="admin-main-content">
-            {activeTab === 'dashboard' && (
-              <AdminDashboard
-                products={products}
-                orders={orders}
-                customers={customers}
-                onNavigate={setActiveTab}
-              />
-            )}
+      {activeTab === 'orders' && (
+        <OrdersPage
+          orders={orders}
+          onUpdateOrderStatus={onUpdateOrderStatus}
+          searchQuery={searchQuery}
+        />
+      )}
 
-            {activeTab === 'products' && (
-              <AdminProducts
-                products={products}
-                onAddProduct={onAddProduct}
-                onUpdateProduct={onUpdateProduct}
-                onDeleteProduct={onDeleteProduct}
-                searchQuery={searchQuery}
-              />
-            )}
-
-            {activeTab === 'orders' && (
-              <AdminOrders
-                orders={orders}
-                onUpdateOrderStatus={onUpdateOrderStatus}
-                searchQuery={searchQuery}
-              />
-            )}
-
-            {activeTab === 'users' && (
-              <AdminUsers
-                customers={customers}
-                searchQuery={searchQuery}
-              />
-            )}
-          </main>
-        </section>
-      </div>
-    </div>
+      {activeTab === 'users' && (
+        <CustomersPage customers={customers} searchQuery={searchQuery} />
+      )}
+    </AdminLayout>
   )
 }
