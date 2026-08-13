@@ -6,17 +6,23 @@ import {
   CheckCircle2,
   ChevronRight,
   CreditCard,
+  Download,
   Eye,
   Heart,
+  HelpCircle,
   LogOut,
   MapPin,
   Minus,
   Package,
   Pencil,
   Plus,
+  ReceiptText,
+  RotateCcw,
   Search,
   ShieldCheck,
   ShoppingBag,
+  SlidersHorizontal,
+  Star,
   TicketPercent,
   Trash2,
   Truck,
@@ -24,8 +30,11 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import SelectMenu from '../../../components/ui/SelectMenu'
 import { formatCurrency, parsePrice } from '../../utils/currency'
+import downloadInvoicePdf from './InvoicePdf'
+import OrderDetailsView from './OrderDetailsView'
 
 const genderOptions = [
   { value: '', label: 'Select gender' },
@@ -35,13 +44,20 @@ const genderOptions = [
   { value: 'Prefer not to say', label: 'Prefer not to say' },
 ]
 const orderDateOptions = [
-  { value: 'all', label: 'All order dates' },
+  { value: 'all', label: 'All dates' },
   { value: '30', label: 'Last 30 days' },
   { value: '90', label: 'Last 3 months' },
   { value: '365', label: 'Last year' },
 ]
 const addressTypeOptions = ['Shipping', 'Billing']
 const addressLabelOptions = ['Home', 'Work', 'Other']
+const returnReasonOptions = [
+  'Product is damaged',
+  'Wrong product received',
+  'Product does not match description',
+  'Missing parts or accessories',
+  'No longer needed',
+]
 
 const menuItems = [
   { id: 'profile', label: 'My Profile', icon: UserRound },
@@ -114,6 +130,285 @@ function Avatar({ user, size = 'size-12', textSize = 'text-sm' }) {
   )
 }
 
+function HeaderSearch({ value, onChange, placeholder, ariaLabel }) {
+  return (
+    <div className="relative block min-w-0 flex-1 sm:w-56 sm:flex-none lg:w-64">
+      <Search
+        size={17}
+        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+      />
+      <input
+        type="search"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        autoComplete="off"
+        className="h-11 w-full rounded-full border border-slate-200 bg-white pl-11 pr-11 text-sm outline-none transition placeholder:text-slate-400 focus:border-[#ff5c35] focus:ring-4 focus:ring-[#ff5c35]/10"
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          className="absolute right-3 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+          aria-label={`Clear ${ariaLabel.toLowerCase()}`}
+        >
+          <X size={12} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+function formatAddress(address) {
+  if (!address) return 'Address not available'
+  if (typeof address === 'string') return address
+
+  return [
+    address.fullName,
+    address.line1,
+    address.line2,
+    [address.city, address.state, address.pincode].filter(Boolean).join(', '),
+    address.phone,
+  ]
+    .filter(Boolean)
+    .join(', ')
+}
+
+function getOrderFinancials(order) {
+  const itemSubtotal = (order.items || []).reduce(
+    (sum, item) => sum + parsePrice(item.price) * Number(item.qty || 1),
+    0,
+  )
+  const discount = parsePrice(order.discount || 0)
+  const deliveryCharges = parsePrice(order.deliveryCharges || 0)
+  const finalTotal = parsePrice(order.total) || Math.max(0, itemSubtotal - discount)
+  const explicitTax = parsePrice(order.taxAmount || 0)
+  const taxableProductValue = Math.max(0, itemSubtotal - discount)
+  const includedTax =
+    explicitTax || Math.round((taxableProductValue * 18) / 118)
+
+  return {
+    itemSubtotal,
+    discount,
+    deliveryCharges,
+    tax: includedTax,
+    finalTotal,
+  }
+}
+
+function escapeInvoiceText(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
+}
+
+function downloadInvoice(order, customer, address) {
+  if (order) return downloadInvoicePdf(order, customer, address)
+
+  const financials = getOrderFinancials(order)
+  const invoiceNumber = `INV-${String(order.id).replace(/^ORD-?/, '')}`
+  const itemRows = (order.items || [])
+    .map((item, index) => {
+      const quantity = Number(item.qty || 1)
+      const unitPrice = parsePrice(item.price)
+      const itemDiscount = parsePrice(item.discount || 0)
+      const lineTotal = Math.max(0, unitPrice * quantity - itemDiscount)
+      return `<tr>
+        <td>${index + 1}</td>
+        <td><strong>${escapeInvoiceText(item.productName)}</strong><br><span class="muted">Electronics · HSN 8518</span></td>
+        <td class="right">${quantity}</td>
+        <td class="right">${escapeInvoiceText(formatCurrency(unitPrice))}</td>
+        <td class="right">${escapeInvoiceText(formatCurrency(itemDiscount))}</td>
+        <td class="right">18% incl.</td>
+        <td class="right"><strong>${escapeInvoiceText(formatCurrency(lineTotal))}</strong></td>
+      </tr>`
+    })
+    .join('')
+
+  const invoiceHtml = `<!doctype html>
+  <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${escapeInvoiceText(invoiceNumber)} · Pride Electronics</title>
+  <style>
+    *{box-sizing:border-box} body{margin:0;background:#f3f5f2;color:#17211d;font:14px/1.5 Arial,sans-serif}.invoice{width:min(960px,calc(100% - 32px));margin:32px auto;background:#fff;padding:42px;border-top:6px solid #ff5c35;box-shadow:0 16px 50px #17211d18}.top{display:flex;justify-content:space-between;gap:30px}.brand{display:flex;align-items:center;gap:12px}.logo{display:grid;place-items:center;width:48px;height:48px;border-radius:14px;background:#ff5c35;color:#fff;font-weight:900;font-size:18px}.brand h1{margin:0;font-size:22px}.brand p,.muted{color:#68736d;font-size:12px}.invoice-title{text-align:right}.invoice-title h2{margin:0;font-size:28px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:30px 0}.box{border:1px solid #dfe5dc;border-radius:14px;padding:16px}.label{margin:0 0 7px;color:#7b857f;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.box p{margin:3px 0}table{width:100%;border-collapse:collapse;margin-top:24px}th{background:#253329;color:#fff;padding:12px 10px;text-align:left;font-size:10px;text-transform:uppercase}td{padding:13px 10px;border-bottom:1px solid #e8ece6;vertical-align:top}.right{text-align:right}.summary{width:min(410px,100%);margin:24px 0 0 auto}.row{display:flex;justify-content:space-between;padding:7px 0}.total{margin-top:8px;padding-top:14px;border-top:2px solid #253329;font-size:18px;font-weight:900}.note{margin-top:30px;border-radius:14px;background:#f2f7ef;padding:16px;color:#536a50;font-size:12px}.footer{display:flex;justify-content:space-between;gap:20px;margin-top:35px;padding-top:18px;border-top:1px solid #dfe5dc;color:#7b857f;font-size:11px}@media(max-width:650px){.invoice{margin:0;width:100%;padding:22px}.top,.footer{display:block}.invoice-title{text-align:left;margin-top:20px}.grid{grid-template-columns:1fr}table{font-size:11px}th,td{padding:8px 5px}}@media print{body{background:#fff}.invoice{width:100%;margin:0;box-shadow:none}}
+  </style></head><body><main class="invoice">
+    <div class="top"><div><div class="brand"><div class="logo">PE</div><div><h1>PRIDE ELECTRONICS</h1><p>Technology you can trust.</p></div></div><p>42 Silicon Avenue, Hinjawadi, Pune, Maharashtra 411057<br>support@prideelectronics.in · +91 98765 43210<br>GSTIN: 27AABCP1234F1Z5</p></div><div class="invoice-title"><h2>TAX INVOICE</h2><p><strong>${escapeInvoiceText(invoiceNumber)}</strong><br>Invoice date: ${escapeInvoiceText(order.date)}<br>Order ID: ${escapeInvoiceText(order.id)}</p></div></div>
+    <section class="grid"><div class="box"><p class="label">Bill to</p><p><strong>${escapeInvoiceText(customer?.name || order.customer || 'Pride Customer')}</strong></p><p>${escapeInvoiceText(formatAddress(address))}</p><p>${escapeInvoiceText(customer?.email || order.email || '')}</p></div><div class="box"><p class="label">Payment & delivery</p><p><strong>Payment:</strong> ${escapeInvoiceText(order.paymentMethod || 'Online payment')}</p><p><strong>Status:</strong> ${escapeInvoiceText(order.paymentStatus || 'Paid')}</p><p><strong>Order status:</strong> ${escapeInvoiceText(order.status)}</p><p><strong>Delivery date:</strong> ${escapeInvoiceText(order.deliveryDate || 'Being scheduled')}</p></div></section>
+    <table><thead><tr><th>#</th><th>Product</th><th class="right">Qty</th><th class="right">Unit price</th><th class="right">Discount</th><th class="right">GST</th><th class="right">Amount</th></tr></thead><tbody>${itemRows}</tbody></table>
+    <section class="summary"><div class="row"><span>Product subtotal</span><strong>${escapeInvoiceText(formatCurrency(financials.itemSubtotal))}</strong></div><div class="row"><span>Discount</span><strong>− ${escapeInvoiceText(formatCurrency(financials.discount))}</strong></div><div class="row"><span>GST (included in product prices)</span><strong>${escapeInvoiceText(formatCurrency(financials.tax))}</strong></div><div class="row"><span>Delivery charges</span><strong>${financials.deliveryCharges ? escapeInvoiceText(formatCurrency(financials.deliveryCharges)) : 'FREE'}</strong></div><div class="row total"><span>Final payable amount</span><span>${escapeInvoiceText(formatCurrency(financials.finalTotal))}</span></div></section>
+    <div class="note"><strong>Return / refund information:</strong> Eligible products may be returned within 30 days of delivery, subject to inspection and the Pride Electronics return policy. Approved refunds are issued to the original payment method.</div>
+    <footer class="footer"><span>This is a computer-generated tax invoice.</span><span>Thank you for shopping with Pride Electronics.</span></footer>
+  </main></body></html>`
+
+  const invoiceBlob = new Blob([invoiceHtml], { type: 'text/html;charset=utf-8' })
+  const invoiceUrl = URL.createObjectURL(invoiceBlob)
+  const downloadLink = document.createElement('a')
+  downloadLink.href = invoiceUrl
+  downloadLink.download = `${invoiceNumber}.html`
+  document.body.appendChild(downloadLink)
+  downloadLink.click()
+  downloadLink.remove()
+  URL.revokeObjectURL(invoiceUrl)
+}
+
+function OrderFilter({
+  dateRange,
+  onDateRangeChange,
+  status,
+  onStatusChange,
+  statuses,
+}) {
+  const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState(null)
+  const triggerRef = useRef(null)
+  const menuRef = useRef(null)
+  const activeFilterCount =
+    Number(dateRange !== 'all') + Number(status !== 'All')
+
+  useEffect(() => {
+    if (!open) return undefined
+
+    const updatePosition = () => {
+      const rect = triggerRef.current?.getBoundingClientRect()
+      if (!rect) return
+
+      const viewportPadding = 12
+      const panelHeight = 410
+      const width = Math.min(360, window.innerWidth - viewportPadding * 2)
+      const left = Math.min(
+        Math.max(viewportPadding, rect.right - width),
+        window.innerWidth - width - viewportPadding,
+      )
+      const top =
+        rect.bottom + 8 + panelHeight <= window.innerHeight - viewportPadding
+          ? rect.bottom + 8
+          : Math.max(viewportPadding, rect.top - panelHeight - 8)
+      setPosition({ left, top, width })
+    }
+
+    const closeOnOutsideClick = (event) => {
+      if (
+        !triggerRef.current?.contains(event.target) &&
+        !menuRef.current?.contains(event.target)
+      ) {
+        setOpen(false)
+      }
+    }
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+
+    updatePosition()
+    document.addEventListener('mousedown', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick)
+      document.removeEventListener('keydown', closeOnEscape)
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [open])
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className={`relative inline-flex h-11 w-36 shrink-0 items-center justify-center gap-2 rounded-full border bg-white px-4 text-[11px] font-extrabold transition ${open || activeFilterCount ? 'border-[#ff5c35] text-[#d84220] ring-4 ring-[#ff5c35]/10' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}
+      >
+        <SlidersHorizontal size={15} />
+        <span>Filter</span>
+        {activeFilterCount > 0 && (
+          <span className="grid size-5 place-items-center rounded-full bg-[#ff5c35] text-[9px] text-white">
+            {activeFilterCount}
+          </span>
+        )}
+      </button>
+
+      {open &&
+        position &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="dialog"
+            aria-label="Filter orders"
+            style={position}
+            className="fixed z-[100] flex h-[410px] flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_22px_60px_rgba(15,23,42,0.2)]"
+          >
+            <div>
+              <p className="text-[9px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
+                Date
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {orderDateOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => onDateRangeChange(option.value)}
+                    className={`rounded-xl px-3 py-2.5 text-left text-[10px] font-bold transition ${dateRange === option.value ? 'bg-[#253329] text-white' : 'bg-[#f4f7ef] text-slate-600 hover:bg-[#e9efe4]'}`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <p className="text-[9px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
+                Order status
+              </p>
+              <div className="mt-2 max-h-32 overflow-y-auto pr-1">
+                <div className="flex flex-wrap gap-2">
+                {statuses.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => onStatusChange(item)}
+                    className={`rounded-full px-3 py-2 text-[9px] font-extrabold transition ${status === item ? 'bg-[#253329] text-white' : 'bg-[#f4f7ef] text-slate-600 hover:bg-[#e9efe4]'}`}
+                  >
+                    {item}
+                  </button>
+                ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3">
+              <button
+                type="button"
+                disabled={!activeFilterCount}
+                onClick={() => {
+                  onDateRangeChange('all')
+                  onStatusChange('All')
+                }}
+                className="text-[9px] font-extrabold text-[#ff5c35] disabled:opacity-35"
+              >
+                Clear filters
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-full bg-[#253329] px-4 py-2 text-[9px] font-extrabold text-white"
+              >
+                Done
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
+  )
+}
+
 export default function AccountPanel({
   section,
   user,
@@ -141,18 +436,59 @@ export default function AccountPanel({
   onSetDefaultPayment,
 }) {
   const [logoutOpen, setLogoutOpen] = useState(false)
+  const [contentScrolled, setContentScrolled] = useState(false)
+  const [wishlistQuery, setWishlistQuery] = useState('')
+  const [orderQuery, setOrderQuery] = useState('')
+  const [orderDateRange, setOrderDateRange] = useState('all')
+  const [orderStatus, setOrderStatus] = useState('All')
+  const [orderDetailsOpen, setOrderDetailsOpen] = useState(false)
+  const contentViewportRef = useRef(null)
+  const contentRef = useRef(null)
+  const orderStatuses = useMemo(
+    () => ['All', ...new Set(orders.map((order) => order.status))],
+    [orders],
+  )
 
   useEffect(() => {
     if (!section) return undefined
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    const closeOnEscape = (event) => event.key === 'Escape' && onClose()
+    const closeOnEscape = (event) => {
+      if (event.key !== 'Escape') return
+      setOrderDetailsOpen(false)
+      onClose()
+    }
     window.addEventListener('keydown', closeOnEscape)
     return () => {
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', closeOnEscape)
     }
   }, [section, onClose])
+
+  useEffect(() => {
+    const viewport = contentViewportRef.current
+    const content = contentRef.current
+    if (!section || !viewport) return undefined
+
+    viewport.scrollTop = 0
+    setContentScrolled(false)
+
+    const updateScrolledState = () => {
+      const hasMoreContent =
+        viewport.scrollHeight > viewport.clientHeight + 1
+      setContentScrolled(hasMoreContent && viewport.scrollTop > 0)
+    }
+
+    updateScrolledState()
+
+    if (typeof ResizeObserver === 'undefined') return undefined
+
+    const resizeObserver = new ResizeObserver(updateScrolledState)
+    resizeObserver.observe(viewport)
+    if (content) resizeObserver.observe(content)
+
+    return () => resizeObserver.disconnect()
+  }, [section])
 
   if (!section) return null
   const [title, subtitle, SectionIcon] = sectionMeta[section]
@@ -166,68 +502,137 @@ export default function AccountPanel({
         <AccountNavigation
           section={section}
           user={user}
-          onSectionChange={onSectionChange}
-          onClose={onClose}
+          onSectionChange={(nextSection) => {
+            setOrderDetailsOpen(false)
+            onSectionChange(nextSection)
+          }}
+          onClose={() => {
+            setOrderDetailsOpen(false)
+            onClose()
+          }}
           onLogout={() => setLogoutOpen(true)}
         />
 
         <main className="min-h-0 min-w-0 flex-1">
           <div className="flex h-full flex-col overflow-hidden rounded-[24px] bg-white shadow-[0_24px_70px_rgba(40,68,48,0.14)] md:rounded-[30px]">
-            <header className="flex shrink-0 items-center gap-3 border-b border-slate-100 px-5 py-4 sm:px-7 sm:py-5 lg:px-9">
-              <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#eff3e7] text-[#536a50]">
-                <SectionIcon size={20} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <h1 className="truncate text-lg font-extrabold tracking-tight text-slate-950 sm:text-xl">
-                  {title}
-                </h1>
-                <p className="truncate text-[10px] text-slate-400 sm:text-[11px]">
-                  {subtitle}
-                </p>
-              </span>
-            </header>
+            {!(section === 'orders' && orderDetailsOpen) && (
+              <header
+                className={`flex shrink-0 flex-wrap items-center gap-3 border-b px-5 py-4 transition-colors duration-300 sm:px-7 sm:py-5 lg:px-9 ${contentScrolled ? 'border-[#dce7d5] bg-[#eef4e8]' : 'border-slate-100 bg-white'}`}
+              >
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#eff3e7] text-[#536a50]">
+                  <SectionIcon size={20} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <h1 className="truncate text-lg font-extrabold tracking-tight text-slate-950 sm:text-xl">
+                    {title}
+                  </h1>
+                  <p className="truncate text-[10px] text-slate-400 sm:text-[11px]">
+                    {subtitle}
+                  </p>
+                </span>
+              </div>
 
-            <div className="flex-1 overflow-y-auto p-5 sm:p-7 lg:p-9">
-              {section === 'profile' && (
-                <ProfileSection user={user} onUpdateUser={onUpdateUser} />
-              )}
               {section === 'wishlist' && (
-                <WishlistSection
-                  products={wishlistProducts}
-                  onRemove={onRemoveWishlist}
-                  onView={onViewProduct}
-                  onAdd={onAddToCart}
-                />
+                <div className="ml-auto flex w-full min-w-0 justify-end sm:w-auto">
+                  <HeaderSearch
+                    value={wishlistQuery}
+                    onChange={setWishlistQuery}
+                    placeholder="Search wishlist"
+                    ariaLabel="Search wishlist"
+                  />
+                </div>
               )}
-              {section === 'orders' && <OrdersSection orders={orders} />}
-              {section === 'cart' && (
-                <CartSection
-                  items={cartItems}
-                  subtotal={cartSubtotal}
-                  onChangeQuantity={onChangeQuantity}
-                  onRemove={onRemoveCartItem}
-                  onCheckout={onCheckout}
-                />
+
+              {section === 'orders' && (
+                <div className="ml-auto flex w-full min-w-0 gap-2 sm:w-auto">
+                  <HeaderSearch
+                    value={orderQuery}
+                    onChange={setOrderQuery}
+                    placeholder="Search orders"
+                    ariaLabel="Search orders"
+                  />
+                  <OrderFilter
+                    dateRange={orderDateRange}
+                    onDateRangeChange={setOrderDateRange}
+                    status={orderStatus}
+                    onStatusChange={setOrderStatus}
+                    statuses={orderStatuses}
+                  />
+                </div>
               )}
-              {section === 'address' && (
-                <AddressSection
-                  addresses={savedAddresses}
-                  user={user}
-                  onSave={onSaveAddress}
-                  onDelete={onDeleteAddress}
-                  onSetDefault={onSetDefaultAddress}
-                />
-              )}
-              {section === 'payment' && (
-                <PaymentSection
-                  user={user}
-                  payments={savedPayments}
-                  onSave={onSavePayment}
-                  onDelete={onDeletePayment}
-                  onSetDefault={onSetDefaultPayment}
-                />
-              )}
-              {section === 'coupons' && <CouponsSection />}
+              </header>
+            )}
+
+            <div
+              ref={contentViewportRef}
+              onScroll={(event) => {
+                const viewport = event.currentTarget
+                const hasMoreContent =
+                  viewport.scrollHeight > viewport.clientHeight + 1
+                setContentScrolled(hasMoreContent && viewport.scrollTop > 0)
+              }}
+              className="flex-1 overflow-y-auto bg-white p-5 sm:p-7 lg:p-9"
+            >
+              <div ref={contentRef}>
+                {section === 'profile' && (
+                  <ProfileSection user={user} onUpdateUser={onUpdateUser} />
+                )}
+                {section === 'wishlist' && (
+                  <WishlistSection
+                    products={wishlistProducts}
+                    query={wishlistQuery}
+                    onRemove={onRemoveWishlist}
+                    onView={onViewProduct}
+                    onAdd={onAddToCart}
+                  />
+                )}
+                {section === 'orders' && (
+                  <OrdersSection
+                    orders={orders}
+                    user={user}
+                    savedAddresses={savedAddresses}
+                    query={orderQuery}
+                    onQueryChange={setOrderQuery}
+                    dateRange={orderDateRange}
+                    onDateRangeChange={setOrderDateRange}
+                    status={orderStatus}
+                    onStatusChange={setOrderStatus}
+                    onNavigate={() =>
+                      contentViewportRef.current?.scrollTo({ top: 0 })
+                    }
+                    onDetailsChange={setOrderDetailsOpen}
+                  />
+                )}
+                {section === 'cart' && (
+                  <CartSection
+                    items={cartItems}
+                    subtotal={cartSubtotal}
+                    onChangeQuantity={onChangeQuantity}
+                    onRemove={onRemoveCartItem}
+                    onCheckout={onCheckout}
+                  />
+                )}
+                {section === 'address' && (
+                  <AddressSection
+                    addresses={savedAddresses}
+                    user={user}
+                    onSave={onSaveAddress}
+                    onDelete={onDeleteAddress}
+                    onSetDefault={onSetDefaultAddress}
+                  />
+                )}
+                {section === 'payment' && (
+                  <PaymentSection
+                    user={user}
+                    payments={savedPayments}
+                    onSave={onSavePayment}
+                    onDelete={onDeletePayment}
+                    onSetDefault={onSetDefaultPayment}
+                  />
+                )}
+                {section === 'coupons' && <CouponsSection />}
+              </div>
             </div>
           </div>
         </main>
@@ -530,7 +935,18 @@ function Field({ label, children }) {
   )
 }
 
-function WishlistSection({ products, onRemove, onView, onAdd }) {
+function WishlistSection({ products, query, onRemove, onView, onAdd }) {
+  const filteredProducts = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase()
+    if (!normalizedQuery) return products
+
+    return products.filter((product) =>
+      `${product.name || ''} ${product.category || ''} ${product.badge || ''}`
+        .toLowerCase()
+        .includes(normalizedQuery),
+    )
+  }, [products, query])
+
   if (!products.length)
     return (
       <EmptyState
@@ -542,43 +958,24 @@ function WishlistSection({ products, onRemove, onView, onAdd }) {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <div className="relative isolate mb-6 overflow-hidden rounded-[26px] bg-[#253329] px-5 py-6 text-white sm:px-7">
-        <div className="absolute -right-12 -top-20 -z-10 size-60 rounded-full bg-[#9bcaa6]/25 blur-2xl" />
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-[#9bcaa6]">
-              Your saved collection
-            </p>
-            <h2 className="mt-2 text-xl font-extrabold tracking-tight sm:text-2xl">
-              Things you love, ready when you are.
-            </h2>
-            <p className="mt-1.5 text-[11px] leading-5 text-white/55">
-              Compare your favourites, explore the details, or move them
-              straight to your cart.
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-3 rounded-2xl bg-white/10 px-4 py-3 backdrop-blur">
-            <span className="grid size-9 place-items-center rounded-xl bg-[#ff5c35] text-white">
-              <Heart size={16} fill="currentColor" />
-            </span>
-            <span>
-              <strong className="block text-lg leading-none">
-                {products.length}
-              </strong>
-              <span className="text-[8px] font-bold uppercase tracking-wider text-white/50">
-                Saved items
-              </span>
-            </span>
-          </div>
-        </div>
-      </div>
+      {query && (
+        <p
+          className="mb-4 text-[10px] font-bold text-slate-400"
+          aria-live="polite"
+        >
+          Showing{' '}
+          <strong className="text-slate-700">{filteredProducts.length}</strong>{' '}
+          of {products.length} saved items
+        </p>
+      )}
 
-      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {products.map((product) => (
-          <article
-            key={product.id}
-            className="group flex min-w-0 flex-col overflow-hidden rounded-[26px] border border-slate-100 bg-[#fafbf8] shadow-[0_8px_28px_rgba(15,23,42,0.04)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_45px_rgba(40,68,48,0.14)]"
-          >
+      {filteredProducts.length ? (
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {filteredProducts.map((product) => (
+            <article
+              key={product.id}
+              className="group flex min-w-0 flex-col overflow-hidden rounded-[26px] border border-slate-100 bg-[#fafbf8] shadow-[0_8px_28px_rgba(15,23,42,0.04)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_45px_rgba(40,68,48,0.14)]"
+            >
             <button
               type="button"
               onClick={() => onView(product)}
@@ -646,19 +1043,34 @@ function WishlistSection({ products, onRemove, onView, onAdd }) {
                 </button>
               </div>
             </div>
-          </article>
-        ))}
-      </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          icon={Search}
+          title="No matching wishlist items"
+          text="Try searching by product name or category."
+        />
+      )}
     </div>
   )
 }
 
-function OrdersSection({ orders }) {
-  const [query, setQuery] = useState('')
-  const [status, setStatus] = useState('All')
-  const [dateRange, setDateRange] = useState('all')
+function OrdersSection({
+  orders,
+  user,
+  savedAddresses,
+  query,
+  onQueryChange,
+  dateRange,
+  onDateRangeChange,
+  status,
+  onStatusChange,
+  onNavigate,
+  onDetailsChange,
+}) {
   const [selectedOrder, setSelectedOrder] = useState(null)
-  const statuses = ['All', ...new Set(orders.map((order) => order.status))]
   const filtered = useMemo(
     () =>
       orders.filter((order) => {
@@ -677,85 +1089,28 @@ function OrdersSection({ orders }) {
     [orders, query, status, dateRange],
   )
 
+  if (selectedOrder) {
+    return (
+      <OrderDetails
+        order={selectedOrder}
+        user={user}
+        address={
+          selectedOrder.shippingAddress ||
+          savedAddresses.find((item) => item.isDefault) ||
+          savedAddresses[0]
+        }
+        onBack={() => {
+          setSelectedOrder(null)
+          onDetailsChange(false)
+          onNavigate()
+        }}
+      />
+    )
+  }
+
   return (
     <div className="mx-auto max-w-6xl">
-      <div className="mb-6 grid gap-3 sm:grid-cols-3">
-        <OrderStat
-          icon={Package}
-          value={orders.length}
-          label="Total orders"
-          tone="bg-[#e5ecd6] text-[#536a50]"
-        />
-        <OrderStat
-          icon={Truck}
-          value={
-            orders.filter((order) =>
-              ['Pending', 'Shipped'].includes(order.status),
-            ).length
-          }
-          label="On the way"
-          tone="bg-[#fff1c9] text-[#765400]"
-        />
-        <OrderStat
-          icon={CheckCircle2}
-          value={orders.filter((order) => order.status === 'Delivered').length}
-          label="Delivered"
-          tone="bg-emerald-50 text-emerald-700"
-        />
-      </div>
-
-      <div className="rounded-[26px] bg-[#f4f7ef] p-4 sm:p-5">
-        <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_auto]">
-          <label className="relative">
-            <Search
-              size={16}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by order ID or product name"
-              className="h-12 w-full rounded-2xl border border-white bg-white pl-11 pr-10 text-xs font-semibold outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#9bcaa6]/15"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery('')}
-                className="absolute right-3 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full bg-slate-100 text-slate-400"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </label>
-          <SelectMenu
-            value={dateRange}
-            onChange={setDateRange}
-            options={orderDateOptions}
-            ariaLabel="Filter orders by date"
-            className="w-full md:w-48"
-            buttonClassName="h-12 rounded-2xl border border-white bg-white px-4 text-[10px] font-extrabold text-slate-600"
-          />
-        </div>
-        <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-          {statuses.map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setStatus(item)}
-              className={`shrink-0 rounded-full px-4 py-2 text-[9px] font-extrabold transition ${status === item ? 'bg-[#253329] text-white shadow-md' : 'bg-white text-slate-500 hover:text-slate-900'}`}
-            >
-              {item}
-              {item !== 'All' && (
-                <span className="ml-1.5 opacity-60">
-                  {orders.filter((order) => order.status === item).length}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="my-5 flex items-center justify-between">
+      <div className="mb-5 flex items-center justify-between">
         <p className="text-[10px] font-bold text-slate-400">
           Showing <strong className="text-slate-700">{filtered.length}</strong>{' '}
           of {orders.length} orders
@@ -764,9 +1119,9 @@ function OrdersSection({ orders }) {
           <button
             type="button"
             onClick={() => {
-              setQuery('')
-              setStatus('All')
-              setDateRange('all')
+              onQueryChange('')
+              onStatusChange('All')
+              onDateRangeChange('all')
             }}
             className="text-[9px] font-extrabold text-[#ff5c35]"
           >
@@ -781,7 +1136,11 @@ function OrdersSection({ orders }) {
             <OrderCard
               key={order.id}
               order={order}
-              onView={() => setSelectedOrder(order)}
+              onSelect={() => {
+                setSelectedOrder(order)
+                onDetailsChange(true)
+                onNavigate()
+              }}
             />
           ))}
         </div>
@@ -792,43 +1151,29 @@ function OrdersSection({ orders }) {
           text="Try changing the search, status, or date filters."
         />
       )}
-      {selectedOrder && (
-        <OrderDetails
-          order={selectedOrder}
-          onClose={() => setSelectedOrder(null)}
-        />
-      )}
     </div>
   )
 }
 
-function OrderStat({ icon: Icon, value, label, tone }) {
-  return (
-    <div className="flex items-center gap-3 rounded-[20px] border border-slate-100 bg-[#fafbf8] p-4 shadow-[0_6px_20px_rgba(15,23,42,0.03)]">
-      <span
-        className={`grid size-10 shrink-0 place-items-center rounded-2xl ${tone}`}
-      >
-        <Icon size={17} />
-      </span>
-      <span>
-        <strong className="block text-lg leading-none text-slate-900">
-          {value}
-        </strong>
-        <span className="mt-1 block text-[9px] font-bold uppercase tracking-wider text-slate-400">
-          {label}
-        </span>
-      </span>
-    </div>
-  )
-}
-
-function OrderCard({ order, onView }) {
+function OrderCard({ order, onSelect }) {
   const firstItem = order.items?.[0]
   const delivered = order.status === 'Delivered'
   const cancelled = order.status === 'Cancelled'
 
   return (
-    <article className="group overflow-hidden rounded-[26px] border border-slate-100 bg-[#fafbf8] shadow-[0_8px_24px_rgba(15,23,42,0.03)] transition duration-300 hover:border-[#aacfb3]/60 hover:shadow-[0_18px_45px_rgba(40,68,48,0.12)]">
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onSelect()
+        }
+      }}
+      aria-label={`Open details for order ${order.id}`}
+      className="group block w-full cursor-pointer overflow-hidden rounded-[26px] border border-slate-100 bg-[#fafbf8] text-left shadow-[0_8px_24px_rgba(15,23,42,0.03)] transition duration-300 hover:-translate-y-0.5 hover:border-[#aacfb3]/60 hover:shadow-[0_18px_45px_rgba(40,68,48,0.12)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#9bcaa6]/35"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-4 sm:px-5">
         <div className="flex items-center gap-3">
           <span className="grid size-9 place-items-center rounded-xl bg-[#eff3e7] text-[#536a50]">
@@ -895,15 +1240,10 @@ function OrderCard({ order, onView }) {
               {order.total}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onView}
-            className="inline-flex h-10 items-center gap-2 rounded-full bg-[#253329] px-4 text-[9px] font-extrabold text-white transition hover:-translate-y-0.5 hover:bg-[#ff5c35] sm:mt-4"
-          >
-            <Eye size={13} />
-            View order
-            <ChevronRight size={12} />
-          </button>
+          <ChevronRight
+            size={18}
+            className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-[#ff5c35] sm:ml-auto sm:mt-4"
+          />
         </div>
       </div>
       <div className="flex flex-col gap-2 border-t border-slate-100 bg-white/70 px-4 py-3 text-[9px] text-slate-400 sm:flex-row sm:items-center sm:justify-between sm:px-5">
@@ -940,115 +1280,470 @@ function StatusBadge({ value, kind }) {
   )
 }
 
-function OrderDetails({ order, onClose }) {
+function OrderDetails({ order, user, address, onBack }) {
+  const [rating, setRating] = useState(0)
+  const [feedback, setFeedback] = useState('')
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
+  const [returnReason, setReturnReason] = useState('')
+  const [returnSubmitted, setReturnSubmitted] = useState(false)
+  const [helpTopic, setHelpTopic] = useState('')
+  const [invoiceDownloading, setInvoiceDownloading] = useState(false)
+  const financials = getOrderFinancials(order)
+  const delivered = order.status === 'Delivered'
+  const deliveredAt = new Date(order.deliveryDate).getTime()
+  const daysSinceDelivery = Number.isNaN(deliveredAt)
+    ? Infinity
+    : Math.floor((orderFilterNow - deliveredAt) / 86400000)
+  const returnEligible =
+    order.returnEligible ??
+    (delivered && daysSinceDelivery >= 0 && daysSinceDelivery <= 30)
+  const returnDeadline = returnEligible
+    ? new Date(deliveredAt + 30 * 86400000).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+    : ''
+
+  if (onBack) {
+    return (
+      <OrderDetailsView
+        order={order}
+        user={user}
+        address={address}
+        onBack={onBack}
+      />
+    )
+  }
+
+  const submitFeedback = (event) => {
+    event.preventDefault()
+    if (!rating || !feedback.trim()) return
+    setFeedbackSubmitted(true)
+  }
+
+  const submitReturn = (event) => {
+    event.preventDefault()
+    if (!returnReason) return
+    setReturnSubmitted(true)
+  }
+
+  const handleInvoiceDownload = async () => {
+    setInvoiceDownloading(true)
+    try {
+      await downloadInvoice(order, user, address)
+    } finally {
+      setInvoiceDownloading(false)
+    }
+  }
+
   return (
-    <div
-      className="fixed inset-0 z-[65] grid place-items-end bg-slate-950/55 p-0 backdrop-blur-sm sm:place-items-center sm:p-5"
-      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
-    >
-      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-[30px] bg-[#f7f8f5] shadow-2xl sm:rounded-[30px]">
+    <div className="mx-auto max-w-6xl">
+      <button
+        type="button"
+        onClick={onBack}
+        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-[10px] font-extrabold text-slate-600 transition hover:border-[#aacfb3] hover:text-[#253329]"
+      >
+        <ArrowLeft size={15} />
+        Back to orders
+      </button>
+
+      <section className="mt-4 overflow-hidden rounded-[30px] border border-slate-100 bg-[#f7f8f5] shadow-[0_18px_50px_rgba(40,68,48,0.1)]">
         <div className="relative isolate overflow-hidden bg-[#253329] px-5 py-6 text-white sm:px-7">
           <div className="absolute -right-10 -top-16 -z-10 size-48 rounded-full bg-[#9bcaa6]/20 blur-2xl" />
-          <div className="flex items-start justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-[#9bcaa6]">
-                Order details
+                Order information
               </p>
-              <h3 className="mt-2 text-2xl font-extrabold tracking-tight">
+              <h2 className="mt-2 text-2xl font-extrabold tracking-tight">
                 {order.id}
-              </h3>
+              </h2>
               <p className="mt-1 text-[10px] text-white/50">
                 Placed {order.date}
                 {order.orderTime ? ` at ${order.orderTime}` : ''}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="grid size-10 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white hover:text-slate-900"
-            >
-              <X size={17} />
-            </button>
-          </div>
-          <div className="mt-5 flex flex-wrap gap-2">
-            <StatusBadge value={order.paymentStatus || 'Paid'} kind="payment" />
-            <StatusBadge value={order.status} />
-          </div>
-        </div>
-        <div className="p-5 sm:p-7">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {[
-              ['Order date', order.date],
-              ['Delivery', order.deliveryDate],
-              ['Payment', order.paymentStatus],
-              ['Total', order.total],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-2xl bg-white p-3 shadow-sm">
-                <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">
-                  {label}
-                </p>
-                <p className="mt-1.5 truncate text-[10px] font-extrabold text-slate-800 sm:text-xs">
-                  {value}
-                </p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-6">
-            <p className="text-[9px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
-              Products in this order
-            </p>
-            <div className="mt-3 space-y-3">
-              {order.items?.map((item, index) => (
-                <div
-                  key={`${item.productName}-${index}`}
-                  className="flex gap-3 rounded-[20px] bg-white p-3 shadow-sm"
-                >
-                  <img
-                    src={item.image}
-                    alt={item.productName}
-                    className="size-18 rounded-2xl object-cover"
-                  />
-                  <div className="min-w-0 flex-1 py-1">
-                    <p className="line-clamp-2 text-xs font-extrabold leading-5">
-                      {item.productName}
-                    </p>
-                    <p className="mt-1 text-[9px] text-slate-400">
-                      Quantity: {item.qty}
-                    </p>
-                  </div>
-                  <strong className="py-1 text-xs">{item.price}</strong>
-                </div>
-              ))}
+            <div className="flex flex-wrap gap-2">
+              <StatusBadge value={order.paymentStatus || 'Paid'} kind="payment" />
+              <StatusBadge value={order.status} />
             </div>
           </div>
-          <div className="mt-6 rounded-[22px] bg-[#e5ecd6] p-4">
-            <div className="flex items-center gap-3">
-              <span className="grid size-10 place-items-center rounded-2xl bg-white/70 text-[#536a50]">
-                <Truck size={17} />
+        </div>
+
+        <div className="space-y-6 p-4 sm:p-7">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <OrderInfoCard label="Order ID" value={order.id} icon={Package} />
+            <OrderInfoCard
+              label="Order date"
+              value={`${order.date}${order.orderTime ? ` · ${order.orderTime}` : ''}`}
+              icon={CalendarDays}
+            />
+            <OrderInfoCard
+              label="Payment method"
+              value={order.paymentMethod || 'Online payment'}
+              detail={order.paymentStatus || 'Paid'}
+              icon={CreditCard}
+            />
+            <OrderInfoCard
+              label="Order status"
+              value={order.status}
+              detail={
+                order.status === 'Cancelled'
+                  ? 'Refund processing'
+                  : `Delivery: ${order.deliveryDate || 'Being scheduled'}`
+              }
+              icon={Truck}
+            />
+          </div>
+
+          <div className="rounded-[24px] border border-slate-100 bg-white p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[#eff3e7] text-[#536a50]">
+                <MapPin size={17} />
               </span>
-              <div className="flex-1">
-                <p className="text-xs font-extrabold text-[#253329]">
-                  {order.status === 'Delivered'
-                    ? 'Delivery completed'
-                    : order.status === 'Cancelled'
-                      ? 'Order cancelled'
-                      : 'Delivery in progress'}
-                </p>
-                <p className="mt-0.5 text-[9px] text-[#687963]">
-                  {order.status === 'Cancelled'
-                    ? 'Payment refund has been initiated.'
-                    : `Delivery date: ${order.deliveryDate || 'Being scheduled'}`}
+              <div>
+                <h3 className="text-xs font-extrabold text-slate-900">
+                  Delivery address
+                </h3>
+                <p className="mt-1.5 max-w-3xl text-[10px] leading-5 text-slate-500">
+                  {formatAddress(address)}
                 </p>
               </div>
             </div>
           </div>
-          <div className="mt-5 flex items-center justify-between border-t border-slate-200 pt-5">
-            <span className="text-sm font-bold">Total amount</span>
-            <strong className="text-xl text-[#253329]">{order.total}</strong>
+
+          <div>
+            <SectionHeading
+              icon={ShoppingBag}
+              title="Products and charges"
+              text="Complete item and pricing details for this order."
+            />
+            <div className="mt-3 space-y-3">
+              {order.items?.map((item, index) => {
+                const quantity = Number(item.qty || 1)
+                const unitPrice = parsePrice(item.price)
+                const itemDiscount = parsePrice(item.discount || 0)
+                const itemTax = Math.round(
+                  (Math.max(0, unitPrice * quantity - itemDiscount) * 18) / 118,
+                )
+                const lineTotal = Math.max(
+                  0,
+                  unitPrice * quantity - itemDiscount,
+                )
+
+                return (
+                  <article
+                    key={`${item.productName}-${index}`}
+                    className="grid gap-4 rounded-[22px] border border-slate-100 bg-white p-4 sm:grid-cols-[88px_minmax(0,1fr)] sm:items-center"
+                  >
+                    <img
+                      src={item.image}
+                      alt={item.productName}
+                      className="size-22 rounded-[18px] object-cover"
+                    />
+                    <div className="min-w-0">
+                      <h3 className="text-xs font-extrabold leading-5 text-slate-900 sm:text-sm">
+                        {item.productName}
+                      </h3>
+                      <div className="mt-3 grid grid-cols-2 gap-3 text-[9px] sm:grid-cols-5">
+                        <ProductCharge label="Quantity" value={quantity} />
+                        <ProductCharge label="Unit price" value={formatCurrency(unitPrice)} />
+                        <ProductCharge label="Discount" value={formatCurrency(itemDiscount)} />
+                        <ProductCharge label="GST (included)" value={formatCurrency(itemTax)} />
+                        <ProductCharge label="Item total" value={formatCurrency(lineTotal)} strong />
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+
+            <div className="mt-4 ml-auto max-w-md rounded-[22px] bg-[#eef4e8] p-4 sm:p-5">
+              <PriceRow label="Product subtotal" value={formatCurrency(financials.itemSubtotal)} />
+              <PriceRow label="Discount" value={`− ${formatCurrency(financials.discount)}`} />
+              <PriceRow label="GST (included in product prices)" value={formatCurrency(financials.tax)} />
+              <PriceRow
+                label="Delivery charges"
+                value={
+                  financials.deliveryCharges
+                    ? formatCurrency(financials.deliveryCharges)
+                    : 'FREE'
+                }
+              />
+              <div className="mt-3 flex items-center justify-between border-t border-[#cfdcc8] pt-4">
+                <strong className="text-sm text-[#253329]">Final total</strong>
+                <strong className="text-xl text-[#253329]">
+                  {formatCurrency(financials.finalTotal)}
+                </strong>
+              </div>
+            </div>
           </div>
+
+          {delivered && (
+            <FeedbackSection
+              rating={rating}
+              onRatingChange={setRating}
+              feedback={feedback}
+              onFeedbackChange={setFeedback}
+              submitted={feedbackSubmitted}
+              onSubmit={submitFeedback}
+            />
+          )}
+
+          <ReturnSection
+            eligible={returnEligible}
+            deadline={returnDeadline}
+            reason={returnReason}
+            onReasonChange={setReturnReason}
+            submitted={returnSubmitted}
+            onSubmit={submitReturn}
+            status={order.status}
+          />
+
+          <HelpSection activeTopic={helpTopic} onTopicChange={setHelpTopic} />
+
+          <section className="rounded-[26px] border border-slate-100 bg-white p-5 sm:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <SectionHeading
+                icon={ReceiptText}
+                title="Bill / Invoice"
+                text="Download a detailed Indian tax invoice for your records."
+              />
+              <button
+                type="button"
+                onClick={handleInvoiceDownload}
+                disabled={invoiceDownloading}
+                className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#253329] px-5 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35]"
+              >
+                <Download size={15} />
+                {invoiceDownloading ? 'Preparing PDF...' : 'Download invoice PDF'}
+              </button>
+            </div>
+            <div className="mt-4 grid gap-3 rounded-[20px] bg-[#f7f8f5] p-4 text-[10px] text-slate-500 sm:grid-cols-3">
+              <span><strong className="block text-slate-800">Invoice number</strong>INV-{String(order.id).replace(/^ORD-?/, '')}</span>
+              <span><strong className="block text-slate-800">Invoice date</strong>{order.date}</span>
+              <span><strong className="block text-slate-800">Payable amount</strong>{formatCurrency(financials.finalTotal)}</span>
+            </div>
+          </section>
         </div>
+      </section>
+    </div>
+  )
+}
+
+function SectionHeading({ icon: Icon, title, text }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[#eff3e7] text-[#536a50]">
+        <Icon size={17} />
+      </span>
+      <div>
+        <h3 className="text-xs font-extrabold text-slate-900 sm:text-sm">{title}</h3>
+        <p className="mt-1 text-[9px] leading-4 text-slate-400">{text}</p>
       </div>
     </div>
+  )
+}
+
+function OrderInfoCard({ label, value, detail, icon: Icon }) {
+  return (
+    <div className="flex items-start gap-3 rounded-[20px] border border-slate-100 bg-white p-4 shadow-sm">
+      <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#eff3e7] text-[#536a50]">
+        <Icon size={15} />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[8px] font-bold uppercase tracking-wider text-slate-400">{label}</span>
+        <strong className="mt-1 block break-words text-[10px] text-slate-800">{value}</strong>
+        {detail && <span className="mt-1 block text-[8px] text-slate-400">{detail}</span>}
+      </span>
+    </div>
+  )
+}
+
+function ProductCharge({ label, value, strong = false }) {
+  return (
+    <span>
+      <span className="block text-[8px] font-bold uppercase tracking-wider text-slate-400">{label}</span>
+      <span className={`mt-1 block ${strong ? 'font-extrabold text-slate-900' : 'font-semibold text-slate-600'}`}>{value}</span>
+    </span>
+  )
+}
+
+function PriceRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-1.5 text-[10px]">
+      <span className="text-[#687963]">{label}</span>
+      <strong className="shrink-0 text-[#253329]">{value}</strong>
+    </div>
+  )
+}
+
+function FeedbackSection({
+  rating,
+  onRatingChange,
+  feedback,
+  onFeedbackChange,
+  submitted,
+  onSubmit,
+}) {
+  return (
+    <section className="rounded-[26px] border border-[#f5d48b] bg-[#fffaf0] p-5 sm:p-6">
+      <SectionHeading
+        icon={Star}
+        title="Delivery & feedback"
+        text="Your order was delivered. Tell us about your experience."
+      />
+      {submitted ? (
+        <div className="mt-5 flex items-center gap-3 rounded-2xl bg-white p-4 text-xs font-bold text-emerald-700">
+          <CheckCircle2 size={18} />
+          Thank you—your rating and feedback have been submitted.
+        </div>
+      ) : (
+        <form onSubmit={onSubmit} className="mt-5">
+          <fieldset>
+            <legend className="text-[9px] font-extrabold uppercase tracking-wider text-slate-500">Rate this order</legend>
+            <div className="mt-2 flex gap-1" role="radiogroup" aria-label="Order rating">
+              {[1, 2, 3, 4, 5].map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={rating === value}
+                  onClick={() => onRatingChange(value)}
+                  className={`grid size-10 place-items-center rounded-full transition ${rating >= value ? 'bg-[#ffb000] text-white' : 'bg-white text-slate-300 hover:text-[#ffb000]'}`}
+                  aria-label={`${value} star${value > 1 ? 's' : ''}`}
+                >
+                  <Star size={18} fill={rating >= value ? 'currentColor' : 'none'} />
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <label className="mt-4 block">
+            <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-500">Your feedback</span>
+            <textarea
+              required
+              value={feedback}
+              onChange={(event) => onFeedbackChange(event.target.value)}
+              rows={4}
+              placeholder="Share product quality, delivery, packaging, or service feedback..."
+              className="mt-2 w-full resize-y rounded-2xl border border-[#eadbb9] bg-white p-4 text-xs outline-none transition focus:border-[#ffb000] focus:ring-4 focus:ring-[#ffb000]/10"
+            />
+          </label>
+          <button
+            disabled={!rating || !feedback.trim()}
+            className="mt-3 rounded-full bg-[#253329] px-5 py-3 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Submit feedback
+          </button>
+        </form>
+      )}
+    </section>
+  )
+}
+
+function ReturnSection({
+  eligible,
+  deadline,
+  reason,
+  onReasonChange,
+  submitted,
+  onSubmit,
+  status,
+}) {
+  return (
+    <section className="rounded-[26px] border border-slate-100 bg-white p-5 sm:p-6">
+      <SectionHeading
+        icon={RotateCcw}
+        title="Return product"
+        text="Start a return request and review the applicable refund terms."
+      />
+      {eligible ? (
+        submitted ? (
+          <div className="mt-5 rounded-2xl bg-emerald-50 p-4 text-[10px] leading-5 text-emerald-700">
+            <strong className="block text-xs">Return request initiated</strong>
+            We received your request for “{reason}”. Pickup and refund instructions will be shared after review.
+          </div>
+        ) : (
+          <form onSubmit={onSubmit} className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.7fr)]">
+            <Field label="Return reason">
+              <SelectMenu
+                value={reason}
+                onChange={onReasonChange}
+                options={returnReasonOptions}
+                placeholder="Select a return reason"
+                ariaLabel="Select return reason"
+                buttonClassName={fieldClass}
+              />
+            </Field>
+            <div className="rounded-2xl bg-[#f4f7ef] p-4 text-[9px] leading-5 text-slate-500">
+              <strong className="block text-[10px] text-slate-800">Return eligible until {deadline}</strong>
+              Items must include original packaging and accessories. Approved refunds are sent to the original payment method within 5–7 business days after inspection.
+            </div>
+            <button
+              disabled={!reason}
+              className="w-fit rounded-full bg-[#253329] px-5 py-3 text-[10px] font-extrabold text-white hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Initiate return
+            </button>
+          </form>
+        )
+      ) : (
+        <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-[10px] leading-5 text-slate-500">
+          <strong className="block text-slate-700">This order is not currently eligible for return.</strong>
+          {status === 'Delivered'
+            ? 'The 30-day return window has ended. Contact Support if the product has a warranty issue.'
+            : 'Returns become available after an eligible product has been delivered.'}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function HelpSection({ activeTopic, onTopicChange }) {
+  const topics = [
+    ['Return Product', 'Check return eligibility, initiate a return, or track an existing return request.'],
+    ['Report an Issue', 'Tell us about a damaged, incorrect, or missing product so our team can investigate.'],
+    ['Payment/Billing Help', 'Get assistance with charges, payment confirmation, GST invoices, or refunds.'],
+    ['Delivery Help', 'Get help with delays, tracking updates, or delivery instructions.'],
+    ['Contact Support', 'Email support@prideelectronics.in or call +91 98765 43210, 9 AM–7 PM IST.'],
+  ]
+  const activeHelp = topics.find(([title]) => title === activeTopic)
+
+  return (
+    <section className="rounded-[26px] border border-slate-100 bg-white p-5 sm:p-6">
+      <SectionHeading
+        icon={HelpCircle}
+        title="Help & support"
+        text="Choose what you need help with for this order."
+      />
+      <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        {topics.map(([title]) => (
+          <button
+            key={title}
+            type="button"
+            onClick={() => onTopicChange(title)}
+            className={`rounded-2xl border p-3 text-left text-[9px] font-extrabold transition ${activeTopic === title ? 'border-[#75916f] bg-[#eef4e8] text-[#253329]' : 'border-slate-100 bg-[#fafbf8] text-slate-600 hover:border-[#aacfb3]'}`}
+          >
+            {title}
+          </button>
+        ))}
+      </div>
+      {activeHelp && (
+        <div className="mt-3 flex flex-col gap-3 rounded-2xl bg-[#f4f7ef] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <strong className="text-[10px] text-[#253329]">{activeHelp[0]}</strong>
+            <p className="mt-1 text-[9px] leading-4 text-slate-500">{activeHelp[1]}</p>
+          </div>
+          <a
+            href={`mailto:support@prideelectronics.in?subject=${encodeURIComponent(activeHelp[0])}`}
+            className="inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-[#253329] px-4 text-[9px] font-extrabold text-white"
+          >
+            Contact support
+          </a>
+        </div>
+      )}
+    </section>
   )
 }
 

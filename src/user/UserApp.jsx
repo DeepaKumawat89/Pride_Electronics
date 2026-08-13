@@ -601,6 +601,8 @@ export default function UserApp({
       email: user?.email || '',
       date: new Date().toISOString().slice(0, 10),
       total: formatCurrency(checkoutDetails.total ?? cart.subtotal),
+      discount: checkoutDetails.discount || 0,
+      deliveryCharges: checkoutDetails.shipping || 0,
       itemsCount: cart.count,
       status: 'Pending',
       orderTime: new Date().toLocaleTimeString('en-IN', {
@@ -616,7 +618,10 @@ export default function UserApp({
       razorpayPaymentId: checkoutDetails.razorpay?.razorpay_payment_id || '',
       razorpayOrderId: checkoutDetails.razorpay?.razorpay_order_id || '',
       items: cart.items.map(({ product, quantity }) => ({
+        productId: product.id,
+        sku: product.sku || `PE-${String(product.id).padStart(4, '0')}`,
         productName: product.name,
+        variant: product.variant || product.specification || '',
         image: product.image,
         qty: quantity,
         price: product.price,
