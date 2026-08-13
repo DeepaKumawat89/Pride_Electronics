@@ -9,6 +9,7 @@ import {
   Printer,
   Truck,
 } from 'lucide-react'
+import SelectMenu from '../../components/ui/SelectMenu'
 import {
   EmptyState,
   Modal,
@@ -18,6 +19,10 @@ import {
 import { getInitials, statusTone } from '../utils/adminFormatters'
 
 const statuses = ['All', 'Pending', 'Processing', 'Shipped', 'Delivered']
+const statusOptions = statuses.slice(1).map((status) => ({
+  value: status,
+  label: status,
+}))
 
 export default function OrdersPage({
   orders = [],
@@ -200,17 +205,17 @@ export default function OrdersPage({
                       </span>
                     </td>
                     <td className="px-5 py-4">
-                      <select
+                      <SelectMenu
                         value={order.status}
-                        onChange={(event) =>
-                          onUpdateOrderStatus(order.id, event.target.value)
+                        onChange={(status) =>
+                          onUpdateOrderStatus(order.id, status)
                         }
-                        className={`rounded-full px-3 py-2 text-[8px] font-extrabold outline-none ring-1 ring-inset ${statusTone[order.status] || statusTone.Pending}`}
-                      >
-                        {statuses.slice(1).map((status) => (
-                          <option key={status}>{status}</option>
-                        ))}
-                      </select>
+                        options={statusOptions}
+                        ariaLabel={`Update status for order ${order.id}`}
+                        className="w-32"
+                        menuWidth={176}
+                        buttonClassName={`rounded-full px-3 py-2 text-[8px] font-extrabold ring-1 ring-inset ${statusTone[order.status] || statusTone.Pending}`}
+                      />
                     </td>
                     <td className="px-5 py-4 text-right">
                       <button

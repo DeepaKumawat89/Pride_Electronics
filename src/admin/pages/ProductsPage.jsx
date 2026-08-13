@@ -8,7 +8,16 @@ import {
   Star,
   Trash2,
 } from 'lucide-react'
+import SelectMenu from '../../components/ui/SelectMenu'
 import { EmptyState, Modal, PageHeader } from '../components/ui/AdminUI'
+
+const categoryOptions = [
+  'Audio',
+  'Wearables',
+  'Components & DIY',
+  'Peripherals',
+  'Smart Power',
+].map((category) => ({ value: category, label: category }))
 
 const emptyProduct = {
   name: '',
@@ -242,17 +251,15 @@ export default function ProductsPage({
               <input required {...field('name')} className={inputClass} />
             </FormField>
             <FormField label="Category">
-              <select {...field('category')} className={inputClass}>
-                {[
-                  'Audio',
-                  'Wearables',
-                  'Components & DIY',
-                  'Peripherals',
-                  'Smart Power',
-                ].map((item) => (
-                  <option key={item}>{item}</option>
-                ))}
-              </select>
+              <SelectMenu
+                value={form.category}
+                onChange={(category) =>
+                  setForm((current) => ({ ...current, category }))
+                }
+                options={categoryOptions}
+                ariaLabel="Product category"
+                buttonClassName={inputClass}
+              />
             </FormField>
             <FormField label="Selling price">
               <input required {...field('price')} className={inputClass} />

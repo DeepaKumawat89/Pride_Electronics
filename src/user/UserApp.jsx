@@ -13,7 +13,9 @@ import ProductReviewsPage from './components/products/ProductReviewsPage'
 import AuthModal from './components/auth/AuthModal'
 import CheckoutPage from './components/checkout/CheckoutPage'
 import OrderSuccessPage from './components/checkout/OrderSuccessPage'
-import AccountPanel, { LogoutConfirmation } from './components/profile/AccountPanel'
+import AccountPanel, {
+  LogoutConfirmation,
+} from './components/profile/AccountPanel'
 import { useCart } from './hooks/useCart'
 import { formatCurrency } from './utils/currency'
 
@@ -42,30 +44,100 @@ function getSessionItems(key, fallback) {
   }
 }
 
-const defaultAddresses = [{ id: 'address-home', type: 'Shipping', label: 'Home', fullName: 'Pride Customer', phone: '+91 98765 43210', line1: '42 Silicon Avenue, Hinjawadi', city: 'Pune', state: 'Maharashtra', pincode: '411057', isDefault: true }]
-const defaultPayments = [{ id: 'payment-visa', type: 'Credit Card', holder: 'Pride Customer', last4: '4242', expiry: '12/28', isDefault: true }]
+const defaultAddresses = [
+  {
+    id: 'address-home',
+    type: 'Shipping',
+    label: 'Home',
+    fullName: 'Pride Customer',
+    phone: '+91 98765 43210',
+    line1: '42 Silicon Avenue, Hinjawadi',
+    city: 'Pune',
+    state: 'Maharashtra',
+    pincode: '411057',
+    isDefault: true,
+  },
+]
+const defaultPayments = [
+  {
+    id: 'payment-visa',
+    type: 'Credit Card',
+    holder: 'Pride Customer',
+    last4: '4242',
+    expiry: '12/28',
+    isDefault: true,
+  },
+]
 
 function createSampleOrders(products) {
   if (!products.length) return []
   const samples = [
-    { id: 'ORD-84729', productIndex: 1, qty: 1, date: '2026-08-08', orderTime: '10:42 AM', deliveryDate: '2026-08-12', paymentStatus: 'Paid', status: 'Delivered' },
-    { id: 'ORD-73106', productIndex: 7, qty: 1, date: '2026-07-27', orderTime: '6:18 PM', deliveryDate: '2026-08-03', paymentStatus: 'Paid', status: 'Shipped' },
-    { id: 'ORD-62541', productIndex: 3, qty: 2, date: '2026-06-14', orderTime: '2:05 PM', deliveryDate: '2026-06-19', paymentStatus: 'Paid', status: 'Delivered' },
-    { id: 'ORD-51983', productIndex: 9, qty: 1, date: '2026-04-22', orderTime: '9:31 AM', deliveryDate: 'Cancelled', paymentStatus: 'Refunded', status: 'Cancelled' },
+    {
+      id: 'ORD-84729',
+      productIndex: 1,
+      qty: 1,
+      date: '2026-08-08',
+      orderTime: '10:42 AM',
+      deliveryDate: '2026-08-12',
+      paymentStatus: 'Paid',
+      status: 'Delivered',
+    },
+    {
+      id: 'ORD-73106',
+      productIndex: 7,
+      qty: 1,
+      date: '2026-07-27',
+      orderTime: '6:18 PM',
+      deliveryDate: '2026-08-03',
+      paymentStatus: 'Paid',
+      status: 'Shipped',
+    },
+    {
+      id: 'ORD-62541',
+      productIndex: 3,
+      qty: 2,
+      date: '2026-06-14',
+      orderTime: '2:05 PM',
+      deliveryDate: '2026-06-19',
+      paymentStatus: 'Paid',
+      status: 'Delivered',
+    },
+    {
+      id: 'ORD-51983',
+      productIndex: 9,
+      qty: 1,
+      date: '2026-04-22',
+      orderTime: '9:31 AM',
+      deliveryDate: 'Cancelled',
+      paymentStatus: 'Refunded',
+      status: 'Cancelled',
+    },
   ]
   return samples.map((sample) => {
     const product = products[sample.productIndex] || products[0]
-    const total = parseFloat(String(product.price).replace(/[^0-9.]/g, '')) * sample.qty
+    const total =
+      parseFloat(String(product.price).replace(/[^0-9.]/g, '')) * sample.qty
     return {
       ...sample,
       total: formatCurrency(total),
       itemsCount: sample.qty,
-      items: [{ productName: product.name, image: product.image, qty: sample.qty, price: product.price }],
+      items: [
+        {
+          productName: product.name,
+          image: product.image,
+          qty: sample.qty,
+          price: product.price,
+        },
+      ],
     }
   })
 }
 
-export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) {
+export default function UserApp({
+  products = [],
+  onNewOrder,
+  onBeSellerClick,
+}) {
   const cart = useCart(products[0])
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('All')
@@ -82,8 +154,12 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [user, setUser] = useState(getSessionUser)
   const [orders, setOrders] = useState(() => createSampleOrders(products))
-  const [savedAddresses, setSavedAddresses] = useState(() => getSessionItems(ADDRESS_SESSION_KEY, defaultAddresses))
-  const [savedPayments, setSavedPayments] = useState(() => getSessionItems(PAYMENT_SESSION_KEY, defaultPayments))
+  const [savedAddresses, setSavedAddresses] = useState(() =>
+    getSessionItems(ADDRESS_SESSION_KEY, defaultAddresses),
+  )
+  const [savedPayments, setSavedPayments] = useState(() =>
+    getSessionItems(PAYMENT_SESSION_KEY, defaultPayments),
+  )
   const [toast, setToast] = useState('')
   const toastTimer = useRef(null)
   const cartReturnSection = useRef(null)
@@ -122,10 +198,18 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
         checkoutHistoryActive.current = false
       }
       if (window.location.hash.startsWith(PRODUCT_HASH_PREFIX)) {
-        const productPath = window.location.hash.slice(PRODUCT_HASH_PREFIX.length)
+        const productPath = window.location.hash.slice(
+          PRODUCT_HASH_PREFIX.length,
+        )
         const isReviewsPage = productPath.endsWith(REVIEWS_HASH_SUFFIX)
-        const productId = decodeURIComponent(isReviewsPage ? productPath.slice(0, -REVIEWS_HASH_SUFFIX.length) : productPath)
-        const historyProduct = products.find((product) => String(product.id) === productId)
+        const productId = decodeURIComponent(
+          isReviewsPage
+            ? productPath.slice(0, -REVIEWS_HASH_SUFFIX.length)
+            : productPath,
+        )
+        const historyProduct = products.find(
+          (product) => String(product.id) === productId,
+        )
         if (historyProduct) {
           productHistoryActive.current = true
           setSelectedProduct(historyProduct)
@@ -147,7 +231,10 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
         setAccountSection('cart')
         return
       }
-      if (cartHistoryActive.current && window.location.hash !== '#account-cart') {
+      if (
+        cartHistoryActive.current &&
+        window.location.hash !== '#account-cart'
+      ) {
         setAccountSection(cartReturnSection.current)
         cartReturnSection.current = null
         cartHistoryActive.current = false
@@ -168,7 +255,13 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
     const normalizedQuery = query.trim().toLowerCase()
     return products
       .filter((product) => category === 'All' || product.category === category)
-      .filter((product) => !normalizedQuery || `${product.name} ${product.category} ${product.description}`.toLowerCase().includes(normalizedQuery))
+      .filter(
+        (product) =>
+          !normalizedQuery ||
+          `${product.name} ${product.category} ${product.description}`
+            .toLowerCase()
+            .includes(normalizedQuery),
+      )
       .sort((a, b) => {
         const priceA = Number(String(a.price).replace(/[^0-9.]/g, ''))
         const priceB = Number(String(b.price).replace(/[^0-9.]/g, ''))
@@ -185,28 +278,47 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
   }
 
   const handleLike = (productId) => {
-    setLikedIds((current) => current.includes(productId) ? current.filter((id) => id !== productId) : [...current, productId])
+    setLikedIds((current) =>
+      current.includes(productId)
+        ? current.filter((id) => id !== productId)
+        : [...current, productId],
+    )
   }
 
   const relatedProducts = useMemo(() => {
     if (!selectedProduct) return []
-    const sameCategory = products.filter((product) => product.id !== selectedProduct.id && product.category === selectedProduct.category)
+    const sameCategory = products.filter(
+      (product) =>
+        product.id !== selectedProduct.id &&
+        product.category === selectedProduct.category,
+    )
     const otherRelevant = products
-      .filter((product) => product.id !== selectedProduct.id && product.category !== selectedProduct.category)
-      .sort((a, b) => Number(b.featured) - Number(a.featured) || b.rating - a.rating)
+      .filter(
+        (product) =>
+          product.id !== selectedProduct.id &&
+          product.category !== selectedProduct.category,
+      )
+      .sort(
+        (a, b) =>
+          Number(b.featured) - Number(a.featured) || b.rating - a.rating,
+      )
     return [...sameCategory, ...otherRelevant].slice(0, 4)
   }, [products, selectedProduct])
 
   const handleAdd = (product, quantity = 1) => {
     cart.add(product, quantity)
-    notify(`${quantity > 1 ? `${quantity} x ` : ''}${product.name} added to your cart`)
+    notify(
+      `${quantity > 1 ? `${quantity} x ` : ''}${product.name} added to your cart`,
+    )
   }
 
   const navigateToProduct = (product) => {
-    if (!productHistoryActive.current) productReturnSection.current = accountSection
+    if (!productHistoryActive.current)
+      productReturnSection.current = accountSection
     productHistoryActive.current = true
     const productHash = `${PRODUCT_HASH_PREFIX}${encodeURIComponent(product.id)}`
-    if (window.location.hash !== productHash) window.history.pushState({ prideProduct: product.id }, '', productHash)
+    if (window.location.hash !== productHash)
+      window.history.pushState({ prideProduct: product.id }, '', productHash)
     setSelectedProduct(product)
     setReviewsOpen(false)
     setAccountSection(null)
@@ -224,7 +336,12 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
   const navigateToReviews = () => {
     if (!selectedProduct) return
     const reviewsHash = `${PRODUCT_HASH_PREFIX}${encodeURIComponent(selectedProduct.id)}${REVIEWS_HASH_SUFFIX}`
-    if (window.location.hash !== reviewsHash) window.history.pushState({ prideProductReviews: selectedProduct.id }, '', reviewsHash)
+    if (window.location.hash !== reviewsHash)
+      window.history.pushState(
+        { prideProductReviews: selectedProduct.id },
+        '',
+        reviewsHash,
+      )
     setReviewsOpen(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -238,7 +355,8 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
   }
 
   const navigateToCheckout = () => {
-    if (window.location.hash !== CHECKOUT_HASH) window.history.pushState({ prideCheckout: true }, '', CHECKOUT_HASH)
+    if (window.location.hash !== CHECKOUT_HASH)
+      window.history.pushState({ prideCheckout: true }, '', CHECKOUT_HASH)
     checkoutHistoryActive.current = true
     setCheckoutOpen(true)
     setAccountSection(null)
@@ -262,7 +380,11 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
   }
 
   const viewSuccessfulOrder = () => {
-    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${window.location.search}`,
+    )
     orderSuccessHistoryActive.current = false
     checkoutHistoryActive.current = false
     productHistoryActive.current = false
@@ -285,7 +407,11 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
   const handleAuthSuccess = (authenticatedUser, mode) => {
     sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(authenticatedUser))
     setUser(authenticatedUser)
-    notify(mode === 'signup' ? `Welcome to Pride, ${authenticatedUser.name.split(' ')[0]}!` : `Welcome back, ${authenticatedUser.name.split(' ')[0]}!`)
+    notify(
+      mode === 'signup'
+        ? `Welcome to Pride, ${authenticatedUser.name.split(' ')[0]}!`
+        : `Welcome back, ${authenticatedUser.name.split(' ')[0]}!`,
+    )
     if (pendingCheckout) {
       setPendingCheckout(false)
       navigateToCheckout()
@@ -304,7 +430,9 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
     try {
       sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(updatedUser))
     } catch {
-      notify('Profile updated, but the photo is too large to persist after refresh')
+      notify(
+        'Profile updated, but the photo is too large to persist after refresh',
+      )
     }
   }
 
@@ -315,22 +443,37 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
 
   const handleSaveAddress = (address) => {
     const exists = savedAddresses.some((item) => item.id === address.id)
-    let next = exists ? savedAddresses.map((item) => item.id === address.id ? address : item) : [...savedAddresses, { ...address, id: `address-${Date.now()}` }]
-    const savedAddress = next.find((item) => item.id === address.id) || next[next.length - 1]
-    if (savedAddress.isDefault || next.length === 1) next = next.map((item) => ({ ...item, isDefault: item.id === savedAddress.id }))
+    let next = exists
+      ? savedAddresses.map((item) => (item.id === address.id ? address : item))
+      : [...savedAddresses, { ...address, id: `address-${Date.now()}` }]
+    const savedAddress =
+      next.find((item) => item.id === address.id) || next[next.length - 1]
+    if (savedAddress.isDefault || next.length === 1)
+      next = next.map((item) => ({
+        ...item,
+        isDefault: item.id === savedAddress.id,
+      }))
     persistAddresses(next)
-    notify(exists ? 'Address updated successfully' : 'Address saved successfully')
+    notify(
+      exists ? 'Address updated successfully' : 'Address saved successfully',
+    )
   }
 
   const handleDeleteAddress = (addressId) => {
     const filtered = savedAddresses.filter((item) => item.id !== addressId)
-    if (filtered.length && !filtered.some((item) => item.isDefault)) filtered[0] = { ...filtered[0], isDefault: true }
+    if (filtered.length && !filtered.some((item) => item.isDefault))
+      filtered[0] = { ...filtered[0], isDefault: true }
     persistAddresses(filtered)
     notify('Address deleted')
   }
 
   const handleDefaultAddress = (addressId) => {
-    persistAddresses(savedAddresses.map((item) => ({ ...item, isDefault: item.id === addressId })))
+    persistAddresses(
+      savedAddresses.map((item) => ({
+        ...item,
+        isDefault: item.id === addressId,
+      })),
+    )
     notify('Default delivery address updated')
   }
 
@@ -341,28 +484,45 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
 
   const handleSavePayment = (payment) => {
     const exists = savedPayments.some((item) => item.id === payment.id)
-    let next = exists ? savedPayments.map((item) => item.id === payment.id ? payment : item) : [...savedPayments, { ...payment, id: `payment-${Date.now()}` }]
-    const savedPayment = next.find((item) => item.id === payment.id) || next[next.length - 1]
-    if (savedPayment.isDefault || next.length === 1) next = next.map((item) => ({ ...item, isDefault: item.id === savedPayment.id }))
+    let next = exists
+      ? savedPayments.map((item) => (item.id === payment.id ? payment : item))
+      : [...savedPayments, { ...payment, id: `payment-${Date.now()}` }]
+    const savedPayment =
+      next.find((item) => item.id === payment.id) || next[next.length - 1]
+    if (savedPayment.isDefault || next.length === 1)
+      next = next.map((item) => ({
+        ...item,
+        isDefault: item.id === savedPayment.id,
+      }))
     persistPayments(next)
     notify(exists ? 'Payment method updated' : 'Payment method saved securely')
   }
 
   const handleDeletePayment = (paymentId) => {
     const filtered = savedPayments.filter((item) => item.id !== paymentId)
-    if (filtered.length && !filtered.some((item) => item.isDefault)) filtered[0] = { ...filtered[0], isDefault: true }
+    if (filtered.length && !filtered.some((item) => item.isDefault))
+      filtered[0] = { ...filtered[0], isDefault: true }
     persistPayments(filtered)
     notify('Payment method deleted')
   }
 
   const handleDefaultPayment = (paymentId) => {
-    persistPayments(savedPayments.map((item) => ({ ...item, isDefault: item.id === paymentId })))
+    persistPayments(
+      savedPayments.map((item) => ({
+        ...item,
+        isDefault: item.id === paymentId,
+      })),
+    )
     notify('Default payment method updated')
   }
 
   const handleLogout = () => {
     if (window.location.hash === '#account-cart') {
-      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}`,
+      )
       cartReturnSection.current = null
       cartHistoryActive.current = false
     }
@@ -400,7 +560,11 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
       return
     }
     if (window.location.hash === '#account-cart') {
-      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}`,
+      )
       cartReturnSection.current = null
       cartHistoryActive.current = false
     }
@@ -439,14 +603,24 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
       total: formatCurrency(checkoutDetails.total ?? cart.subtotal),
       itemsCount: cart.count,
       status: 'Pending',
-      orderTime: new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }),
+      orderTime: new Date().toLocaleTimeString('en-IN', {
+        hour: 'numeric',
+        minute: '2-digit',
+      }),
       deliveryDate: 'Being scheduled',
       paymentStatus: 'Paid',
       shippingAddress: checkoutDetails.address || null,
-      paymentMethod: checkoutDetails.razorpay ? 'Razorpay Test Mode' : checkoutDetails.payment?.type || 'Online payment',
+      paymentMethod: checkoutDetails.razorpay
+        ? 'Razorpay Test Mode'
+        : checkoutDetails.payment?.type || 'Online payment',
       razorpayPaymentId: checkoutDetails.razorpay?.razorpay_payment_id || '',
       razorpayOrderId: checkoutDetails.razorpay?.razorpay_order_id || '',
-      items: cart.items.map(({ product, quantity }) => ({ productName: product.name, image: product.image, qty: quantity, price: product.price })),
+      items: cart.items.map(({ product, quantity }) => ({
+        productName: product.name,
+        image: product.image,
+        qty: quantity,
+        price: product.price,
+      })),
     }
     onNewOrder?.(order)
     setOrders((current) => [order, ...current])
@@ -455,19 +629,44 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
     checkoutHistoryActive.current = false
     sessionStorage.setItem(ORDER_SUCCESS_SESSION_KEY, JSON.stringify(order))
     orderSuccessHistoryActive.current = true
-    window.history.replaceState({ prideOrderSuccess: order.id }, '', ORDER_SUCCESS_HASH)
+    window.history.replaceState(
+      { prideOrderSuccess: order.id },
+      '',
+      ORDER_SUCCESS_HASH,
+    )
     setSuccessfulOrder(order)
     window.scrollTo({ top: 0, behavior: 'smooth' })
     notify(`Order ${order.id} placed successfully`)
   }
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#f7f8f5]">
+    <div className="min-h-screen overflow-x-clip bg-[#f7f8f5]">
       <AnnouncementBar />
-      <Header user={user} defaultAddress={savedAddresses.find((address) => address.isDefault) || savedAddresses[0]} cartCount={cart.count} wishlistCount={likedIds.length} onCartOpen={navigateToCart} onSearch={setQuery} onAuthOpen={() => setAuthOpen(true)} onCategoryChange={handleCategory} onProfileSelect={handleProfileSelect} onLogout={() => setLogoutConfirmOpen(true)} />
+      <Header
+        products={products}
+        searchQuery={query}
+        user={user}
+        defaultAddress={
+          savedAddresses.find((address) => address.isDefault) ||
+          savedAddresses[0]
+        }
+        cartCount={cart.count}
+        wishlistCount={likedIds.length}
+        onCartOpen={navigateToCart}
+        onSearch={setQuery}
+        onProductSelect={navigateToProduct}
+        onAuthOpen={() => setAuthOpen(true)}
+        onCategoryChange={handleCategory}
+        onProfileSelect={handleProfileSelect}
+        onLogout={() => setLogoutConfirmOpen(true)}
+      />
       <main>
         {successfulOrder ? (
-          <OrderSuccessPage order={successfulOrder} onContinueShopping={closeOrderSuccess} onViewOrders={viewSuccessfulOrder} />
+          <OrderSuccessPage
+            order={successfulOrder}
+            onContinueShopping={closeOrderSuccess}
+            onViewOrders={viewSuccessfulOrder}
+          />
         ) : checkoutOpen ? (
           <CheckoutPage
             key={`${savedAddresses.find((address) => address.isDefault)?.id || 'no-address'}-${savedPayments.find((payment) => payment.isDefault)?.id || 'no-payment'}`}
@@ -496,22 +695,52 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
           />
         ) : (
           <>
-            <HeroSection onShopNow={() => document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' })} />
+            <HeroSection
+              onShopNow={() =>
+                document
+                  .getElementById('catalog')
+                  ?.scrollIntoView({ behavior: 'smooth' })
+              }
+            />
             <CategoryStrip onSelect={handleCategory} />
             <BenefitsStrip />
-            <ProductCatalog products={filteredProducts} activeCategory={category} onCategoryChange={setCategory} sortBy={sortBy} onSortChange={setSortBy} likedIds={likedIds} onLike={handleLike} onAdd={handleAdd} onView={navigateToProduct} />
-            <PromoBanner onShopNow={() => user ? setAccountSection('profile') : setAuthOpen(true)} />
+            <ProductCatalog
+              products={filteredProducts}
+              activeCategory={category}
+              onCategoryChange={setCategory}
+              sortBy={sortBy}
+              onSortChange={setSortBy}
+              likedIds={likedIds}
+              onLike={handleLike}
+              onAdd={handleAdd}
+              onView={navigateToProduct}
+            />
+            <PromoBanner
+              onShopNow={() =>
+                user ? setAccountSection('profile') : setAuthOpen(true)
+              }
+            />
           </>
         )}
       </main>
       <Footer onBeSellerClick={onBeSellerClick} />
 
-      <AuthModal open={authOpen} onClose={() => { setAuthOpen(false); setPendingCheckout(false); setPendingCart(false) }} onSuccess={handleAuthSuccess} />
+      <AuthModal
+        open={authOpen}
+        onClose={() => {
+          setAuthOpen(false)
+          setPendingCheckout(false)
+          setPendingCart(false)
+        }}
+        onSuccess={handleAuthSuccess}
+      />
       {user && (
         <AccountPanel
           section={accountSection}
           user={user}
-          wishlistProducts={products.filter((product) => likedIds.includes(product.id))}
+          wishlistProducts={products.filter((product) =>
+            likedIds.includes(product.id),
+          )}
           orders={orders}
           cartItems={cart.items}
           cartSubtotal={cart.subtotal}
@@ -545,7 +774,15 @@ export default function UserApp({ products = [], onNewOrder, onBeSellerClick }) 
         />
       )}
 
-      {toast && <div className="fixed bottom-5 left-1/2 z-[60] flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-full bg-slate-950 px-5 py-3.5 text-xs font-bold text-white shadow-2xl"><CheckCircle2 size={17} className="shrink-0 text-[#8fd0a4]"/><span className="flex-1 truncate">{toast}</span><button type="button" onClick={() => setToast('')}><X size={15}/></button></div>}
+      {toast && (
+        <div className="fixed bottom-5 left-1/2 z-[60] flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-full bg-slate-950 px-5 py-3.5 text-xs font-bold text-white shadow-2xl">
+          <CheckCircle2 size={17} className="shrink-0 text-[#8fd0a4]" />
+          <span className="flex-1 truncate">{toast}</span>
+          <button type="button" onClick={() => setToast('')}>
+            <X size={15} />
+          </button>
+        </div>
+      )}
     </div>
   )
 }
