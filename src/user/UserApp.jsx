@@ -741,6 +741,10 @@ export default function UserApp({
             key={selectedProduct.id}
             product={selectedProduct}
             relatedProducts={relatedProducts}
+            deliveryAddress={
+              savedAddresses.find((address) => address.isDefault) ||
+              savedAddresses[0]
+            }
             likedIds={likedIds}
             onBack={closeProductDetails}
             onLike={handleLike}

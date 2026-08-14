@@ -21,6 +21,10 @@ import {
   Zap,
 } from 'lucide-react'
 import { formatCurrency, parsePrice } from '../../utils/currency'
+import {
+  getDeliveryEstimate,
+  getProductDetailInformation,
+} from '../../utils/productDetails'
 import ProductCard from './ProductCard'
 import ProductReviews from './ProductReviews'
 
@@ -32,7 +36,7 @@ function getSpecificationMeta(spec) {
   return { title: 'Features & Compatibility', description: 'Design details, supported features, and everyday usability', icon: Settings2 }
 }
 
-export default function ProductDetailsPage({ product, relatedProducts = [], likedIds = [], onBack, onLike, onAdd, onBuyNow, onViewProduct, onViewAllReviews }) {
+export default function ProductDetailsPage({ product, relatedProducts = [], deliveryAddress, likedIds = [], onBack, onLike, onAdd, onBuyNow, onViewProduct, onViewAllReviews }) {
   const [activeImageIndex, setActiveImageIndex] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [expandedSpec, setExpandedSpec] = useState(null)
@@ -41,6 +45,18 @@ export default function ProductDetailsPage({ product, relatedProducts = [], like
   const activeImage = images[activeImageIndex] || images[0]
   const stock = Number(product.stock) || 0
   const liked = likedIds.includes(product.id)
+  const detailInformation = getProductDetailInformation(product)
+  const deliveryEstimate = getDeliveryEstimate(stock)
+  const deliveryDestination = deliveryAddress
+    ? `${deliveryAddress.city} ${deliveryAddress.pincode}`
+    : 'your location'
+  const productInformation = [
+    ['Brand', detailInformation.brand],
+    ['Model number', detailInformation.modelNumber],
+    ['SKU', detailInformation.sku],
+    ['Manufacturer', detailInformation.manufacturer],
+    ['Country of origin', detailInformation.countryOfOrigin],
+  ]
 
   const updateQuantity = (amount) => {
     setQuantity((current) => Math.min(Math.max(current + amount, 1), Math.max(stock, 1)))
@@ -143,7 +159,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], like
 
               <div className="mt-5 grid grid-cols-3 gap-2 border-t border-slate-100 pt-4">
                 {[
-                  [Truck, 'Fast delivery'],
+                  [Truck, stock > 0 ? 'Delivery available' : 'Delivery unavailable'],
                   [ShieldCheck, '2-year warranty'],
                   [RotateCcw, 'Easy returns'],
                 ].map(([Icon, label]) => (
@@ -152,6 +168,11 @@ export default function ProductDetailsPage({ product, relatedProducts = [], like
                   </div>
                 ))}
               </div>
+              <p className={`mt-3 text-center text-[10px] font-bold ${deliveryEstimate ? 'text-slate-500' : 'text-red-600'}`}>
+                {deliveryEstimate
+                  ? `Estimated delivery to ${deliveryDestination}: ${deliveryEstimate}`
+                  : 'Delivery estimate will be available when this product is back in stock.'}
+              </p>
             </div>
           </div>
         </section>
@@ -161,29 +182,98 @@ export default function ProductDetailsPage({ product, relatedProducts = [], like
             <div className="absolute -right-12 -top-20 size-52 rounded-full bg-[#9bcaa6]/30 blur-3xl" />
             <div className="relative flex items-center gap-3">
               <span className="grid size-11 place-items-center rounded-2xl bg-[#397a4a] text-white shadow-lg shadow-[#397a4a]/20"><Sparkles size={19} /></span>
-              <div><p className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-[#397a4a]">Everything you need to know</p><h2 className="mt-1 text-xl font-extrabold tracking-tight text-slate-950 sm:text-2xl">Product Specifications</h2></div>
+              <div><p className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-[#397a4a]">Everything you need to know</p><h2 className="mt-1 text-xl font-extrabold tracking-tight text-slate-950 sm:text-2xl">Product Highlights & Specifications</h2></div>
             </div>
           </div>
-          <div className="grid gap-3 p-5 sm:grid-cols-2 sm:p-8">
-            {(product.specs?.length ? product.specs : ['Premium quality construction', 'Designed for reliable everyday performance']).map((spec, index) => {
-              const meta = getSpecificationMeta(spec)
-              const Icon = meta.icon
-              const isExpanded = expandedSpec === index
-              return (
-                <article key={spec} className={`self-start overflow-hidden rounded-[22px] border transition ${isExpanded ? 'border-[#9bcaa6] bg-white shadow-lg shadow-slate-900/5' : 'border-[#dcebdd] bg-[#f8faf7] hover:border-[#9bcaa6] hover:bg-white'}`}>
-                  <button type="button" onClick={() => setExpandedSpec(isExpanded ? null : index)} className="flex w-full items-center gap-3 p-4 text-left sm:p-5" aria-expanded={isExpanded}>
-                    <span className={`grid size-10 shrink-0 place-items-center rounded-2xl transition ${isExpanded ? 'bg-[#397a4a] text-white' : 'bg-white text-[#397a4a] shadow-sm'}`}><Icon size={18} /></span>
-                    <span className="min-w-0 flex-1"><strong className="block text-sm text-slate-900">{meta.title}</strong><span className="mt-1 block text-[10px] font-semibold leading-4 text-slate-400">{meta.description}</span></span>
-                    <span className={`grid size-8 shrink-0 place-items-center rounded-full border transition ${isExpanded ? 'rotate-180 border-[#397a4a] bg-[#397a4a] text-white' : 'border-slate-200 bg-white text-slate-500'}`}><ChevronDown size={15} /></span>
-                  </button>
-                  {isExpanded && (
-                    <div className="border-t border-[#dcebdd] px-4 pb-5 pt-4 sm:px-5">
-                      <div className="flex items-start gap-3 rounded-2xl bg-[#eef6ef] p-4"><span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-white text-[#397a4a] shadow-sm"><Check size={12} /></span><p className="text-xs font-bold leading-6 text-slate-700">{spec}</p></div>
+          <div className="p-5 sm:p-8">
+            <section className="border-b border-slate-100 pb-6">
+              <h3 className="text-sm font-extrabold text-slate-900">
+                Product Highlights
+              </h3>
+              <div className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                {detailInformation.highlights.map((highlight) => (
+                  <div key={highlight} className="flex items-start gap-2.5">
+                    <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-[#eef6ef] text-[#397a4a]">
+                      <Check size={11} />
+                    </span>
+                    <span className="text-xs font-semibold leading-5 text-slate-600">
+                      {highlight}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {(product.specs?.length ? product.specs : ['Premium quality construction', 'Designed for reliable everyday performance']).map((spec, index) => {
+                const meta = getSpecificationMeta(spec)
+                const Icon = meta.icon
+                const isExpanded = expandedSpec === index
+                return (
+                  <article key={spec} className={`self-start overflow-hidden rounded-[22px] border transition ${isExpanded ? 'border-[#9bcaa6] bg-white shadow-lg shadow-slate-900/5' : 'border-[#dcebdd] bg-[#f8faf7] hover:border-[#9bcaa6] hover:bg-white'}`}>
+                    <button type="button" onClick={() => setExpandedSpec(isExpanded ? null : index)} className="flex w-full items-center gap-3 p-4 text-left sm:p-5" aria-expanded={isExpanded}>
+                      <span className={`grid size-10 shrink-0 place-items-center rounded-2xl transition ${isExpanded ? 'bg-[#397a4a] text-white' : 'bg-white text-[#397a4a] shadow-sm'}`}><Icon size={18} /></span>
+                      <span className="min-w-0 flex-1"><strong className="block text-sm text-slate-900">{meta.title}</strong><span className="mt-1 block text-[10px] font-semibold leading-4 text-slate-400">{meta.description}</span></span>
+                      <span className={`grid size-8 shrink-0 place-items-center rounded-full border transition ${isExpanded ? 'rotate-180 border-[#397a4a] bg-[#397a4a] text-white' : 'border-slate-200 bg-white text-slate-500'}`}><ChevronDown size={15} /></span>
+                    </button>
+                    {isExpanded && (
+                      <div className="border-t border-[#dcebdd] px-4 pb-5 pt-4 sm:px-5">
+                        <div className="flex items-start gap-3 rounded-2xl bg-[#eef6ef] p-4"><span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-white text-[#397a4a] shadow-sm"><Check size={12} /></span><p className="text-xs font-bold leading-6 text-slate-700">{spec}</p></div>
+                      </div>
+                    )}
+                  </article>
+                )
+              })}
+            </div>
+
+            <div className="mt-8 grid gap-8 border-t border-slate-100 pt-7 md:grid-cols-2">
+              <section>
+                <h3 className="text-sm font-extrabold text-slate-900">
+                  What's Included / In the Box
+                </h3>
+                <ul className="mt-4 grid gap-2.5">
+                  {detailInformation.includedItems.map((item) => (
+                    <li key={item} className="flex items-start gap-2.5 text-xs font-semibold leading-5 text-slate-600">
+                      <Check size={13} className="mt-1 shrink-0 text-[#397a4a]" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              <section>
+                <h3 className="text-sm font-extrabold text-slate-900">
+                  Product Information
+                </h3>
+                <dl className="mt-4 divide-y divide-slate-100">
+                  {productInformation.map(([label, value]) => (
+                    <div key={label} className="grid grid-cols-[110px_1fr] gap-3 py-2.5 text-xs">
+                      <dt className="font-semibold text-slate-400">{label}</dt>
+                      <dd className="min-w-0 break-words font-bold text-slate-700">{value}</dd>
                     </div>
-                  )}
-                </article>
-              )
-            })}
+                  ))}
+                </dl>
+              </section>
+            </div>
+
+            <div className="mt-7 grid gap-6 border-t border-slate-100 pt-7 md:grid-cols-2">
+              <section>
+                <h3 className="text-sm font-extrabold text-slate-900">
+                  Warranty
+                </h3>
+                <p className="mt-2 text-xs font-medium leading-6 text-slate-500">
+                  {detailInformation.warranty}
+                </p>
+              </section>
+              <section>
+                <h3 className="text-sm font-extrabold text-slate-900">
+                  Return / Replacement Policy
+                </h3>
+                <p className="mt-2 text-xs font-medium leading-6 text-slate-500">
+                  {detailInformation.returnPolicy}
+                </p>
+              </section>
+            </div>
           </div>
         </section>
 
