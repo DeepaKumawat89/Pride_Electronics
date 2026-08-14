@@ -39,7 +39,8 @@ export function matchesProductQuery(product, query) {
   const normalizedQuery = normalizeSearchQuery(query)
   if (!normalizedQuery) return true
 
-  return `${product.name} ${product.category} ${product.description} ${product.badge || ''}`
+  const attributeValues = Object.values(product.attributes || {}).flat()
+  return `${product.name} ${product.brand || ''} ${product.category} ${product.subcategory || ''} ${product.description} ${product.badge || ''} ${(product.features || []).join(' ')} ${attributeValues.join(' ')}`
     .toLowerCase()
     .includes(normalizedQuery)
 }

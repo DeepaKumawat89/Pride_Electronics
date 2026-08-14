@@ -22,6 +22,7 @@ import {
   matchesProductQuery,
   normalizeSearchQuery,
 } from './utils/productSearch'
+import { sortCatalogProducts } from './utils/catalog'
 
 const AUTH_SESSION_KEY = 'pride_authenticated_user'
 const ADDRESS_SESSION_KEY = 'pride_saved_addresses'
@@ -255,17 +256,11 @@ export default function UserApp({
   }
 
   const filteredProducts = useMemo(() => {
-    return products
+    const matchingProducts = products
       .filter((product) => category === 'All' || product.category === category)
       .filter((product) => matchesProductQuery(product, query))
-      .sort((a, b) => {
-        const priceA = Number(String(a.price).replace(/[^0-9.]/g, ''))
-        const priceB = Number(String(b.price).replace(/[^0-9.]/g, ''))
-        if (sortBy === 'price-low') return priceA - priceB
-        if (sortBy === 'price-high') return priceB - priceA
-        if (sortBy === 'rating') return b.rating - a.rating
-        return b.reviewsCount - a.reviewsCount
-      })
+
+    return sortCatalogProducts(matchingProducts, sortBy)
   }, [products, query, category, sortBy])
 
   const suggestedProducts = useMemo(() => {
@@ -776,6 +771,7 @@ export default function UserApp({
               likedIds={likedIds}
               onLike={handleLike}
               onAdd={handleAdd}
+              onBuyNow={handleBuyNow}
               onView={navigateToProduct}
             />
             <PromoBanner

@@ -198,7 +198,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], like
             </div>
             <div className="mt-7 grid grid-cols-2 gap-x-3 gap-y-9 sm:gap-x-5 md:grid-cols-3 xl:grid-cols-4">
               {relatedProducts.map((related) => (
-                <ProductCard key={related.id} product={related} liked={likedIds.includes(related.id)} onLike={onLike} onAdd={onAdd} onView={onViewProduct} />
+                <ProductCard key={related.id} product={related} liked={likedIds.includes(related.id)} onLike={onLike} onAdd={onAdd} onBuyNow={onBuyNow} onView={onViewProduct} />
               ))}
             </div>
           </section>

@@ -1,20 +1,35 @@
-import { ArrowRight, SlidersHorizontal, Sparkles, Zap } from 'lucide-react'
+import {
+  ArrowRight,
+  Check,
+  Filter,
+  SlidersHorizontal,
+  Sparkles,
+  Zap,
+} from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import SelectMenu from '../../../components/ui/SelectMenu'
+import { useAnchoredPopover } from '../../../hooks/useAnchoredPopover'
+import {
+  availabilityFilterOptions,
+  catalogCategories,
+  defaultCatalogFilters,
+  discountFilterOptions,
+  filterCatalogProducts,
+  getCatalogFilterOptions,
+  priceFilterOptions,
+  ratingFilterOptions,
+} from '../../utils/catalog'
 import ProductCard from './ProductCard'
 
-const filters = [
-  'All',
-  'Audio',
-  'Wearables',
-  'Peripherals',
-  'Components & DIY',
-  'Smart Power',
-]
 const sortOptions = [
-  { value: 'popular', label: 'Most popular' },
-  { value: 'rating', label: 'Top rated' },
+  { value: 'recommended', label: 'Recommended' },
   { value: 'price-low', label: 'Price: low to high' },
   { value: 'price-high', label: 'Price: high to low' },
+  { value: 'newest', label: 'Newest' },
+  { value: 'rating', label: 'Best rated' },
+  { value: 'popular', label: 'Most popular' },
+  { value: 'discount', label: 'Highest discount' },
 ]
 
 export default function ProductCatalog({
@@ -28,15 +43,71 @@ export default function ProductCatalog({
   likedIds,
   onLike,
   onAdd,
+  onBuyNow,
   onView,
 }) {
-  const showFeatureCards = activeCategory === 'All' && products.length > 4
+  const [subcategory, setSubcategory] = useState('All')
+  const [catalogFilters, setCatalogFilters] = useState(defaultCatalogFilters)
+  const filterOptions = useMemo(
+    () => getCatalogFilterOptions(products),
+    [products],
+  )
+  const activeSubcategory = filterOptions.subcategories.includes(subcategory)
+    ? subcategory
+    : 'All'
+  const effectiveFilters = useMemo(() => {
+    const nextFilters = { ...catalogFilters }
+    const dynamicFilterKeys = [
+      'brand',
+      'feature',
+      'ram',
+      'storage',
+      'connectivity',
+      'power',
+      'voltage',
+      'type',
+      'compatibility',
+    ]
+    dynamicFilterKeys.forEach((key) => {
+      if (
+        nextFilters[key] !== 'All' &&
+        !filterOptions[key].includes(nextFilters[key])
+      ) {
+        nextFilters[key] = 'All'
+      }
+    })
+    return nextFilters
+  }, [catalogFilters, filterOptions])
+  const visibleProducts = useMemo(
+    () =>
+      filterCatalogProducts(products, activeSubcategory, effectiveFilters),
+    [activeSubcategory, effectiveFilters, products],
+  )
+  const showFeatureCards =
+    activeCategory === 'All' && visibleProducts.length > 4
   const lifestyleProduct =
-    products.find((product) => product.category === 'Wearables') || products[0]
+    visibleProducts.find((product) => product.category === 'Wearables') ||
+    visibleProducts[0]
   const performanceProduct =
-    products.find((product) => product.category === 'Components & DIY') ||
-    products[1] ||
-    products[0]
+    visibleProducts.find(
+      (product) => product.category === 'Components & DIY',
+    ) ||
+    visibleProducts[1] ||
+    visibleProducts[0]
+
+  const updateFilter = (key, value) => {
+    setCatalogFilters((current) => ({ ...current, [key]: value }))
+  }
+
+  const clearCatalogFilters = () => {
+    setSubcategory('All')
+    setCatalogFilters(defaultCatalogFilters)
+  }
+
+  const selectSuggestedCategory = (nextCategory) => {
+    clearCatalogFilters()
+    onSuggestedCategoryChange(nextCategory)
+  }
 
   const getProductOrder = (index) => {
     if (!showFeatureCards) return ''
@@ -63,21 +134,31 @@ export default function ProductCatalog({
             Our most-loved tech, chosen by customers.
           </p>
         </div>
-        <div className="flex w-52 items-center gap-2 rounded-full border border-slate-200 bg-white pl-4 text-xs font-bold text-slate-600">
-          <SlidersHorizontal size={14} className="shrink-0" />
-          <SelectMenu
-            value={sortBy}
-            onChange={onSortChange}
-            options={sortOptions}
-            ariaLabel="Sort products"
-            className="min-w-0 flex-1"
-            buttonClassName="h-10 rounded-r-full pr-4"
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          <CatalogFilters
+            activeCategory={activeCategory}
+            onCategoryChange={onCategoryChange}
+            filters={effectiveFilters}
+            onFilterChange={updateFilter}
+            options={filterOptions}
+            onClear={clearCatalogFilters}
           />
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white pl-4 text-xs font-bold text-slate-600 sm:w-52 sm:flex-none">
+            <SlidersHorizontal size={14} className="shrink-0" />
+            <SelectMenu
+              value={sortBy}
+              onChange={onSortChange}
+              options={sortOptions}
+              ariaLabel="Sort products"
+              className="min-w-0 flex-1"
+              buttonClassName="h-10 rounded-r-full pr-4"
+            />
+          </div>
         </div>
       </div>
 
       <div className="mt-6 flex gap-2 overflow-x-auto pb-2">
-        {filters.map((filter) => (
+        {catalogCategories.map((filter) => (
           <button
             key={filter}
             type="button"
@@ -89,9 +170,27 @@ export default function ProductCatalog({
         ))}
       </div>
 
-      {products.length ? (
+      {activeCategory !== 'All' && filterOptions.subcategories.length > 1 && (
+        <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-2">
+          <span className="shrink-0 text-[9px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
+            Subcategory
+          </span>
+          {['All', ...filterOptions.subcategories].map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setSubcategory(item)}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-[10px] font-bold transition ${activeSubcategory === item ? 'bg-[#397a4a] text-white' : 'border border-slate-200 bg-white text-slate-500 hover:border-[#8bb495]'}`}
+            >
+              {item === 'All' ? `All ${activeCategory}` : item}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {visibleProducts.length ? (
         <div className="mt-8 grid grid-cols-2 gap-x-3 gap-y-10 sm:gap-x-5 md:grid-cols-3 xl:grid-cols-4">
-          {products.map((product, index) => (
+          {visibleProducts.map((product, index) => (
             <div
               key={product.id}
               className={`min-w-0 ${getProductOrder(index)}`}
@@ -101,6 +200,7 @@ export default function ProductCatalog({
                 liked={likedIds.includes(product.id)}
                 onLike={onLike}
                 onAdd={onAdd}
+                onBuyNow={onBuyNow}
                 onView={onView}
               />
             </div>
@@ -178,11 +278,11 @@ export default function ProductCatalog({
               Try another search or explore a suggested category.
             </p>
             <div className="mt-5 flex flex-wrap justify-center gap-2">
-              {filters.slice(1).map((filter) => (
+              {catalogCategories.slice(1).map((filter) => (
                 <button
                   key={filter}
                   type="button"
-                  onClick={() => onSuggestedCategoryChange(filter)}
+                  onClick={() => selectSuggestedCategory(filter)}
                   className="rounded-full border border-slate-200 bg-[#f7f8f5] px-4 py-2 text-xs font-bold text-slate-600 transition hover:border-[#ff5c35] hover:text-[#ff5c35]"
                 >
                   {filter}
@@ -204,7 +304,7 @@ export default function ProductCatalog({
                 </div>
                 <button
                   type="button"
-                  onClick={() => onSuggestedCategoryChange('All')}
+                  onClick={() => selectSuggestedCategory('All')}
                   className="shrink-0 text-xs font-extrabold text-[#397a4a] transition hover:text-[#ff5c35]"
                 >
                   View all
@@ -218,6 +318,7 @@ export default function ProductCatalog({
                     liked={likedIds.includes(product.id)}
                     onLike={onLike}
                     onAdd={onAdd}
+                    onBuyNow={onBuyNow}
                     onView={onView}
                   />
                 ))}
@@ -226,6 +327,203 @@ export default function ProductCatalog({
           )}
         </div>
       )}
+    </section>
+  )
+}
+
+function CatalogFilters({
+  activeCategory,
+  onCategoryChange,
+  filters,
+  onFilterChange,
+  options,
+  onClear,
+}) {
+  const [open, setOpen] = useState(false)
+  const triggerRef = useRef(null)
+  const panelRef = useRef(null)
+  const position = useAnchoredPopover({
+    open,
+    setOpen,
+    triggerRef,
+    popoverRef: panelRef,
+    fixedWidth: 460,
+    constrainWidth: true,
+    align: 'right',
+    panelHeight: 600,
+    flipVertical: true,
+  })
+  const activeFilterCount = Object.entries(filters).filter(
+    ([key, value]) => value !== defaultCatalogFilters[key],
+  ).length
+
+  const electronicsGroups = [
+    ['ram', 'RAM'],
+    ['storage', 'Storage'],
+    ['connectivity', 'Connectivity'],
+    ['power', 'Power'],
+    ['voltage', 'Voltage'],
+    ['type', 'Type'],
+    ['compatibility', 'Compatibility'],
+  ].filter(([key]) => options[key].length > 0)
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className={`relative flex h-10 w-28 shrink-0 items-center justify-center gap-2 rounded-full border bg-white px-3 text-[10px] font-extrabold transition ${open || activeFilterCount ? 'border-[#ff5c35] text-[#d84220] ring-4 ring-[#ff5c35]/10' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}
+      >
+        <Filter size={14} />
+        Filters
+        {activeFilterCount > 0 && (
+          <span className="grid size-5 place-items-center rounded-full bg-[#ff5c35] text-[9px] text-white">
+            {activeFilterCount}
+          </span>
+        )}
+      </button>
+
+      {open &&
+        position &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-label="Filter products"
+            style={position}
+            className="fixed z-[100] flex h-[min(600px,calc(100vh-24px))] flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.2)]"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <div>
+                <p className="text-sm font-extrabold text-slate-900">
+                  Product filters
+                </p>
+                <p className="mt-0.5 text-[9px] text-slate-400">
+                  Options update for the selected category.
+                </p>
+              </div>
+              <span className="rounded-full bg-[#eef5ef] px-2.5 py-1 text-[9px] font-extrabold text-[#397a4a]">
+                {activeFilterCount} active
+              </span>
+            </div>
+
+            <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
+              <FilterChoiceGroup
+                label="Category"
+                value={activeCategory}
+                options={catalogCategories}
+                onChange={onCategoryChange}
+              />
+              <FilterChoiceGroup
+                label="Brand"
+                value={filters.brand}
+                options={['All', ...options.brand]}
+                onChange={(value) => onFilterChange('brand', value)}
+              />
+              <FilterChoiceGroup
+                label="Price"
+                value={filters.price}
+                options={priceFilterOptions}
+                onChange={(value) => onFilterChange('price', value)}
+              />
+              <FilterChoiceGroup
+                label="Rating"
+                value={filters.rating}
+                options={ratingFilterOptions}
+                onChange={(value) => onFilterChange('rating', value)}
+              />
+              <FilterChoiceGroup
+                label="Availability"
+                value={filters.availability}
+                options={availabilityFilterOptions}
+                onChange={(value) => onFilterChange('availability', value)}
+              />
+              <FilterChoiceGroup
+                label="Discount"
+                value={filters.discount}
+                options={discountFilterOptions}
+                onChange={(value) => onFilterChange('discount', value)}
+              />
+              <FilterChoiceGroup
+                label="Specifications"
+                value={filters.feature}
+                options={['All', ...options.feature]}
+                onChange={(value) => onFilterChange('feature', value)}
+              />
+
+              {electronicsGroups.length > 0 && (
+                <section className="border-t border-slate-100 pt-5">
+                  <p className="mb-4 text-[9px] font-extrabold uppercase tracking-[0.15em] text-[#ff5c35]">
+                    Electronics filters
+                  </p>
+                  <div className="space-y-5">
+                    {electronicsGroups.map(([key, label]) => (
+                      <FilterChoiceGroup
+                        key={key}
+                        label={label}
+                        value={filters[key]}
+                        options={['All', ...options[key]]}
+                        onChange={(value) => onFilterChange(key, value)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between border-t border-slate-100 bg-white px-5 py-3">
+              <button
+                type="button"
+                disabled={!activeFilterCount}
+                onClick={onClear}
+                className="text-[10px] font-extrabold text-[#ff5c35] disabled:opacity-35"
+              >
+                Clear filters
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-full bg-slate-950 px-5 py-2.5 text-[10px] font-extrabold text-white transition hover:bg-[#397a4a]"
+              >
+                Show products
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
+  )
+}
+
+function FilterChoiceGroup({ label, value, options, onChange }) {
+  return (
+    <section>
+      <p className="text-[9px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
+        {label}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {options.map((option) => {
+          const normalizedOption =
+            typeof option === 'string'
+              ? { value: option, label: option }
+              : option
+          const active = value === normalizedOption.value
+          return (
+            <button
+              key={normalizedOption.value}
+              type="button"
+              onClick={() => onChange(normalizedOption.value)}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-[9px] font-extrabold transition ${active ? 'bg-[#253329] text-white' : 'bg-[#f4f7ef] text-slate-600 hover:bg-[#e9efe4]'}`}
+            >
+              {active && <Check size={11} />}
+              {normalizedOption.label}
+            </button>
+          )
+        })}
+      </div>
     </section>
   )
 }
