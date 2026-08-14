@@ -18,6 +18,10 @@ import AccountPanel, {
 } from './components/profile/AccountPanel'
 import { useCart } from './hooks/useCart'
 import { formatCurrency, parsePrice } from './utils/currency'
+import {
+  matchesProductQuery,
+  normalizeSearchQuery,
+} from './utils/productSearch'
 
 const AUTH_SESSION_KEY = 'pride_authenticated_user'
 const ADDRESS_SESSION_KEY = 'pride_saved_addresses'
@@ -251,16 +255,9 @@ export default function UserApp({
   }
 
   const filteredProducts = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase()
     return products
       .filter((product) => category === 'All' || product.category === category)
-      .filter(
-        (product) =>
-          !normalizedQuery ||
-          `${product.name} ${product.category} ${product.description}`
-            .toLowerCase()
-            .includes(normalizedQuery),
-      )
+      .filter((product) => matchesProductQuery(product, query))
       .sort((a, b) => {
         const priceA = Number(String(a.price).replace(/[^0-9.]/g, ''))
         const priceB = Number(String(b.price).replace(/[^0-9.]/g, ''))
@@ -271,9 +268,70 @@ export default function UserApp({
       })
   }, [products, query, category, sortBy])
 
+  const suggestedProducts = useMemo(() => {
+    const normalizedQuery = normalizeSearchQuery(query)
+    const queryMatches = normalizedQuery
+      ? products.filter((product) => matchesProductQuery(product, query))
+      : []
+    const popularProducts = [...products].sort(
+      (a, b) =>
+        Number(b.featured) - Number(a.featured) || b.rating - a.rating,
+    )
+
+    const uniqueProducts = new Map(
+      [...queryMatches, ...popularProducts].map((product) => [
+        product.id,
+        product,
+      ]),
+    )
+
+    return [...uniqueProducts.values()].slice(0, 4)
+  }, [products, query])
+
+  const resetToStorefront = () => {
+    if (window.location.hash) {
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}`,
+      )
+    }
+    orderSuccessHistoryActive.current = false
+    checkoutHistoryActive.current = false
+    productHistoryActive.current = false
+    productReturnSection.current = null
+    cartHistoryActive.current = false
+    cartReturnSection.current = null
+    setSuccessfulOrder(null)
+    setCheckoutOpen(false)
+    setSelectedProduct(null)
+    setReviewsOpen(false)
+    setAccountSection(null)
+  }
+
+  const navigateHome = () => {
+    resetToStorefront()
+    setQuery('')
+    setCategory('All')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   const handleCategory = (nextCategory) => {
+    resetToStorefront()
+    setQuery('')
     setCategory(nextCategory)
-    document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' })
+    requestAnimationFrame(() =>
+      document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' }),
+    )
+  }
+
+  const handleSearchSubmit = (nextQuery) => {
+    resetToStorefront()
+    setQuery(nextQuery)
+    setCategory('All')
+    requestAnimationFrame(() =>
+      document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' }),
+    )
   }
 
   const handleLike = (productId) => {
@@ -644,20 +702,19 @@ export default function UserApp({
   }
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-[#f7f8f5]">
+    <div className="min-h-screen overflow-x-clip bg-[#f7f8f5] pb-16 lg:pb-0">
       <AnnouncementBar />
       <Header
         products={products}
         searchQuery={query}
         user={user}
-        defaultAddress={
-          savedAddresses.find((address) => address.isDefault) ||
-          savedAddresses[0]
-        }
         cartCount={cart.count}
         wishlistCount={likedIds.length}
+        accountSection={accountSection}
+        onHome={navigateHome}
         onCartOpen={navigateToCart}
         onSearch={setQuery}
+        onSearchSubmit={handleSearchSubmit}
         onProductSelect={navigateToProduct}
         onAuthOpen={() => setAuthOpen(true)}
         onCategoryChange={handleCategory}
@@ -710,6 +767,8 @@ export default function UserApp({
             <BenefitsStrip />
             <ProductCatalog
               products={filteredProducts}
+              suggestedProducts={suggestedProducts}
+              onSuggestedCategoryChange={handleCategory}
               activeCategory={category}
               onCategoryChange={setCategory}
               sortBy={sortBy}

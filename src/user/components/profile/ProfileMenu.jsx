@@ -29,7 +29,7 @@ export default function ProfileMenu({ user, wishlistCount, cartCount, onSelect, 
     <div ref={containerRef} className="relative">
       <button type="button" onClick={() => setOpen((current) => !current)} className={`flex h-11 items-center gap-2 rounded-full border bg-white p-1 pr-2 transition sm:pr-3 ${open ? 'border-[#ff5c35] ring-4 ring-[#ff5c35]/10' : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'}`} aria-expanded={open} aria-haspopup="menu">
         {user.photo ? <img src={user.photo} alt={`${user.name}'s profile`} className="size-9 shrink-0 rounded-full object-cover"/> : <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#17211d] text-xs font-extrabold text-white">{getInitials(user.name)}</span>}
-        <span className="hidden max-w-28 truncate text-xs font-extrabold text-slate-800 sm:block">{user.name.split(' ')[0]}</span>
+        <span className="hidden max-w-28 truncate text-xs font-extrabold text-slate-800 sm:block">Account</span>
         <ChevronDown size={14} className={`hidden text-slate-400 transition sm:block ${open ? 'rotate-180' : ''}`}/>
       </button>
 

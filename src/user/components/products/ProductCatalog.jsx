@@ -19,6 +19,8 @@ const sortOptions = [
 
 export default function ProductCatalog({
   products,
+  suggestedProducts = [],
+  onSuggestedCategoryChange,
   activeCategory,
   onCategoryChange,
   sortBy,
@@ -167,13 +169,61 @@ export default function ProductCatalog({
           )}
         </div>
       ) : (
-        <div className="my-16 rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
-          <p className="text-lg font-extrabold text-slate-800">
-            No products found
-          </p>
-          <p className="mt-2 text-sm text-slate-500">
-            Try another search or category.
-          </p>
+        <div className="py-10 sm:py-14">
+          <div className="rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
+            <p className="text-lg font-extrabold text-slate-800">
+              No products found
+            </p>
+            <p className="mt-2 text-sm text-slate-500">
+              Try another search or explore a suggested category.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              {filters.slice(1).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => onSuggestedCategoryChange(filter)}
+                  className="rounded-full border border-slate-200 bg-[#f7f8f5] px-4 py-2 text-xs font-bold text-slate-600 transition hover:border-[#ff5c35] hover:text-[#ff5c35]"
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {suggestedProducts.length > 0 && (
+            <div className="mt-10">
+              <div className="flex items-end justify-between gap-4 border-b border-slate-200 pb-4">
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#ff5c35]">
+                    You may also like
+                  </p>
+                  <h3 className="mt-1 text-xl font-extrabold tracking-tight text-slate-900">
+                    Suggested products
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onSuggestedCategoryChange('All')}
+                  className="shrink-0 text-xs font-extrabold text-[#397a4a] transition hover:text-[#ff5c35]"
+                >
+                  View all
+                </button>
+              </div>
+              <div className="mt-6 grid grid-cols-2 gap-x-3 gap-y-10 sm:gap-x-5 md:grid-cols-3 xl:grid-cols-4">
+                {suggestedProducts.map((product) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    liked={likedIds.includes(product.id)}
+                    onLike={onLike}
+                    onAdd={onAdd}
+                    onView={onView}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>

@@ -54,7 +54,7 @@ const sectionMeta = {
   orders: ['Orders', 'Find, track, and review your purchases', Package],
   cart: ['Your Cart', 'Review items and savings before checkout', ShoppingBag],
   address: ['Saved Address', 'Your preferred delivery location', MapPin],
-  payment: ['Payment', 'Your saved payment preferences', CreditCard],
+  payment: ['Saved Cards & Wallet', 'Your saved payment preferences', CreditCard],
   coupons: ['Coupons', 'Offers available for your next order', TicketPercent],
 }
 
