@@ -1,21 +1,9 @@
-export const moneyValue = (value) =>
-  Number(String(value || '').replace(/[^0-9.]/g, '')) || 0
+import { getInitials } from '../../utils/text'
+import { formatCurrency, parsePrice } from '../../user/utils/currency'
 
-export const formatAdminCurrency = (value) =>
-  new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(value)
-
-export const getInitials = (name = 'Customer') =>
-  name
-    .split(' ')
-    .map((part) => part[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join('')
-    .toUpperCase()
+export const moneyValue = parsePrice
+export const formatAdminCurrency = formatCurrency
+export { getInitials }
 
 export const statusTone = {
   Pending: 'bg-amber-50 text-amber-700 ring-amber-200',

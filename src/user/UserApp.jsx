@@ -17,7 +17,7 @@ import AccountPanel, {
   LogoutConfirmation,
 } from './components/profile/AccountPanel'
 import { useCart } from './hooks/useCart'
-import { formatCurrency } from './utils/currency'
+import { formatCurrency, parsePrice } from './utils/currency'
 
 const AUTH_SESSION_KEY = 'pride_authenticated_user'
 const ADDRESS_SESSION_KEY = 'pride_saved_addresses'
@@ -115,8 +115,7 @@ function createSampleOrders(products) {
   ]
   return samples.map((sample) => {
     const product = products[sample.productIndex] || products[0]
-    const total =
-      parseFloat(String(product.price).replace(/[^0-9.]/g, '')) * sample.qty
+    const total = parsePrice(product.price) * sample.qty
     return {
       ...sample,
       total: formatCurrency(total),

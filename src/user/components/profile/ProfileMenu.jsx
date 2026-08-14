@@ -1,25 +1,7 @@
-import { ChevronDown, CreditCard, Heart, LogOut, MapPin, Package, ShoppingBag, TicketPercent, UserRound } from 'lucide-react'
+import { ChevronDown, LogOut } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-
-const menuItems = [
-  { id: 'profile', label: 'My Profile', icon: UserRound },
-  { id: 'wishlist', label: 'Wishlist', icon: Heart },
-  { id: 'orders', label: 'Orders', icon: Package },
-  { id: 'cart', label: 'Cart', icon: ShoppingBag },
-  { id: 'address', label: 'Saved Address', icon: MapPin },
-  { id: 'payment', label: 'Payment', icon: CreditCard },
-  { id: 'coupons', label: 'Coupons', icon: TicketPercent },
-]
-
-function getInitials(name) {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase()
-}
+import { getInitials } from '../../../utils/text'
+import { accountMenuItems } from './accountMenuItems'
 
 export default function ProfileMenu({ user, wishlistCount, cartCount, onSelect, onLogout }) {
   const [open, setOpen] = useState(false)
@@ -61,7 +43,7 @@ export default function ProfileMenu({ user, wishlistCount, cartCount, onSelect, 
           </div>
 
           <div className="mt-2 grid gap-1">
-            {menuItems.map(({ id, label, icon: Icon }) => (
+            {accountMenuItems.map(({ id, label, icon: Icon }) => (
               <button key={id} type="button" role="menuitem" onClick={() => selectItem(id)} className="group flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-xs font-bold text-slate-600 transition hover:bg-[#f4f6f2] hover:text-slate-950">
                 <span className="grid size-8 place-items-center rounded-xl bg-slate-100 text-slate-500 transition group-hover:bg-white group-hover:text-[#ff5c35]"><Icon size={15}/></span>
                 <span className="flex-1">{label}</span>

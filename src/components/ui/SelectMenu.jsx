@@ -1,6 +1,7 @@
 import { Check, ChevronDown } from 'lucide-react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useAnchoredPopover } from '../../hooks/useAnchoredPopover'
 
 const normalizeOptions = (options) =>
   options.map((option) =>
@@ -19,52 +20,19 @@ export default function SelectMenu({
   menuWidth,
 }) {
   const [open, setOpen] = useState(false)
-  const [position, setPosition] = useState(null)
   const triggerRef = useRef(null)
   const menuRef = useRef(null)
   const menuId = useId()
   const normalizedOptions = normalizeOptions(options)
   const selected = normalizedOptions.find((option) => option.value === value)
 
-  useEffect(() => {
-    if (!open) return undefined
-
-    const updatePosition = () => {
-      const rect = triggerRef.current?.getBoundingClientRect()
-      if (!rect) return
-      const width = menuWidth || rect.width
-      const viewportPadding = 12
-      const left = Math.min(
-        Math.max(viewportPadding, rect.left),
-        Math.max(viewportPadding, window.innerWidth - width - viewportPadding),
-      )
-      setPosition({ left, top: rect.bottom + 8, width })
-    }
-
-    const closeOnOutsideClick = (event) => {
-      if (
-        !triggerRef.current?.contains(event.target) &&
-        !menuRef.current?.contains(event.target)
-      ) {
-        setOpen(false)
-      }
-    }
-    const closeOnEscape = (event) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-
-    updatePosition()
-    document.addEventListener('mousedown', closeOnOutsideClick)
-    document.addEventListener('keydown', closeOnEscape)
-    window.addEventListener('resize', updatePosition)
-    window.addEventListener('scroll', updatePosition, true)
-    return () => {
-      document.removeEventListener('mousedown', closeOnOutsideClick)
-      document.removeEventListener('keydown', closeOnEscape)
-      window.removeEventListener('resize', updatePosition)
-      window.removeEventListener('scroll', updatePosition, true)
-    }
-  }, [menuWidth, open])
+  const position = useAnchoredPopover({
+    open,
+    setOpen,
+    triggerRef,
+    popoverRef: menuRef,
+    fixedWidth: menuWidth,
+  })
 
   const selectOption = (option) => {
     onChange(option.value)

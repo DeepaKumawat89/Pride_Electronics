@@ -8,7 +8,6 @@ function App() {
   const [activePortal, setActivePortal] = useState('user') // 'user' | 'admin'
   const [productsList, setProductsList] = useState(initialProducts)
   const [ordersList, setOrdersList] = useState(initialOrders)
-  const [customersList] = useState(initialCustomers)
 
   // Handlers for Admin actions on Products
   const handleAddProduct = (newProduct) => {
@@ -50,7 +49,7 @@ function App() {
         <AdminApp
           products={productsList}
           orders={ordersList}
-          customers={customersList}
+          customers={initialCustomers}
           onAddProduct={handleAddProduct}
           onUpdateProduct={handleUpdateProduct}
           onDeleteProduct={handleDeleteProduct}

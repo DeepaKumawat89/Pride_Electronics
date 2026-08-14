@@ -6,23 +6,18 @@ import {
   CheckCircle2,
   ChevronRight,
   CreditCard,
-  Download,
   Eye,
   Heart,
-  HelpCircle,
   LogOut,
   MapPin,
   Minus,
   Package,
   Pencil,
   Plus,
-  ReceiptText,
-  RotateCcw,
   Search,
   ShieldCheck,
   ShoppingBag,
   SlidersHorizontal,
-  Star,
   TicketPercent,
   Trash2,
   Truck,
@@ -32,8 +27,10 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import SelectMenu from '../../../components/ui/SelectMenu'
+import { useAnchoredPopover } from '../../../hooks/useAnchoredPopover'
+import { getInitials } from '../../../utils/text'
 import { formatCurrency, parsePrice } from '../../utils/currency'
-import downloadInvoicePdf from './InvoicePdf'
+import { accountMenuItems } from './accountMenuItems'
 import OrderDetailsView from './OrderDetailsView'
 
 const genderOptions = [
@@ -51,24 +48,6 @@ const orderDateOptions = [
 ]
 const addressTypeOptions = ['Shipping', 'Billing']
 const addressLabelOptions = ['Home', 'Work', 'Other']
-const returnReasonOptions = [
-  'Product is damaged',
-  'Wrong product received',
-  'Product does not match description',
-  'Missing parts or accessories',
-  'No longer needed',
-]
-
-const menuItems = [
-  { id: 'profile', label: 'My Profile', icon: UserRound },
-  { id: 'wishlist', label: 'Wishlist', icon: Heart },
-  { id: 'orders', label: 'Orders', icon: Package },
-  { id: 'cart', label: 'Cart', icon: ShoppingBag },
-  { id: 'address', label: 'Saved Address', icon: MapPin },
-  { id: 'payment', label: 'Payment', icon: CreditCard },
-  { id: 'coupons', label: 'Coupons', icon: TicketPercent },
-]
-
 const sectionMeta = {
   profile: ['My Profile', 'Manage your personal information', UserRound],
   wishlist: ['Wishlist', 'Your saved products, all in one place', Heart],
@@ -104,16 +83,6 @@ const fieldClass =
   'h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#9bcaa6]/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500'
 const orderFilterNow = Date.now()
 
-function initials(name) {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase()
-}
-
 function Avatar({ user, size = 'size-12', textSize = 'text-sm' }) {
   return user.photo ? (
     <img
@@ -125,7 +94,7 @@ function Avatar({ user, size = 'size-12', textSize = 'text-sm' }) {
     <span
       className={`grid ${size} shrink-0 place-items-center rounded-full bg-[#253329] ${textSize} font-extrabold text-white ring-2 ring-white/70`}
     >
-      {initials(user.name)}
+      {getInitials(user.name)}
     </span>
   )
 }
@@ -160,99 +129,6 @@ function HeaderSearch({ value, onChange, placeholder, ariaLabel }) {
   )
 }
 
-function formatAddress(address) {
-  if (!address) return 'Address not available'
-  if (typeof address === 'string') return address
-
-  return [
-    address.fullName,
-    address.line1,
-    address.line2,
-    [address.city, address.state, address.pincode].filter(Boolean).join(', '),
-    address.phone,
-  ]
-    .filter(Boolean)
-    .join(', ')
-}
-
-function getOrderFinancials(order) {
-  const itemSubtotal = (order.items || []).reduce(
-    (sum, item) => sum + parsePrice(item.price) * Number(item.qty || 1),
-    0,
-  )
-  const discount = parsePrice(order.discount || 0)
-  const deliveryCharges = parsePrice(order.deliveryCharges || 0)
-  const finalTotal = parsePrice(order.total) || Math.max(0, itemSubtotal - discount)
-  const explicitTax = parsePrice(order.taxAmount || 0)
-  const taxableProductValue = Math.max(0, itemSubtotal - discount)
-  const includedTax =
-    explicitTax || Math.round((taxableProductValue * 18) / 118)
-
-  return {
-    itemSubtotal,
-    discount,
-    deliveryCharges,
-    tax: includedTax,
-    finalTotal,
-  }
-}
-
-function escapeInvoiceText(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;')
-}
-
-function downloadInvoice(order, customer, address) {
-  if (order) return downloadInvoicePdf(order, customer, address)
-
-  const financials = getOrderFinancials(order)
-  const invoiceNumber = `INV-${String(order.id).replace(/^ORD-?/, '')}`
-  const itemRows = (order.items || [])
-    .map((item, index) => {
-      const quantity = Number(item.qty || 1)
-      const unitPrice = parsePrice(item.price)
-      const itemDiscount = parsePrice(item.discount || 0)
-      const lineTotal = Math.max(0, unitPrice * quantity - itemDiscount)
-      return `<tr>
-        <td>${index + 1}</td>
-        <td><strong>${escapeInvoiceText(item.productName)}</strong><br><span class="muted">Electronics · HSN 8518</span></td>
-        <td class="right">${quantity}</td>
-        <td class="right">${escapeInvoiceText(formatCurrency(unitPrice))}</td>
-        <td class="right">${escapeInvoiceText(formatCurrency(itemDiscount))}</td>
-        <td class="right">18% incl.</td>
-        <td class="right"><strong>${escapeInvoiceText(formatCurrency(lineTotal))}</strong></td>
-      </tr>`
-    })
-    .join('')
-
-  const invoiceHtml = `<!doctype html>
-  <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${escapeInvoiceText(invoiceNumber)} · Pride Electronics</title>
-  <style>
-    *{box-sizing:border-box} body{margin:0;background:#f3f5f2;color:#17211d;font:14px/1.5 Arial,sans-serif}.invoice{width:min(960px,calc(100% - 32px));margin:32px auto;background:#fff;padding:42px;border-top:6px solid #ff5c35;box-shadow:0 16px 50px #17211d18}.top{display:flex;justify-content:space-between;gap:30px}.brand{display:flex;align-items:center;gap:12px}.logo{display:grid;place-items:center;width:48px;height:48px;border-radius:14px;background:#ff5c35;color:#fff;font-weight:900;font-size:18px}.brand h1{margin:0;font-size:22px}.brand p,.muted{color:#68736d;font-size:12px}.invoice-title{text-align:right}.invoice-title h2{margin:0;font-size:28px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:30px 0}.box{border:1px solid #dfe5dc;border-radius:14px;padding:16px}.label{margin:0 0 7px;color:#7b857f;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.box p{margin:3px 0}table{width:100%;border-collapse:collapse;margin-top:24px}th{background:#253329;color:#fff;padding:12px 10px;text-align:left;font-size:10px;text-transform:uppercase}td{padding:13px 10px;border-bottom:1px solid #e8ece6;vertical-align:top}.right{text-align:right}.summary{width:min(410px,100%);margin:24px 0 0 auto}.row{display:flex;justify-content:space-between;padding:7px 0}.total{margin-top:8px;padding-top:14px;border-top:2px solid #253329;font-size:18px;font-weight:900}.note{margin-top:30px;border-radius:14px;background:#f2f7ef;padding:16px;color:#536a50;font-size:12px}.footer{display:flex;justify-content:space-between;gap:20px;margin-top:35px;padding-top:18px;border-top:1px solid #dfe5dc;color:#7b857f;font-size:11px}@media(max-width:650px){.invoice{margin:0;width:100%;padding:22px}.top,.footer{display:block}.invoice-title{text-align:left;margin-top:20px}.grid{grid-template-columns:1fr}table{font-size:11px}th,td{padding:8px 5px}}@media print{body{background:#fff}.invoice{width:100%;margin:0;box-shadow:none}}
-  </style></head><body><main class="invoice">
-    <div class="top"><div><div class="brand"><div class="logo">PE</div><div><h1>PRIDE ELECTRONICS</h1><p>Technology you can trust.</p></div></div><p>42 Silicon Avenue, Hinjawadi, Pune, Maharashtra 411057<br>support@prideelectronics.in · +91 98765 43210<br>GSTIN: 27AABCP1234F1Z5</p></div><div class="invoice-title"><h2>TAX INVOICE</h2><p><strong>${escapeInvoiceText(invoiceNumber)}</strong><br>Invoice date: ${escapeInvoiceText(order.date)}<br>Order ID: ${escapeInvoiceText(order.id)}</p></div></div>
-    <section class="grid"><div class="box"><p class="label">Bill to</p><p><strong>${escapeInvoiceText(customer?.name || order.customer || 'Pride Customer')}</strong></p><p>${escapeInvoiceText(formatAddress(address))}</p><p>${escapeInvoiceText(customer?.email || order.email || '')}</p></div><div class="box"><p class="label">Payment & delivery</p><p><strong>Payment:</strong> ${escapeInvoiceText(order.paymentMethod || 'Online payment')}</p><p><strong>Status:</strong> ${escapeInvoiceText(order.paymentStatus || 'Paid')}</p><p><strong>Order status:</strong> ${escapeInvoiceText(order.status)}</p><p><strong>Delivery date:</strong> ${escapeInvoiceText(order.deliveryDate || 'Being scheduled')}</p></div></section>
-    <table><thead><tr><th>#</th><th>Product</th><th class="right">Qty</th><th class="right">Unit price</th><th class="right">Discount</th><th class="right">GST</th><th class="right">Amount</th></tr></thead><tbody>${itemRows}</tbody></table>
-    <section class="summary"><div class="row"><span>Product subtotal</span><strong>${escapeInvoiceText(formatCurrency(financials.itemSubtotal))}</strong></div><div class="row"><span>Discount</span><strong>− ${escapeInvoiceText(formatCurrency(financials.discount))}</strong></div><div class="row"><span>GST (included in product prices)</span><strong>${escapeInvoiceText(formatCurrency(financials.tax))}</strong></div><div class="row"><span>Delivery charges</span><strong>${financials.deliveryCharges ? escapeInvoiceText(formatCurrency(financials.deliveryCharges)) : 'FREE'}</strong></div><div class="row total"><span>Final payable amount</span><span>${escapeInvoiceText(formatCurrency(financials.finalTotal))}</span></div></section>
-    <div class="note"><strong>Return / refund information:</strong> Eligible products may be returned within 30 days of delivery, subject to inspection and the Pride Electronics return policy. Approved refunds are issued to the original payment method.</div>
-    <footer class="footer"><span>This is a computer-generated tax invoice.</span><span>Thank you for shopping with Pride Electronics.</span></footer>
-  </main></body></html>`
-
-  const invoiceBlob = new Blob([invoiceHtml], { type: 'text/html;charset=utf-8' })
-  const invoiceUrl = URL.createObjectURL(invoiceBlob)
-  const downloadLink = document.createElement('a')
-  downloadLink.href = invoiceUrl
-  downloadLink.download = `${invoiceNumber}.html`
-  document.body.appendChild(downloadLink)
-  downloadLink.click()
-  downloadLink.remove()
-  URL.revokeObjectURL(invoiceUrl)
-}
 
 function OrderFilter({
   dateRange,
@@ -262,58 +138,22 @@ function OrderFilter({
   statuses,
 }) {
   const [open, setOpen] = useState(false)
-  const [position, setPosition] = useState(null)
   const triggerRef = useRef(null)
   const menuRef = useRef(null)
   const activeFilterCount =
     Number(dateRange !== 'all') + Number(status !== 'All')
 
-  useEffect(() => {
-    if (!open) return undefined
-
-    const updatePosition = () => {
-      const rect = triggerRef.current?.getBoundingClientRect()
-      if (!rect) return
-
-      const viewportPadding = 12
-      const panelHeight = 410
-      const width = Math.min(360, window.innerWidth - viewportPadding * 2)
-      const left = Math.min(
-        Math.max(viewportPadding, rect.right - width),
-        window.innerWidth - width - viewportPadding,
-      )
-      const top =
-        rect.bottom + 8 + panelHeight <= window.innerHeight - viewportPadding
-          ? rect.bottom + 8
-          : Math.max(viewportPadding, rect.top - panelHeight - 8)
-      setPosition({ left, top, width })
-    }
-
-    const closeOnOutsideClick = (event) => {
-      if (
-        !triggerRef.current?.contains(event.target) &&
-        !menuRef.current?.contains(event.target)
-      ) {
-        setOpen(false)
-      }
-    }
-    const closeOnEscape = (event) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-
-    updatePosition()
-    document.addEventListener('mousedown', closeOnOutsideClick)
-    document.addEventListener('keydown', closeOnEscape)
-    window.addEventListener('resize', updatePosition)
-    window.addEventListener('scroll', updatePosition, true)
-
-    return () => {
-      document.removeEventListener('mousedown', closeOnOutsideClick)
-      document.removeEventListener('keydown', closeOnEscape)
-      window.removeEventListener('resize', updatePosition)
-      window.removeEventListener('scroll', updatePosition, true)
-    }
-  }, [open])
+  const position = useAnchoredPopover({
+    open,
+    setOpen,
+    triggerRef,
+    popoverRef: menuRef,
+    fixedWidth: 360,
+    constrainWidth: true,
+    align: 'right',
+    panelHeight: 410,
+    flipVertical: true,
+  })
 
   return (
     <>
@@ -688,7 +528,7 @@ function AccountNavigation({
           </span>
         </div>
         <nav className="grid gap-1.5">
-          {menuItems.map(({ id, label, icon: Icon }) => (
+          {accountMenuItems.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
@@ -718,7 +558,7 @@ function AccountNavigation({
         </nav>
       </div>
       <nav className="flex gap-2 overflow-x-auto px-3 pb-3 sm:px-4 md:hidden">
-        {menuItems.map(({ id, label, icon: Icon }) => (
+        {accountMenuItems.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             type="button"
@@ -1091,7 +931,7 @@ function OrdersSection({
 
   if (selectedOrder) {
     return (
-      <OrderDetails
+      <OrderDetailsView
         order={selectedOrder}
         user={user}
         address={
@@ -1280,472 +1120,7 @@ function StatusBadge({ value, kind }) {
   )
 }
 
-function OrderDetails({ order, user, address, onBack }) {
-  const [rating, setRating] = useState(0)
-  const [feedback, setFeedback] = useState('')
-  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
-  const [returnReason, setReturnReason] = useState('')
-  const [returnSubmitted, setReturnSubmitted] = useState(false)
-  const [helpTopic, setHelpTopic] = useState('')
-  const [invoiceDownloading, setInvoiceDownloading] = useState(false)
-  const financials = getOrderFinancials(order)
-  const delivered = order.status === 'Delivered'
-  const deliveredAt = new Date(order.deliveryDate).getTime()
-  const daysSinceDelivery = Number.isNaN(deliveredAt)
-    ? Infinity
-    : Math.floor((orderFilterNow - deliveredAt) / 86400000)
-  const returnEligible =
-    order.returnEligible ??
-    (delivered && daysSinceDelivery >= 0 && daysSinceDelivery <= 30)
-  const returnDeadline = returnEligible
-    ? new Date(deliveredAt + 30 * 86400000).toLocaleDateString('en-IN', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
-    : ''
 
-  if (onBack) {
-    return (
-      <OrderDetailsView
-        order={order}
-        user={user}
-        address={address}
-        onBack={onBack}
-      />
-    )
-  }
-
-  const submitFeedback = (event) => {
-    event.preventDefault()
-    if (!rating || !feedback.trim()) return
-    setFeedbackSubmitted(true)
-  }
-
-  const submitReturn = (event) => {
-    event.preventDefault()
-    if (!returnReason) return
-    setReturnSubmitted(true)
-  }
-
-  const handleInvoiceDownload = async () => {
-    setInvoiceDownloading(true)
-    try {
-      await downloadInvoice(order, user, address)
-    } finally {
-      setInvoiceDownloading(false)
-    }
-  }
-
-  return (
-    <div className="mx-auto max-w-6xl">
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-[10px] font-extrabold text-slate-600 transition hover:border-[#aacfb3] hover:text-[#253329]"
-      >
-        <ArrowLeft size={15} />
-        Back to orders
-      </button>
-
-      <section className="mt-4 overflow-hidden rounded-[30px] border border-slate-100 bg-[#f7f8f5] shadow-[0_18px_50px_rgba(40,68,48,0.1)]">
-        <div className="relative isolate overflow-hidden bg-[#253329] px-5 py-6 text-white sm:px-7">
-          <div className="absolute -right-10 -top-16 -z-10 size-48 rounded-full bg-[#9bcaa6]/20 blur-2xl" />
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-[#9bcaa6]">
-                Order information
-              </p>
-              <h2 className="mt-2 text-2xl font-extrabold tracking-tight">
-                {order.id}
-              </h2>
-              <p className="mt-1 text-[10px] text-white/50">
-                Placed {order.date}
-                {order.orderTime ? ` at ${order.orderTime}` : ''}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <StatusBadge value={order.paymentStatus || 'Paid'} kind="payment" />
-              <StatusBadge value={order.status} />
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-6 p-4 sm:p-7">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <OrderInfoCard label="Order ID" value={order.id} icon={Package} />
-            <OrderInfoCard
-              label="Order date"
-              value={`${order.date}${order.orderTime ? ` · ${order.orderTime}` : ''}`}
-              icon={CalendarDays}
-            />
-            <OrderInfoCard
-              label="Payment method"
-              value={order.paymentMethod || 'Online payment'}
-              detail={order.paymentStatus || 'Paid'}
-              icon={CreditCard}
-            />
-            <OrderInfoCard
-              label="Order status"
-              value={order.status}
-              detail={
-                order.status === 'Cancelled'
-                  ? 'Refund processing'
-                  : `Delivery: ${order.deliveryDate || 'Being scheduled'}`
-              }
-              icon={Truck}
-            />
-          </div>
-
-          <div className="rounded-[24px] border border-slate-100 bg-white p-4 sm:p-5">
-            <div className="flex items-start gap-3">
-              <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[#eff3e7] text-[#536a50]">
-                <MapPin size={17} />
-              </span>
-              <div>
-                <h3 className="text-xs font-extrabold text-slate-900">
-                  Delivery address
-                </h3>
-                <p className="mt-1.5 max-w-3xl text-[10px] leading-5 text-slate-500">
-                  {formatAddress(address)}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <SectionHeading
-              icon={ShoppingBag}
-              title="Products and charges"
-              text="Complete item and pricing details for this order."
-            />
-            <div className="mt-3 space-y-3">
-              {order.items?.map((item, index) => {
-                const quantity = Number(item.qty || 1)
-                const unitPrice = parsePrice(item.price)
-                const itemDiscount = parsePrice(item.discount || 0)
-                const itemTax = Math.round(
-                  (Math.max(0, unitPrice * quantity - itemDiscount) * 18) / 118,
-                )
-                const lineTotal = Math.max(
-                  0,
-                  unitPrice * quantity - itemDiscount,
-                )
-
-                return (
-                  <article
-                    key={`${item.productName}-${index}`}
-                    className="grid gap-4 rounded-[22px] border border-slate-100 bg-white p-4 sm:grid-cols-[88px_minmax(0,1fr)] sm:items-center"
-                  >
-                    <img
-                      src={item.image}
-                      alt={item.productName}
-                      className="size-22 rounded-[18px] object-cover"
-                    />
-                    <div className="min-w-0">
-                      <h3 className="text-xs font-extrabold leading-5 text-slate-900 sm:text-sm">
-                        {item.productName}
-                      </h3>
-                      <div className="mt-3 grid grid-cols-2 gap-3 text-[9px] sm:grid-cols-5">
-                        <ProductCharge label="Quantity" value={quantity} />
-                        <ProductCharge label="Unit price" value={formatCurrency(unitPrice)} />
-                        <ProductCharge label="Discount" value={formatCurrency(itemDiscount)} />
-                        <ProductCharge label="GST (included)" value={formatCurrency(itemTax)} />
-                        <ProductCharge label="Item total" value={formatCurrency(lineTotal)} strong />
-                      </div>
-                    </div>
-                  </article>
-                )
-              })}
-            </div>
-
-            <div className="mt-4 ml-auto max-w-md rounded-[22px] bg-[#eef4e8] p-4 sm:p-5">
-              <PriceRow label="Product subtotal" value={formatCurrency(financials.itemSubtotal)} />
-              <PriceRow label="Discount" value={`− ${formatCurrency(financials.discount)}`} />
-              <PriceRow label="GST (included in product prices)" value={formatCurrency(financials.tax)} />
-              <PriceRow
-                label="Delivery charges"
-                value={
-                  financials.deliveryCharges
-                    ? formatCurrency(financials.deliveryCharges)
-                    : 'FREE'
-                }
-              />
-              <div className="mt-3 flex items-center justify-between border-t border-[#cfdcc8] pt-4">
-                <strong className="text-sm text-[#253329]">Final total</strong>
-                <strong className="text-xl text-[#253329]">
-                  {formatCurrency(financials.finalTotal)}
-                </strong>
-              </div>
-            </div>
-          </div>
-
-          {delivered && (
-            <FeedbackSection
-              rating={rating}
-              onRatingChange={setRating}
-              feedback={feedback}
-              onFeedbackChange={setFeedback}
-              submitted={feedbackSubmitted}
-              onSubmit={submitFeedback}
-            />
-          )}
-
-          <ReturnSection
-            eligible={returnEligible}
-            deadline={returnDeadline}
-            reason={returnReason}
-            onReasonChange={setReturnReason}
-            submitted={returnSubmitted}
-            onSubmit={submitReturn}
-            status={order.status}
-          />
-
-          <HelpSection activeTopic={helpTopic} onTopicChange={setHelpTopic} />
-
-          <section className="rounded-[26px] border border-slate-100 bg-white p-5 sm:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <SectionHeading
-                icon={ReceiptText}
-                title="Bill / Invoice"
-                text="Download a detailed Indian tax invoice for your records."
-              />
-              <button
-                type="button"
-                onClick={handleInvoiceDownload}
-                disabled={invoiceDownloading}
-                className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#253329] px-5 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35]"
-              >
-                <Download size={15} />
-                {invoiceDownloading ? 'Preparing PDF...' : 'Download invoice PDF'}
-              </button>
-            </div>
-            <div className="mt-4 grid gap-3 rounded-[20px] bg-[#f7f8f5] p-4 text-[10px] text-slate-500 sm:grid-cols-3">
-              <span><strong className="block text-slate-800">Invoice number</strong>INV-{String(order.id).replace(/^ORD-?/, '')}</span>
-              <span><strong className="block text-slate-800">Invoice date</strong>{order.date}</span>
-              <span><strong className="block text-slate-800">Payable amount</strong>{formatCurrency(financials.finalTotal)}</span>
-            </div>
-          </section>
-        </div>
-      </section>
-    </div>
-  )
-}
-
-function SectionHeading({ icon: Icon, title, text }) {
-  return (
-    <div className="flex items-start gap-3">
-      <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-[#eff3e7] text-[#536a50]">
-        <Icon size={17} />
-      </span>
-      <div>
-        <h3 className="text-xs font-extrabold text-slate-900 sm:text-sm">{title}</h3>
-        <p className="mt-1 text-[9px] leading-4 text-slate-400">{text}</p>
-      </div>
-    </div>
-  )
-}
-
-function OrderInfoCard({ label, value, detail, icon: Icon }) {
-  return (
-    <div className="flex items-start gap-3 rounded-[20px] border border-slate-100 bg-white p-4 shadow-sm">
-      <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#eff3e7] text-[#536a50]">
-        <Icon size={15} />
-      </span>
-      <span className="min-w-0">
-        <span className="block text-[8px] font-bold uppercase tracking-wider text-slate-400">{label}</span>
-        <strong className="mt-1 block break-words text-[10px] text-slate-800">{value}</strong>
-        {detail && <span className="mt-1 block text-[8px] text-slate-400">{detail}</span>}
-      </span>
-    </div>
-  )
-}
-
-function ProductCharge({ label, value, strong = false }) {
-  return (
-    <span>
-      <span className="block text-[8px] font-bold uppercase tracking-wider text-slate-400">{label}</span>
-      <span className={`mt-1 block ${strong ? 'font-extrabold text-slate-900' : 'font-semibold text-slate-600'}`}>{value}</span>
-    </span>
-  )
-}
-
-function PriceRow({ label, value }) {
-  return (
-    <div className="flex items-center justify-between gap-4 py-1.5 text-[10px]">
-      <span className="text-[#687963]">{label}</span>
-      <strong className="shrink-0 text-[#253329]">{value}</strong>
-    </div>
-  )
-}
-
-function FeedbackSection({
-  rating,
-  onRatingChange,
-  feedback,
-  onFeedbackChange,
-  submitted,
-  onSubmit,
-}) {
-  return (
-    <section className="rounded-[26px] border border-[#f5d48b] bg-[#fffaf0] p-5 sm:p-6">
-      <SectionHeading
-        icon={Star}
-        title="Delivery & feedback"
-        text="Your order was delivered. Tell us about your experience."
-      />
-      {submitted ? (
-        <div className="mt-5 flex items-center gap-3 rounded-2xl bg-white p-4 text-xs font-bold text-emerald-700">
-          <CheckCircle2 size={18} />
-          Thank you—your rating and feedback have been submitted.
-        </div>
-      ) : (
-        <form onSubmit={onSubmit} className="mt-5">
-          <fieldset>
-            <legend className="text-[9px] font-extrabold uppercase tracking-wider text-slate-500">Rate this order</legend>
-            <div className="mt-2 flex gap-1" role="radiogroup" aria-label="Order rating">
-              {[1, 2, 3, 4, 5].map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={rating === value}
-                  onClick={() => onRatingChange(value)}
-                  className={`grid size-10 place-items-center rounded-full transition ${rating >= value ? 'bg-[#ffb000] text-white' : 'bg-white text-slate-300 hover:text-[#ffb000]'}`}
-                  aria-label={`${value} star${value > 1 ? 's' : ''}`}
-                >
-                  <Star size={18} fill={rating >= value ? 'currentColor' : 'none'} />
-                </button>
-              ))}
-            </div>
-          </fieldset>
-          <label className="mt-4 block">
-            <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-500">Your feedback</span>
-            <textarea
-              required
-              value={feedback}
-              onChange={(event) => onFeedbackChange(event.target.value)}
-              rows={4}
-              placeholder="Share product quality, delivery, packaging, or service feedback..."
-              className="mt-2 w-full resize-y rounded-2xl border border-[#eadbb9] bg-white p-4 text-xs outline-none transition focus:border-[#ffb000] focus:ring-4 focus:ring-[#ffb000]/10"
-            />
-          </label>
-          <button
-            disabled={!rating || !feedback.trim()}
-            className="mt-3 rounded-full bg-[#253329] px-5 py-3 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Submit feedback
-          </button>
-        </form>
-      )}
-    </section>
-  )
-}
-
-function ReturnSection({
-  eligible,
-  deadline,
-  reason,
-  onReasonChange,
-  submitted,
-  onSubmit,
-  status,
-}) {
-  return (
-    <section className="rounded-[26px] border border-slate-100 bg-white p-5 sm:p-6">
-      <SectionHeading
-        icon={RotateCcw}
-        title="Return product"
-        text="Start a return request and review the applicable refund terms."
-      />
-      {eligible ? (
-        submitted ? (
-          <div className="mt-5 rounded-2xl bg-emerald-50 p-4 text-[10px] leading-5 text-emerald-700">
-            <strong className="block text-xs">Return request initiated</strong>
-            We received your request for “{reason}”. Pickup and refund instructions will be shared after review.
-          </div>
-        ) : (
-          <form onSubmit={onSubmit} className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.7fr)]">
-            <Field label="Return reason">
-              <SelectMenu
-                value={reason}
-                onChange={onReasonChange}
-                options={returnReasonOptions}
-                placeholder="Select a return reason"
-                ariaLabel="Select return reason"
-                buttonClassName={fieldClass}
-              />
-            </Field>
-            <div className="rounded-2xl bg-[#f4f7ef] p-4 text-[9px] leading-5 text-slate-500">
-              <strong className="block text-[10px] text-slate-800">Return eligible until {deadline}</strong>
-              Items must include original packaging and accessories. Approved refunds are sent to the original payment method within 5–7 business days after inspection.
-            </div>
-            <button
-              disabled={!reason}
-              className="w-fit rounded-full bg-[#253329] px-5 py-3 text-[10px] font-extrabold text-white hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Initiate return
-            </button>
-          </form>
-        )
-      ) : (
-        <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-[10px] leading-5 text-slate-500">
-          <strong className="block text-slate-700">This order is not currently eligible for return.</strong>
-          {status === 'Delivered'
-            ? 'The 30-day return window has ended. Contact Support if the product has a warranty issue.'
-            : 'Returns become available after an eligible product has been delivered.'}
-        </div>
-      )}
-    </section>
-  )
-}
-
-function HelpSection({ activeTopic, onTopicChange }) {
-  const topics = [
-    ['Return Product', 'Check return eligibility, initiate a return, or track an existing return request.'],
-    ['Report an Issue', 'Tell us about a damaged, incorrect, or missing product so our team can investigate.'],
-    ['Payment/Billing Help', 'Get assistance with charges, payment confirmation, GST invoices, or refunds.'],
-    ['Delivery Help', 'Get help with delays, tracking updates, or delivery instructions.'],
-    ['Contact Support', 'Email support@prideelectronics.in or call +91 98765 43210, 9 AM–7 PM IST.'],
-  ]
-  const activeHelp = topics.find(([title]) => title === activeTopic)
-
-  return (
-    <section className="rounded-[26px] border border-slate-100 bg-white p-5 sm:p-6">
-      <SectionHeading
-        icon={HelpCircle}
-        title="Help & support"
-        text="Choose what you need help with for this order."
-      />
-      <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-        {topics.map(([title]) => (
-          <button
-            key={title}
-            type="button"
-            onClick={() => onTopicChange(title)}
-            className={`rounded-2xl border p-3 text-left text-[9px] font-extrabold transition ${activeTopic === title ? 'border-[#75916f] bg-[#eef4e8] text-[#253329]' : 'border-slate-100 bg-[#fafbf8] text-slate-600 hover:border-[#aacfb3]'}`}
-          >
-            {title}
-          </button>
-        ))}
-      </div>
-      {activeHelp && (
-        <div className="mt-3 flex flex-col gap-3 rounded-2xl bg-[#f4f7ef] p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <strong className="text-[10px] text-[#253329]">{activeHelp[0]}</strong>
-            <p className="mt-1 text-[9px] leading-4 text-slate-500">{activeHelp[1]}</p>
-          </div>
-          <a
-            href={`mailto:support@prideelectronics.in?subject=${encodeURIComponent(activeHelp[0])}`}
-            className="inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-[#253329] px-4 text-[9px] font-extrabold text-white"
-          >
-            Contact support
-          </a>
-        </div>
-      )}
-    </section>
-  )
-}
 
 function CartSection({
   items,
