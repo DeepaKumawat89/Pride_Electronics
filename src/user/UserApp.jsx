@@ -34,6 +34,28 @@ const CHECKOUT_HASH = '#checkout'
 const ORDER_SUCCESS_HASH = '#order-success'
 const ORDER_SUCCESS_SESSION_KEY = 'pride_last_successful_order'
 
+function formatVerifiedPaymentMethod(payment, fallback) {
+  if (!payment?.method) return fallback || 'Razorpay Test Mode'
+  const labels = {
+    card: 'Card',
+    upi: 'UPI',
+    netbanking: 'Net Banking',
+    wallet: 'Wallet',
+    emi: 'EMI',
+    paylater: 'Pay Later',
+  }
+  const provider = payment.bank || payment.wallet
+  const method = labels[payment.method] || payment.method
+  return `${method}${provider ? ` (${provider})` : ''} via Razorpay Test Mode`
+}
+
+function formatVerifiedPaymentStatus(status) {
+  if (status === 'captured') return 'Paid'
+  if (status === 'authorized') return 'Authorized'
+  if (!status) return 'Paid'
+  return status.charAt(0).toUpperCase() + status.slice(1)
+}
+
 function getSessionUser() {
   try {
     return JSON.parse(sessionStorage.getItem(AUTH_SESSION_KEY) || 'null')
@@ -157,6 +179,7 @@ export default function UserApp({
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [checkoutCouponCode, setCheckoutCouponCode] = useState('')
   const [successfulOrder, setSuccessfulOrder] = useState(null)
+  const [orderToViewId, setOrderToViewId] = useState(null)
   const [pendingCheckout, setPendingCheckout] = useState(false)
   const [pendingCart, setPendingCart] = useState(false)
   const [pendingWishlistRequest, setPendingWishlistRequest] = useState(null)
@@ -186,6 +209,11 @@ export default function UserApp({
         if (savedOrder) {
           orderSuccessHistoryActive.current = true
           setSuccessfulOrder(savedOrder)
+          setOrders((current) =>
+            current.some((order) => order.id === savedOrder.id)
+              ? current
+              : [savedOrder, ...current],
+          )
           setCheckoutOpen(false)
           setAccountSection(null)
           window.scrollTo({ top: 0, behavior: 'auto' })
@@ -303,6 +331,7 @@ export default function UserApp({
     productReturnSection.current = null
     cartHistoryActive.current = false
     cartReturnSection.current = null
+    setOrderToViewId(null)
     setSuccessfulOrder(null)
     setCheckoutOpen(false)
     setSelectedProduct(null)
@@ -459,6 +488,7 @@ export default function UserApp({
     productReturnSection.current = null
     cartHistoryActive.current = false
     cartReturnSection.current = null
+    setOrderToViewId(successfulOrder?.id || null)
     setSuccessfulOrder(null)
     setSelectedProduct(null)
     setReviewsOpen(false)
@@ -623,6 +653,7 @@ export default function UserApp({
   }
 
   const handleProfileSelect = (section) => {
+    setOrderToViewId(null)
     if (section === 'cart') {
       navigateToCart()
       return
@@ -654,6 +685,7 @@ export default function UserApp({
   }
 
   const handleAccountSectionChange = (nextSection) => {
+    setOrderToViewId(null)
     if (nextSection === 'cart') {
       navigateToCart()
       return
@@ -671,6 +703,7 @@ export default function UserApp({
   }
 
   const closeAccountPanel = () => {
+    setOrderToViewId(null)
     if (window.location.hash === '#account-cart') {
       window.history.back()
       return
@@ -706,12 +739,21 @@ export default function UserApp({
   }
 
   const handlePlaceOrder = (checkoutDetails = {}) => {
+    const verifiedPayment = checkoutDetails.verifiedPayment
+    const verifiedAmount = Number(verifiedPayment?.amount)
+    const selectedPaymentMethod = checkoutDetails.payment?.type
+      ? `${checkoutDetails.payment.type} via Razorpay Test Mode`
+      : 'Razorpay Test Mode'
     const order = {
       id: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
       customer: user?.name || 'Pride customer',
       email: user?.email || '',
       date: new Date().toISOString().slice(0, 10),
-      total: formatCurrency(checkoutDetails.total ?? cart.subtotal),
+      total: formatCurrency(
+        Number.isFinite(verifiedAmount)
+          ? verifiedAmount / 100
+          : checkoutDetails.total ?? cart.subtotal,
+      ),
       discount: checkoutDetails.discount || 0,
       deliveryCharges: checkoutDetails.shipping || 0,
       taxAmount: checkoutDetails.tax || 0,
@@ -724,15 +766,23 @@ export default function UserApp({
       deliveryDate:
         checkoutDetails.delivery?.estimatedDate || 'Being scheduled',
       deliveryOption: checkoutDetails.delivery?.name || 'Standard delivery',
-      paymentStatus: 'Paid',
+      paymentStatus: formatVerifiedPaymentStatus(verifiedPayment?.status),
+      paymentDate: verifiedPayment?.createdAt
+        ? new Date(verifiedPayment.createdAt * 1000).toISOString()
+        : new Date().toISOString(),
       shippingAddress: checkoutDetails.address || null,
-      paymentMethod: checkoutDetails.payment?.type
-        ? `${checkoutDetails.payment.type} via Razorpay Test Mode`
-        : checkoutDetails.razorpay
-          ? 'Razorpay Test Mode'
-          : 'Online payment',
-      razorpayPaymentId: checkoutDetails.razorpay?.razorpay_payment_id || '',
-      razorpayOrderId: checkoutDetails.razorpay?.razorpay_order_id || '',
+      paymentMethod: formatVerifiedPaymentMethod(
+        verifiedPayment,
+        checkoutDetails.razorpay ? selectedPaymentMethod : 'Online payment',
+      ),
+      razorpayPaymentId:
+        verifiedPayment?.id ||
+        checkoutDetails.razorpay?.razorpay_payment_id ||
+        '',
+      razorpayOrderId:
+        verifiedPayment?.orderId ||
+        checkoutDetails.razorpay?.razorpay_order_id ||
+        '',
       items: cart.items.map(({ product, quantity }) => ({
         productId: product.id,
         sku: product.sku || `PE-${String(product.id).padStart(4, '0')}`,
@@ -866,12 +916,14 @@ export default function UserApp({
       />
       {user && (
         <AccountPanel
+          key={orderToViewId || 'account-panel'}
           section={accountSection}
           user={user}
           wishlistProducts={products.filter((product) =>
             likedIds.includes(product.id),
           )}
           orders={orders}
+          initialOrderId={orderToViewId}
           cartItems={cart.items}
           savedCartItems={cart.savedItems}
           cartIssues={cart.issues}

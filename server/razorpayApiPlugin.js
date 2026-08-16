@@ -71,7 +71,35 @@ function createRazorpayMiddleware({ keyId, keySecret }) {
         if (!orderId || !paymentId || !signature) return sendJson(response, 400, { error: 'Incomplete Razorpay payment response.' })
         const expectedSignature = createHmac('sha256', keySecret).update(`${orderId}|${paymentId}`).digest('hex')
         if (!secureCompare(signature, expectedSignature)) return sendJson(response, 400, { error: 'Payment signature verification failed.' })
-        return sendJson(response, 200, { verified: true })
+
+        let payment = null
+        try {
+          const paymentResponse = await fetch(
+            `https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`,
+            {
+              headers: {
+                Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString('base64')}`,
+              },
+            },
+          )
+          if (paymentResponse.ok) {
+            const paymentDetails = await paymentResponse.json()
+            if (paymentDetails.order_id === orderId) payment = {
+              id: paymentDetails.id,
+              orderId: paymentDetails.order_id,
+              amount: paymentDetails.amount,
+              currency: paymentDetails.currency,
+              status: paymentDetails.status,
+              method: paymentDetails.method,
+              bank: paymentDetails.bank || '',
+              wallet: paymentDetails.wallet || '',
+              createdAt: paymentDetails.created_at || null,
+            }
+          }
+        } catch {
+          payment = null
+        }
+        return sendJson(response, 200, { verified: true, payment })
       }
 
       return sendJson(response, 404, { error: 'API endpoint not found' })

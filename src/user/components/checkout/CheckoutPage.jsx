@@ -235,7 +235,11 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', saved
           try {
             const verification = await postRazorpayApi('verify', response)
             if (!verification.verified) throw new Error('Payment could not be verified.')
-            onPlaceOrder({ ...checkoutDetails, razorpay: response })
+            onPlaceOrder({
+              ...checkoutDetails,
+              razorpay: response,
+              verifiedPayment: verification.payment,
+            })
           } catch (error) {
             setPaymentError(error.message)
             setPaying(false)

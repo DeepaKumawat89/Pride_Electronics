@@ -261,6 +261,7 @@ export default function AccountPanel({
   user,
   wishlistProducts,
   orders,
+  initialOrderId,
   cartItems,
   savedCartItems,
   cartIssues,
@@ -293,7 +294,9 @@ export default function AccountPanel({
   const [orderQuery, setOrderQuery] = useState('')
   const [orderDateRange, setOrderDateRange] = useState('all')
   const [orderStatus, setOrderStatus] = useState('All')
-  const [orderDetailsOpen, setOrderDetailsOpen] = useState(false)
+  const [orderDetailsOpen, setOrderDetailsOpen] = useState(
+    Boolean(initialOrderId && orders.some((order) => order.id === initialOrderId)),
+  )
   const contentViewportRef = useRef(null)
   const contentRef = useRef(null)
   const orderStatuses = useMemo(
@@ -442,6 +445,7 @@ export default function AccountPanel({
                 {section === 'orders' && (
                   <OrdersSection
                     orders={orders}
+                    initialOrderId={initialOrderId}
                     user={user}
                     savedAddresses={savedAddresses}
                     query={orderQuery}
@@ -928,6 +932,7 @@ function WishlistSection({ products, query, onRemove, onView, onAdd }) {
 
 function OrdersSection({
   orders,
+  initialOrderId,
   user,
   savedAddresses,
   query,
@@ -939,7 +944,9 @@ function OrdersSection({
   onNavigate,
   onDetailsChange,
 }) {
-  const [selectedOrder, setSelectedOrder] = useState(null)
+  const [selectedOrder, setSelectedOrder] = useState(
+    () => orders.find((order) => order.id === initialOrderId) || null,
+  )
   const filtered = useMemo(
     () =>
       orders.filter((order) => {
