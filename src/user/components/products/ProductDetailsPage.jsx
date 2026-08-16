@@ -21,6 +21,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { formatCurrency, parsePrice } from '../../utils/currency'
+import { getPinDeliveryAvailability } from '../../utils/address'
 import {
   getDeliveryEstimate,
   getProductDetailInformation,
@@ -46,7 +47,14 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
   const stock = Number(product.stock) || 0
   const liked = likedIds.includes(product.id)
   const detailInformation = getProductDetailInformation(product)
-  const deliveryEstimate = getDeliveryEstimate(stock)
+  const pinDeliveryAvailability = deliveryAddress
+    ? getPinDeliveryAvailability(deliveryAddress.pincode)
+    : null
+  const deliveryEstimate = deliveryAddress
+    ? pinDeliveryAvailability?.estimatedDateLabel
+    : getDeliveryEstimate(stock)
+  const deliveryAvailable =
+    stock > 0 && (!deliveryAddress || pinDeliveryAvailability?.available)
   const deliveryDestination = deliveryAddress
     ? `${deliveryAddress.city} ${deliveryAddress.pincode}`
     : 'your location'
@@ -159,7 +167,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
 
               <div className="mt-5 grid grid-cols-3 gap-2 border-t border-slate-100 pt-4">
                 {[
-                  [Truck, stock > 0 ? 'Delivery available' : 'Delivery unavailable'],
+                  [Truck, deliveryAvailable ? 'Delivery available' : 'Delivery unavailable'],
                   [ShieldCheck, '2-year warranty'],
                   [RotateCcw, 'Easy returns'],
                 ].map(([Icon, label]) => (
@@ -168,10 +176,14 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                   </div>
                 ))}
               </div>
-              <p className={`mt-3 text-center text-[10px] font-bold ${deliveryEstimate ? 'text-slate-500' : 'text-red-600'}`}>
-                {deliveryEstimate
-                  ? `Estimated delivery to ${deliveryDestination}: ${deliveryEstimate}`
-                  : 'Delivery estimate will be available when this product is back in stock.'}
+              <p className={`mt-3 text-center text-[10px] font-bold ${deliveryAvailable ? 'text-slate-500' : 'text-red-600'}`}>
+                {stock <= 0
+                  ? 'Delivery estimate will be available when this product is back in stock.'
+                  : deliveryAddress && !pinDeliveryAvailability.available
+                    ? pinDeliveryAvailability.message
+                    : deliveryEstimate
+                      ? `Estimated delivery to ${deliveryDestination}: ${deliveryEstimate}`
+                      : 'Add a delivery address to check availability and estimated delivery.'}
               </p>
             </div>
           </div>

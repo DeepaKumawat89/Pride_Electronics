@@ -23,6 +23,7 @@ import {
   normalizeSearchQuery,
 } from './utils/productSearch'
 import { sortCatalogProducts } from './utils/catalog'
+import { normalizeAddress } from './utils/address'
 
 const AUTH_SESSION_KEY = 'pride_authenticated_user'
 const ADDRESS_SESSION_KEY = 'pride_saved_addresses'
@@ -56,7 +57,10 @@ const defaultAddresses = [
     label: 'Home',
     fullName: 'Pride Customer',
     phone: '+91 98765 43210',
-    line1: '42 Silicon Avenue, Hinjawadi',
+    houseFlat: '42',
+    street: 'Silicon Avenue',
+    area: 'Hinjawadi',
+    line1: '42, Silicon Avenue, Hinjawadi',
     city: 'Pune',
     state: 'Maharashtra',
     pincode: '411057',
@@ -161,7 +165,7 @@ export default function UserApp({
   const [user, setUser] = useState(getSessionUser)
   const [orders, setOrders] = useState(() => createSampleOrders(products))
   const [savedAddresses, setSavedAddresses] = useState(() =>
-    getSessionItems(ADDRESS_SESSION_KEY, defaultAddresses),
+    getSessionItems(ADDRESS_SESSION_KEY, defaultAddresses).map(normalizeAddress),
   )
   const [savedPayments, setSavedPayments] = useState(() =>
     getSessionItems(PAYMENT_SESSION_KEY, defaultPayments),
@@ -521,12 +525,18 @@ export default function UserApp({
   }
 
   const handleSaveAddress = (address) => {
-    const exists = savedAddresses.some((item) => item.id === address.id)
+    const normalizedAddress = normalizeAddress(address)
+    const exists = savedAddresses.some((item) => item.id === normalizedAddress.id)
     let next = exists
-      ? savedAddresses.map((item) => (item.id === address.id ? address : item))
-      : [...savedAddresses, { ...address, id: `address-${Date.now()}` }]
+      ? savedAddresses.map((item) =>
+          item.id === normalizedAddress.id ? normalizedAddress : item,
+        )
+      : [
+          ...savedAddresses,
+          { ...normalizedAddress, id: `address-${Date.now()}` },
+        ]
     const savedAddress =
-      next.find((item) => item.id === address.id) || next[next.length - 1]
+      next.find((item) => item.id === normalizedAddress.id) || next[next.length - 1]
     if (savedAddress.isDefault || next.length === 1)
       next = next.map((item) => ({
         ...item,

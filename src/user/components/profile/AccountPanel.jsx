@@ -33,6 +33,10 @@ import { useAnchoredPopover } from '../../../hooks/useAnchoredPopover'
 import { getInitials } from '../../../utils/text'
 import { formatCurrency, parsePrice } from '../../utils/currency'
 import { calculateCartPricing } from '../../utils/cart'
+import {
+  getPinDeliveryAvailability,
+  normalizeAddress,
+} from '../../utils/address'
 import { accountMenuItems } from './accountMenuItems'
 import OrderDetailsView from './OrderDetailsView'
 
@@ -50,7 +54,7 @@ const orderDateOptions = [
   { value: '365', label: 'Last year' },
 ]
 const addressTypeOptions = ['Shipping', 'Billing']
-const addressLabelOptions = ['Home', 'Work', 'Other']
+const addressLabelOptions = ['Home', 'Office', 'Other']
 const sectionMeta = {
   profile: ['My Profile', 'Manage your personal information', UserRound],
   wishlist: ['Wishlist', 'Your saved products, all in one place', Heart],
@@ -1411,6 +1415,9 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault }) {
     label: 'Home',
     fullName: user.name,
     phone: user.mobile || '',
+    houseFlat: '',
+    street: '',
+    area: '',
     line1: '',
     city: '',
     state: '',
@@ -1420,9 +1427,10 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault }) {
   const [formOpen, setFormOpen] = useState(false)
   const [form, setForm] = useState(emptyAddress)
   const [permission, setPermission] = useState(false)
+  const deliveryAvailability = getPinDeliveryAvailability(form.pincode)
 
   const openForm = (address = emptyAddress) => {
-    setForm({ ...address })
+    setForm(normalizeAddress(address))
     setPermission(false)
     setFormOpen(true)
   }
@@ -1435,8 +1443,8 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault }) {
 
   const submit = (event) => {
     event.preventDefault()
-    if (!permission) return
-    onSave(form)
+    if (!permission || !deliveryAvailability.available) return
+    onSave(normalizeAddress(form))
     closeForm()
   }
 
@@ -1516,7 +1524,7 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault }) {
                 className={fieldClass}
               />
             </Field>
-            <Field label="Mobile number">
+            <Field label="Phone">
               <input
                 required
                 type="tel"
@@ -1527,13 +1535,33 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault }) {
                 className={fieldClass}
               />
             </Field>
+            <Field label="House / Flat">
+              <input
+                required
+                value={form.houseFlat}
+                onChange={(event) =>
+                  setForm({ ...form, houseFlat: event.target.value })
+                }
+                className={fieldClass}
+              />
+            </Field>
+            <Field label="Street">
+              <input
+                required
+                value={form.street}
+                onChange={(event) =>
+                  setForm({ ...form, street: event.target.value })
+                }
+                className={fieldClass}
+              />
+            </Field>
             <div className="sm:col-span-2">
-              <Field label="Street address">
+              <Field label="Area">
                 <input
                   required
-                  value={form.line1}
+                  value={form.area}
                   onChange={(event) =>
-                    setForm({ ...form, line1: event.target.value })
+                    setForm({ ...form, area: event.target.value })
                   }
                   className={fieldClass}
                 />
@@ -1565,11 +1593,19 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault }) {
                 inputMode="numeric"
                 value={form.pincode}
                 onChange={(event) =>
-                  setForm({ ...form, pincode: event.target.value })
+                  setForm({
+                    ...form,
+                    pincode: event.target.value.replace(/\D/g, '').slice(0, 6),
+                  })
                 }
                 className={fieldClass}
               />
             </Field>
+            <div className="sm:col-span-2">
+              <p className={`rounded-2xl px-4 py-3 text-[10px] font-bold ${deliveryAvailability.available ? 'bg-emerald-50 text-emerald-700' : deliveryAvailability.status === 'unchecked' || deliveryAvailability.status === 'incomplete' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
+                {deliveryAvailability.message}
+              </p>
+            </div>
           </div>
           <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-2xl bg-white p-4">
             <input
@@ -1593,7 +1629,7 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault }) {
               Cancel
             </button>
             <button
-              disabled={!permission}
+              disabled={!permission || !deliveryAvailability.available}
               className="rounded-full bg-[#253329] px-5 py-2.5 text-xs font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {form.id ? 'Update address' : 'Save address'}
@@ -1642,6 +1678,7 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault }) {
                         <br />
                         {address.phone}
                       </p>
+                      <AddressDeliveryStatus pincode={address.pincode} />
                     </div>
                   </div>
                   <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
@@ -1684,6 +1721,15 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault }) {
           />
         ))}
     </div>
+  )
+}
+
+function AddressDeliveryStatus({ pincode }) {
+  const availability = getPinDeliveryAvailability(pincode)
+  return (
+    <p className={`mt-3 text-[9px] font-extrabold ${availability.available ? 'text-emerald-700' : 'text-red-600'}`}>
+      {availability.message}
+    </p>
   )
 }
 

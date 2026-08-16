@@ -16,6 +16,10 @@ import {
 } from 'lucide-react'
 import { formatCurrency, parsePrice } from '../../utils/currency'
 import { calculateCartPricing } from '../../utils/cart'
+import {
+  getPinDeliveryAvailability,
+  normalizeAddress,
+} from '../../utils/address'
 import { loadRazorpayCheckout, postRazorpayApi } from '../../utils/razorpay'
 
 const createPaymentReceipt = () => `pride_${Date.now()}`
@@ -26,18 +30,24 @@ const createEstimatedDeliveryDate = (days) => {
   return date.toISOString().slice(0, 10)
 }
 
-const createCheckoutAddress = (user, address = {}) => ({
-  id: address.id || '',
-  type: address.type || 'Shipping',
-  label: address.label || 'Home',
-  fullName: address.fullName || user?.name || '',
-  phone: address.phone || user?.mobile || '',
-  line1: address.line1 || '',
-  city: address.city || '',
-  state: address.state || '',
-  pincode: address.pincode || '',
-  isDefault: Boolean(address.isDefault),
-})
+const createCheckoutAddress = (user, address = {}) => {
+  const normalizedAddress = normalizeAddress(address)
+  return {
+    id: normalizedAddress.id || '',
+    type: normalizedAddress.type || 'Shipping',
+    label: normalizedAddress.label || 'Home',
+    fullName: normalizedAddress.fullName || user?.name || '',
+    phone: normalizedAddress.phone || user?.mobile || '',
+    houseFlat: normalizedAddress.houseFlat || '',
+    street: normalizedAddress.street || '',
+    area: normalizedAddress.area || '',
+    line1: normalizedAddress.line1 || '',
+    city: normalizedAddress.city || '',
+    state: normalizedAddress.state || '',
+    pincode: normalizedAddress.pincode || '',
+    isDefault: Boolean(normalizedAddress.isDefault),
+  }
+}
 
 const razorpayMethodFor = (payment) => {
   if (payment?.type === 'UPI') return 'upi'
@@ -66,12 +76,18 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', saved
   const usingSavedAddress = !useManualAddress && Boolean(selectedAddress)
   const usingSavedPayment = !useManualPayment && Boolean(selectedPayment)
   const pricing = calculateCartPricing(items, appliedCoupon)
+  const formDeliveryAvailability = getPinDeliveryAvailability(addressForm.pincode)
+  const selectedAddressAvailability = getPinDeliveryAvailability(
+    selectedAddress?.pincode,
+  )
   const deliveryOptions = [
     {
       id: 'standard',
       name: 'Standard delivery',
-      estimate: '3–5 business days',
-      estimatedDays: 5,
+      estimate: selectedAddressAvailability.available
+        ? `by ${selectedAddressAvailability.estimatedDateLabel}`
+        : '3–5 business days',
+      estimatedDays: selectedAddressAvailability.leadDays || 5,
       charge: pricing.shipping,
     },
     {
@@ -111,24 +127,35 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', saved
   }
 
   const saveCheckoutAddress = () => {
-    const requiredFields = ['fullName', 'phone', 'line1', 'city', 'state', 'pincode']
+    const requiredFields = [
+      'fullName',
+      'phone',
+      'houseFlat',
+      'street',
+      'area',
+      'city',
+      'state',
+      'pincode',
+    ]
     if (requiredFields.some((field) => !String(addressForm[field]).trim())) {
       setAddressError('Complete all address fields before continuing.')
       return
     }
-    if (!/^\d{6}$/.test(String(addressForm.pincode).trim())) {
-      setAddressError('Enter a valid 6-digit PIN code.')
+    if (!formDeliveryAvailability.available) {
+      setAddressError(formDeliveryAvailability.message)
       return
     }
-    const savedAddress = onSaveAddress?.({
+    const savedAddress = onSaveAddress?.(normalizeAddress({
       ...addressForm,
       fullName: addressForm.fullName.trim(),
       phone: addressForm.phone.trim(),
-      line1: addressForm.line1.trim(),
+      houseFlat: addressForm.houseFlat.trim(),
+      street: addressForm.street.trim(),
+      area: addressForm.area.trim(),
       city: addressForm.city.trim(),
       state: addressForm.state.trim(),
       pincode: addressForm.pincode.trim(),
-    })
+    }))
     if (!savedAddress) return
     setAddressId(savedAddress.id)
     setPaymentError('')
@@ -140,6 +167,10 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', saved
     setPaymentError('')
     if (!usingSavedAddress) {
       setPaymentError('Select or save a delivery address before placing the order.')
+      return
+    }
+    if (!selectedAddressAvailability.available) {
+      setPaymentError(selectedAddressAvailability.message)
       return
     }
     if (!items.length || hasUnavailableItems) {
@@ -166,7 +197,12 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', saved
         total: checkoutTotal,
         delivery: {
           ...selectedDelivery,
-          estimatedDate: createEstimatedDeliveryDate(selectedDelivery.estimatedDays),
+          estimatedDate:
+            selectedDelivery.id === 'standard'
+              ? selectedAddressAvailability.estimatedDate
+              : createEstimatedDeliveryDate(
+                  Math.max(1, selectedAddressAvailability.leadDays - 2),
+                ),
         },
       }
       const razorpay = new window.Razorpay({
@@ -258,6 +294,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', saved
                       <input type="radio" name="checkout-address" value={address.id} checked={selectedAddress?.id === address.id} onChange={() => { setAddressId(address.id); setPaymentError('') }} className="sr-only" />
                       <div className="flex items-start justify-between gap-3"><div><strong className="text-xs text-slate-900">{address.label}</strong><p className="mt-1 text-[9px] font-bold text-slate-400">{address.fullName} · {address.phone}</p></div><div className="flex items-center gap-2"><button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAddressForm(address) }} className="grid size-7 place-items-center rounded-full bg-white text-slate-400 shadow-sm transition hover:text-[#ff5c35]" aria-label={`Edit ${address.label} address`}><Pencil size={11} /></button><span className="rounded-full bg-[#e4f1e7] px-2 py-1 text-[8px] font-extrabold uppercase text-[#366643]">{address.type}</span></div></div>
                       <p className="mt-3 text-[10px] leading-5 text-slate-500">{address.line1}<br />{address.city}, {address.state} {address.pincode}</p>
+                      <p className={`mt-2 text-[8px] font-extrabold ${getPinDeliveryAvailability(address.pincode).available ? 'text-emerald-700' : 'text-red-600'}`}>{getPinDeliveryAvailability(address.pincode).message}</p>
                       {selectedAddress?.id === address.id && <p className="mt-3 flex items-center gap-1.5 text-[9px] font-extrabold text-[#397a4a]"><CheckCircle2 size={13} /> Selected for delivery</p>}
                     </label>
                   ))}
@@ -266,13 +303,16 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', saved
                 <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <input value={addressForm.fullName} onChange={(event) => setAddressForm({ ...addressForm, fullName: event.target.value })} placeholder="Full name" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
                   <input value={addressForm.phone} onChange={(event) => setAddressForm({ ...addressForm, phone: event.target.value })} placeholder="Phone number" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
-                  <input value={addressForm.line1} onChange={(event) => setAddressForm({ ...addressForm, line1: event.target.value })} placeholder="Street address" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10 sm:col-span-2" />
+                  <input value={addressForm.houseFlat} onChange={(event) => setAddressForm({ ...addressForm, houseFlat: event.target.value })} placeholder="House / Flat" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
+                  <input value={addressForm.street} onChange={(event) => setAddressForm({ ...addressForm, street: event.target.value })} placeholder="Street" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
+                  <input value={addressForm.area} onChange={(event) => setAddressForm({ ...addressForm, area: event.target.value })} placeholder="Area" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10 sm:col-span-2" />
                   <input value={addressForm.city} onChange={(event) => setAddressForm({ ...addressForm, city: event.target.value })} placeholder="City" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
                   <input value={addressForm.state} onChange={(event) => setAddressForm({ ...addressForm, state: event.target.value })} placeholder="State" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
                   <input value={addressForm.pincode} onChange={(event) => setAddressForm({ ...addressForm, pincode: event.target.value.replace(/\D/g, '').slice(0, 6) })} inputMode="numeric" placeholder="PIN code" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
                   <div className="sm:col-span-2">
                     {addressError && <p className="mb-3 text-[9px] font-bold text-red-600">{addressError}</p>}
-                    <div className="flex justify-end gap-2"><button type="button" onClick={closeAddressForm} className="rounded-full border border-slate-200 px-4 py-2.5 text-[9px] font-extrabold text-slate-500">Cancel</button><button type="button" onClick={saveCheckoutAddress} className="rounded-full bg-[#253329] px-4 py-2.5 text-[9px] font-extrabold text-white transition hover:bg-[#ff5c35]">{addressForm.id ? 'Update address' : 'Save address'}</button></div>
+                    <p className={`mb-3 rounded-2xl px-4 py-3 text-[9px] font-bold ${formDeliveryAvailability.available ? 'bg-emerald-50 text-emerald-700' : formDeliveryAvailability.status === 'unchecked' || formDeliveryAvailability.status === 'incomplete' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{formDeliveryAvailability.message}</p>
+                    <div className="flex justify-end gap-2"><button type="button" onClick={closeAddressForm} className="rounded-full border border-slate-200 px-4 py-2.5 text-[9px] font-extrabold text-slate-500">Cancel</button><button type="button" disabled={!formDeliveryAvailability.available} onClick={saveCheckoutAddress} className="rounded-full bg-[#253329] px-4 py-2.5 text-[9px] font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-40">{addressForm.id ? 'Update address' : 'Save address'}</button></div>
                   </div>
                 </div>
               )}
@@ -284,7 +324,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', saved
                 {deliveryOptions.map((option) => (
                   <label key={option.id} className={`cursor-pointer rounded-[22px] border-2 p-4 transition ${selectedDelivery.id === option.id ? 'border-[#75916f] bg-[#f5faf5] shadow-sm' : 'border-slate-100 bg-[#fafbfa] hover:border-[#c9ddcd]'}`}>
                     <input type="radio" name="checkout-delivery" value={option.id} checked={selectedDelivery.id === option.id} onChange={() => setDeliveryId(option.id)} className="sr-only" />
-                    <div className="flex items-start justify-between gap-3"><div><strong className="text-xs text-slate-900">{option.name}</strong><p className="mt-1 text-[9px] font-semibold text-slate-400">Estimated in {option.estimate}</p></div><strong className={`text-[10px] ${option.charge ? 'text-slate-800' : 'text-emerald-700'}`}>{option.charge ? formatCurrency(option.charge) : 'Free'}</strong></div>
+                    <div className="flex items-start justify-between gap-3"><div><strong className="text-xs text-slate-900">{option.name}</strong><p className="mt-1 text-[9px] font-semibold text-slate-400">Estimated {option.estimate}</p></div><strong className={`text-[10px] ${option.charge ? 'text-slate-800' : 'text-emerald-700'}`}>{option.charge ? formatCurrency(option.charge) : 'Free'}</strong></div>
                     {selectedDelivery.id === option.id && <p className="mt-3 flex items-center gap-1.5 text-[9px] font-extrabold text-[#397a4a]"><CheckCircle2 size={13} /> Selected delivery option</p>}
                   </label>
                 ))}
