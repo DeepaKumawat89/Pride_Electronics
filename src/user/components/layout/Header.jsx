@@ -30,6 +30,7 @@ export default function Header({
   accountSection,
   onHome,
   onCartOpen,
+  onWishlistOpen,
   onSearch,
   onSearchSubmit,
   onProductSelect,
@@ -183,9 +184,7 @@ export default function Header({
 
               <button
                 type="button"
-                onClick={() =>
-                  user ? onProfileSelect('wishlist') : onAuthOpen()
-                }
+                onClick={onWishlistOpen}
                 className="relative grid size-11 place-items-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-[#ff5c35] hover:text-[#ff5c35]"
                 aria-label="Wishlist"
               >

@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   SlidersHorizontal,
+  Star,
   TicketPercent,
   Trash2,
   Truck,
@@ -841,9 +842,13 @@ function WishlistSection({ products, query, onRemove, onView, onAdd }) {
                   {product.category}
                 </p>
                 <span
-                  className={`text-[8px] font-extrabold ${product.stock < 10 ? 'text-amber-600' : 'text-emerald-700'}`}
+                  className={`text-[8px] font-extrabold ${Number(product.stock) <= 0 ? 'text-red-600' : Number(product.stock) < 10 ? 'text-amber-600' : 'text-emerald-700'}`}
                 >
-                  {product.stock < 10 ? `${product.stock} left` : 'In stock'}
+                  {Number(product.stock) <= 0
+                    ? 'Out of stock'
+                    : Number(product.stock) < 10
+                      ? `${product.stock} left`
+                      : 'In stock'}
                 </span>
               </div>
               <button
@@ -853,6 +858,13 @@ function WishlistSection({ products, query, onRemove, onView, onAdd }) {
               >
                 {product.name}
               </button>
+              <div className="mt-1.5 flex items-center gap-1 text-[9px] font-bold text-slate-500">
+                <Star size={11} className="fill-[#ffb000] text-[#ffb000]" />
+                <span className="text-slate-700">{product.rating || 'New'}</span>
+                <span className="font-medium text-slate-400">
+                  ({product.reviewsCount || 0} reviews)
+                </span>
+              </div>
               <div className="mt-3 flex items-baseline gap-2">
                 <strong className="text-base text-slate-950">
                   {formatCurrency(parsePrice(product.price))}
@@ -874,12 +886,13 @@ function WishlistSection({ products, query, onRemove, onView, onAdd }) {
                 </button>
                 <button
                   type="button"
+                  disabled={Number(product.stock) <= 0}
                   onClick={() => onAdd(product)}
-                  className="flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-[#253329] px-4 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35]"
+                  className="flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-[#253329] px-4 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:bg-slate-300"
                   aria-label={`Add ${product.name} to cart`}
                 >
                   <ShoppingBag size={14} />
-                  Add to cart
+                  {Number(product.stock) <= 0 ? 'Out of stock' : 'Add to cart'}
                 </button>
               </div>
             </div>

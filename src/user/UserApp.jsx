@@ -154,6 +154,7 @@ export default function UserApp({
   const [successfulOrder, setSuccessfulOrder] = useState(null)
   const [pendingCheckout, setPendingCheckout] = useState(false)
   const [pendingCart, setPendingCart] = useState(false)
+  const [pendingWishlistRequest, setPendingWishlistRequest] = useState(null)
   const [accountSection, setAccountSection] = useState(null)
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [user, setUser] = useState(getSessionUser)
@@ -330,6 +331,12 @@ export default function UserApp({
   }
 
   const handleLike = (productId) => {
+    if (!user) {
+      setPendingWishlistRequest({ productId })
+      setAuthOpen(true)
+      notify('Please login or sign up to save products to your wishlist')
+      return
+    }
     setLikedIds((current) =>
       current.includes(productId)
         ? current.filter((id) => id !== productId)
@@ -475,6 +482,17 @@ export default function UserApp({
       window.history.pushState({ prideAccount: 'cart' }, '', '#account-cart')
       setAccountSection('cart')
     }
+    if (pendingWishlistRequest) {
+      if (pendingWishlistRequest.productId != null) {
+        setLikedIds((current) =>
+          current.includes(pendingWishlistRequest.productId)
+            ? current
+            : [...current, pendingWishlistRequest.productId],
+        )
+      }
+      setPendingWishlistRequest(null)
+      setAccountSection('wishlist')
+    }
   }
 
   const handleUpdateUser = (updatedUser) => {
@@ -592,6 +610,15 @@ export default function UserApp({
     setAccountSection(section)
   }
 
+  const openWishlist = () => {
+    if (user) {
+      setAccountSection('wishlist')
+      return
+    }
+    setPendingWishlistRequest({ productId: null })
+    setAuthOpen(true)
+  }
+
   const navigateToCart = () => {
     if (!user) {
       setPendingCart(true)
@@ -704,10 +731,11 @@ export default function UserApp({
         searchQuery={query}
         user={user}
         cartCount={cart.count}
-        wishlistCount={likedIds.length}
+        wishlistCount={user ? likedIds.length : 0}
         accountSection={accountSection}
         onHome={navigateHome}
         onCartOpen={navigateToCart}
+        onWishlistOpen={openWishlist}
         onSearch={setQuery}
         onSearchSubmit={handleSearchSubmit}
         onProductSelect={navigateToProduct}
@@ -745,7 +773,7 @@ export default function UserApp({
               savedAddresses.find((address) => address.isDefault) ||
               savedAddresses[0]
             }
-            likedIds={likedIds}
+            likedIds={user ? likedIds : []}
             onBack={closeProductDetails}
             onLike={handleLike}
             onAdd={handleAdd}
@@ -772,7 +800,7 @@ export default function UserApp({
               onCategoryChange={setCategory}
               sortBy={sortBy}
               onSortChange={setSortBy}
-              likedIds={likedIds}
+              likedIds={user ? likedIds : []}
               onLike={handleLike}
               onAdd={handleAdd}
               onBuyNow={handleBuyNow}
@@ -794,6 +822,7 @@ export default function UserApp({
           setAuthOpen(false)
           setPendingCheckout(false)
           setPendingCart(false)
+          setPendingWishlistRequest(null)
         }}
         onSuccess={handleAuthSuccess}
       />
