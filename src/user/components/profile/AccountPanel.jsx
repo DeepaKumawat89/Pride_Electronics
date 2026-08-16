@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  Bookmark,
   CalendarDays,
   Camera,
   Check,
@@ -31,6 +32,7 @@ import SelectMenu from '../../../components/ui/SelectMenu'
 import { useAnchoredPopover } from '../../../hooks/useAnchoredPopover'
 import { getInitials } from '../../../utils/text'
 import { formatCurrency, parsePrice } from '../../utils/currency'
+import { calculateCartPricing } from '../../utils/cart'
 import { accountMenuItems } from './accountMenuItems'
 import OrderDetailsView from './OrderDetailsView'
 
@@ -256,7 +258,8 @@ export default function AccountPanel({
   wishlistProducts,
   orders,
   cartItems,
-  cartSubtotal,
+  savedCartItems,
+  cartIssues,
   savedAddresses,
   savedPayments,
   onSectionChange,
@@ -267,6 +270,10 @@ export default function AccountPanel({
   onAddToCart,
   onChangeQuantity,
   onRemoveCartItem,
+  onSaveCartItem,
+  onMoveSavedItemToCart,
+  onRemoveSavedItem,
+  onDismissUnavailableCartItems,
   onCheckout,
   onLogout,
   onSaveAddress,
@@ -448,9 +455,14 @@ export default function AccountPanel({
                 {section === 'cart' && (
                   <CartSection
                     items={cartItems}
-                    subtotal={cartSubtotal}
+                    savedItems={savedCartItems}
+                    issues={cartIssues}
                     onChangeQuantity={onChangeQuantity}
                     onRemove={onRemoveCartItem}
+                    onSaveForLater={onSaveCartItem}
+                    onMoveToCart={onMoveSavedItemToCart}
+                    onRemoveSaved={onRemoveSavedItem}
+                    onDismissUnavailable={onDismissUnavailableCartItems}
                     onCheckout={onCheckout}
                   />
                 )}
@@ -1137,38 +1149,63 @@ function StatusBadge({ value, kind }) {
 
 function CartSection({
   items,
-  subtotal,
+  savedItems = [],
+  issues = {},
   onChangeQuantity,
   onRemove,
+  onSaveForLater,
+  onMoveToCart,
+  onRemoveSaved,
+  onDismissUnavailable,
   onCheckout,
 }) {
   const [coupon, setCoupon] = useState('')
-  const [couponMessage, setCouponMessage] = useState('')
-  const [discount, setDiscount] = useState(0)
-  const delivery = subtotal >= 999 ? 0 : 99
-  const finalTotal = Math.max(0, subtotal - discount + delivery)
+  const [appliedCoupon, setAppliedCoupon] = useState('')
+  const [couponAttempted, setCouponAttempted] = useState(false)
+  const pricing = useMemo(
+    () => calculateCartPricing(items, appliedCoupon),
+    [appliedCoupon, items],
+  )
+  const hasOutOfStockItems = items.some(
+    ({ product }) => Number(product.stock) <= 0,
+  )
 
   const applyCoupon = () => {
-    if (coupon.trim().toUpperCase() === 'PRIDE500' && subtotal >= 2499) {
-      setDiscount(Math.min(500, subtotal))
-      setCouponMessage('PRIDE500 applied successfully')
-      return
-    }
-    setDiscount(0)
-    setCouponMessage('Enter PRIDE500 on orders above ₹2,499')
+    setAppliedCoupon(coupon.trim().toUpperCase())
+    setCouponAttempted(true)
   }
 
   if (!items.length)
     return (
-      <EmptyState
-        icon={ShoppingBag}
-        title="Your cart is empty"
-        text="Items you add to your cart will appear here."
-      />
+      <div className="mx-auto max-w-6xl">
+        {issues.removedProductCount > 0 && (
+          <CartValidationNotice
+            text={`${issues.removedProductCount} ${issues.removedProductCount === 1 ? 'product is' : 'products are'} no longer available and were removed from your cart.`}
+            onDismiss={onDismissUnavailable}
+          />
+        )}
+        <EmptyState
+          icon={ShoppingBag}
+          title="Your cart is empty"
+          text="Items you add to your cart will appear here."
+        />
+        <SavedForLaterSection
+          items={savedItems}
+          onMoveToCart={onMoveToCart}
+          onRemove={onRemoveSaved}
+        />
+      </div>
     )
   return (
-    <div className="mx-auto grid max-w-6xl gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <div>
+    <div className="mx-auto max-w-6xl">
+      {issues.removedProductCount > 0 && (
+        <CartValidationNotice
+          text={`${issues.removedProductCount} ${issues.removedProductCount === 1 ? 'product is' : 'products are'} no longer available and were removed from your cart.`}
+          onDismiss={onDismissUnavailable}
+        />
+      )}
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div>
         <div className="mb-4 flex items-center justify-between">
           <p className="text-xs font-extrabold text-slate-700">
             {items.length} {items.length === 1 ? 'product' : 'products'}
@@ -1178,7 +1215,7 @@ function CartSection({
           </p>
         </div>
         <div className="space-y-3">
-          {items.map(({ product, quantity }) => (
+          {items.map(({ product, quantity, priceChanged, quantityAdjusted }) => (
             <article
               key={product.id}
               className="rounded-[22px] border border-slate-100 bg-[#fafbf8] p-3 transition hover:shadow-md sm:p-4"
@@ -1199,12 +1236,20 @@ function CartSection({
                   <p className="mt-2 text-sm font-extrabold text-[#ff5c35]">
                     {formatCurrency(parsePrice(product.price))}
                   </p>
+                  {(priceChanged || quantityAdjusted || Number(product.stock) <= 0) && (
+                    <div className="mt-2 space-y-1 text-[8px] font-extrabold">
+                      {priceChanged && <p className="text-[#397a4a]">Price updated to the latest catalog price</p>}
+                      {quantityAdjusted && <p className="text-amber-700">Quantity adjusted to available stock</p>}
+                      {Number(product.stock) <= 0 && <p className="text-red-600">Out of stock — remove or save this item for later</p>}
+                    </div>
+                  )}
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center rounded-full border border-slate-200 bg-white shadow-sm">
                       <button
                         type="button"
+                        disabled={quantity <= 1}
                         onClick={() => onChangeQuantity(product.id, -1)}
-                        className="grid size-8 place-items-center hover:text-[#ff5c35]"
+                        className="grid size-8 place-items-center hover:text-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-30"
                       >
                         <Minus size={12} />
                       </button>
@@ -1213,20 +1258,17 @@ function CartSection({
                       </span>
                       <button
                         type="button"
+                        disabled={Number(product.stock) <= 0 || quantity >= Number(product.stock)}
                         onClick={() => onChangeQuantity(product.id, 1)}
-                        className="grid size-8 place-items-center hover:text-[#ff5c35]"
+                        className="grid size-8 place-items-center hover:text-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-30"
                       >
                         <Plus size={12} />
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => onRemove(product.id)}
-                      className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 transition hover:text-red-500"
-                    >
-                      <Trash2 size={13} />
-                      Remove
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button type="button" onClick={() => onSaveForLater(product.id)} className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 transition hover:text-[#397a4a]"><Bookmark size={13} /> Save for later</button>
+                      <button type="button" onClick={() => onRemove(product.id)} className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 transition hover:text-red-500"><Trash2 size={13} /> Remove</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1239,8 +1281,8 @@ function CartSection({
             </article>
           ))}
         </div>
-      </div>
-      <aside className="h-fit rounded-[24px] bg-[#e5ecd6] p-5 xl:sticky xl:top-5">
+        </div>
+        <aside className="h-fit rounded-[24px] bg-[#e5ecd6] p-5 xl:sticky xl:top-5">
         <h3 className="text-sm font-extrabold text-[#253329]">Order summary</h3>
         <div className="mt-5 rounded-2xl bg-white/60 p-3">
           <p className="text-[9px] font-extrabold uppercase tracking-wider text-[#687963]">
@@ -1261,40 +1303,45 @@ function CartSection({
               Apply
             </button>
           </div>
-          {couponMessage && (
+          {couponAttempted && pricing.coupon.message && (
             <p
-              className={`mt-2 text-[9px] font-semibold ${discount ? 'text-emerald-700' : 'text-amber-700'}`}
+              className={`mt-2 text-[9px] font-semibold ${pricing.coupon.status === 'applied' ? 'text-emerald-700' : pricing.coupon.status === 'expired' ? 'text-red-600' : 'text-amber-700'}`}
             >
-              {couponMessage}
+              {pricing.coupon.message}
             </p>
           )}
         </div>
         <div className="mt-5 space-y-3 text-xs text-[#5d705e]">
-          <CartSummaryRow label="Subtotal" value={formatCurrency(subtotal)} />
+          <CartSummaryRow label="Subtotal" value={formatCurrency(pricing.mrpSubtotal)} />
           <CartSummaryRow
             label="Discount"
-            value={
-              discount ? `−${formatCurrency(discount)}` : formatCurrency(0)
-            }
-            accent={discount > 0}
+            value={`−${formatCurrency(pricing.productDiscount)}`}
+            accent={pricing.productDiscount > 0}
           />
           <CartSummaryRow
-            label="Delivery charges"
-            value={delivery ? formatCurrency(delivery) : 'Free'}
-            accent={!delivery}
+            label="Coupon discount"
+            value={`−${formatCurrency(pricing.couponDiscount)}`}
+            accent={pricing.couponDiscount > 0}
           />
+          <CartSummaryRow
+            label="Shipping"
+            value={pricing.shipping ? formatCurrency(pricing.shipping) : 'Free'}
+            accent={!pricing.shipping}
+          />
+          <CartSummaryRow label="GST / Tax" value={`${formatCurrency(pricing.tax)} included`} />
         </div>
         <div className="my-5 h-px bg-[#253329]/10" />
         <div className="flex items-end justify-between">
           <span className="text-sm font-bold text-[#253329]">Final total</span>
           <strong className="text-xl text-[#253329]">
-            {formatCurrency(finalTotal)}
+            {formatCurrency(pricing.total)}
           </strong>
         </div>
         <button
           type="button"
-          onClick={onCheckout}
-          className="mt-5 w-full rounded-full bg-[#253329] px-5 py-3.5 text-xs font-extrabold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-[#ff5c35]"
+          disabled={hasOutOfStockItems}
+          onClick={() => onCheckout({ couponCode: pricing.coupon.status === 'applied' ? appliedCoupon : '' })}
+          className="mt-5 w-full rounded-full bg-[#253329] px-5 py-3.5 text-xs font-extrabold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:hover:translate-y-0"
         >
           Proceed to Checkout
         </button>
@@ -1302,8 +1349,47 @@ function CartSection({
           <ShieldCheck size={12} />
           Secure encrypted checkout
         </p>
-      </aside>
+        </aside>
+      </div>
+      <SavedForLaterSection items={savedItems} onMoveToCart={onMoveToCart} onRemove={onRemoveSaved} />
     </div>
+  )
+}
+
+function CartValidationNotice({ text, onDismiss }) {
+  return (
+    <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[10px] font-bold text-amber-800">
+      <span>{text}</span>
+      <button type="button" onClick={onDismiss} className="shrink-0 font-extrabold text-amber-900 underline underline-offset-2">Dismiss</button>
+    </div>
+  )
+}
+
+function SavedForLaterSection({ items, onMoveToCart, onRemove }) {
+  if (!items.length) return null
+  return (
+    <section className="mt-7 border-t border-slate-100 pt-6">
+      <h3 className="text-sm font-extrabold text-slate-800">Saved for later ({items.length})</h3>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {items.map(({ product }) => {
+          const available = Number(product.stock) > 0
+          return (
+            <article key={product.id} className="flex items-center gap-3 rounded-[20px] border border-slate-100 bg-[#fafbf8] p-3">
+              <img src={product.image} alt={product.name} className="size-16 shrink-0 rounded-2xl object-cover" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[11px] font-extrabold text-slate-800">{product.name}</p>
+                <p className="mt-1 text-[10px] font-bold text-[#ff5c35]">{formatCurrency(parsePrice(product.price))}</p>
+                <p className={`mt-1 text-[8px] font-extrabold ${available ? 'text-emerald-700' : 'text-red-600'}`}>{available ? 'In stock' : 'Out of stock'}</p>
+                <div className="mt-2 flex items-center gap-3">
+                  <button type="button" disabled={!available} onClick={() => onMoveToCart(product.id)} className="text-[8px] font-extrabold text-[#397a4a] disabled:cursor-not-allowed disabled:text-slate-300">Move to cart</button>
+                  <button type="button" onClick={() => onRemove(product.id)} className="text-[8px] font-extrabold text-red-500">Remove</button>
+                </div>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 

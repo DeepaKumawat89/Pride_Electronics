@@ -14,18 +14,21 @@ import {
   WalletCards,
 } from 'lucide-react'
 import { formatCurrency, parsePrice } from '../../utils/currency'
+import { calculateCartPricing } from '../../utils/cart'
 import { loadRazorpayCheckout, postRazorpayApi } from '../../utils/razorpay'
 
-export default function CheckoutPage({ items = [], subtotal, savedAddresses = [], savedPayments = [], user, onBack, onPlaceOrder }) {
+const createPaymentReceipt = () => `pride_${Date.now()}`
+
+export default function CheckoutPage({ items = [], initialCouponCode = '', savedAddresses = [], savedPayments = [], user, onBack, onPlaceOrder }) {
   const defaultAddress = savedAddresses.find((address) => address.isDefault) || savedAddresses[0]
   const defaultPayment = savedPayments.find((payment) => payment.isDefault) || savedPayments[0]
   const [addressId, setAddressId] = useState(defaultAddress?.id || '')
   const [paymentId, setPaymentId] = useState(defaultPayment?.id || '')
   const [useManualAddress, setUseManualAddress] = useState(false)
   const [useManualPayment, setUseManualPayment] = useState(false)
-  const [coupon, setCoupon] = useState('')
-  const [couponMessage, setCouponMessage] = useState('')
-  const [discount, setDiscount] = useState(0)
+  const [coupon, setCoupon] = useState(initialCouponCode)
+  const [appliedCoupon, setAppliedCoupon] = useState(initialCouponCode)
+  const [couponAttempted, setCouponAttempted] = useState(Boolean(initialCouponCode))
   const [paymentError, setPaymentError] = useState('')
   const [paying, setPaying] = useState(false)
 
@@ -33,22 +36,24 @@ export default function CheckoutPage({ items = [], subtotal, savedAddresses = []
   const selectedPayment = savedPayments.find((payment) => payment.id === paymentId) || defaultPayment
   const usingSavedAddress = !useManualAddress && Boolean(selectedAddress)
   const usingSavedPayment = !useManualPayment && Boolean(selectedPayment)
-  const shipping = subtotal >= 999 ? 0 : 99
-  const total = Math.max(0, subtotal - discount + shipping)
+  const pricing = calculateCartPricing(items, appliedCoupon)
+  const hasUnavailableItems = items.some(
+    ({ product, quantity }) =>
+      Number(product.stock) <= 0 || quantity > Number(product.stock),
+  )
 
   const applyCoupon = () => {
-    if (coupon.trim().toUpperCase() === 'PRIDE500' && subtotal >= 2499) {
-      setDiscount(Math.min(500, subtotal))
-      setCouponMessage('PRIDE500 applied — you saved ₹500')
-      return
-    }
-    setDiscount(0)
-    setCouponMessage('Use PRIDE500 on orders above ₹2,499')
+    setAppliedCoupon(coupon.trim().toUpperCase())
+    setCouponAttempted(true)
   }
 
   const submit = async (event) => {
     event.preventDefault()
     setPaymentError('')
+    if (!items.length || hasUnavailableItems) {
+      setPaymentError('Your cart contains unavailable or invalid items. Return to the cart and review them before payment.')
+      return
+    }
     setPaying(true)
 
     try {
@@ -56,16 +61,17 @@ export default function CheckoutPage({ items = [], subtotal, savedAddresses = []
       if (!loaded) throw new Error('Unable to load Razorpay Checkout. Check your connection and try again.')
 
       const { keyId, order } = await postRazorpayApi('orders', {
-        amount: Math.round(total * 100),
-        receipt: `pride_${Date.now()}`,
+        amount: Math.round(pricing.total * 100),
+        receipt: createPaymentReceipt(),
       })
 
       const checkoutDetails = {
         address: usingSavedAddress ? selectedAddress : null,
         payment: usingSavedPayment ? selectedPayment : null,
-        discount,
-        shipping,
-        total,
+        discount: pricing.couponDiscount,
+        shipping: pricing.shipping,
+        tax: pricing.tax,
+        total: pricing.total,
       }
       const razorpay = new window.Razorpay({
         key: keyId,
@@ -196,19 +202,20 @@ export default function CheckoutPage({ items = [], subtotal, savedAddresses = []
             <div className="mt-5 rounded-[20px] bg-[#eaf3eb] p-4">
               <p className="flex items-center gap-2 text-[9px] font-extrabold uppercase tracking-wider text-[#536a50]"><Tag size={13} /> Coupon or discount</p>
               <div className="mt-3 flex gap-2"><input value={coupon} onChange={(event) => setCoupon(event.target.value)} placeholder="Enter code" className="h-10 min-w-0 flex-1 rounded-xl border border-white bg-white px-3 text-xs font-bold uppercase outline-none focus:border-[#75916f]" /><button type="button" onClick={applyCoupon} className="rounded-xl bg-[#253329] px-3 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35]">Apply</button></div>
-              {couponMessage && <p className={`mt-2 text-[9px] font-semibold ${discount ? 'text-emerald-700' : 'text-amber-700'}`}>{couponMessage}</p>}
+              {couponAttempted && pricing.coupon.message && <p className={`mt-2 text-[9px] font-semibold ${pricing.coupon.status === 'applied' ? 'text-emerald-700' : pricing.coupon.status === 'expired' ? 'text-red-600' : 'text-amber-700'}`}>{pricing.coupon.message}</p>}
             </div>
 
             <div className="mt-5 space-y-3 text-xs text-slate-500">
-              <SummaryRow label="Subtotal" value={formatCurrency(subtotal)} />
-              <SummaryRow label="Discount" value={discount ? `−${formatCurrency(discount)}` : formatCurrency(0)} accent={discount > 0} />
-              <SummaryRow label="Delivery charges" value={shipping ? formatCurrency(shipping) : 'Free'} accent={!shipping} />
-              <SummaryRow label="GST" value="Included" />
+              <SummaryRow label="Subtotal" value={formatCurrency(pricing.mrpSubtotal)} />
+              <SummaryRow label="Discount" value={`−${formatCurrency(pricing.productDiscount)}`} accent={pricing.productDiscount > 0} />
+              <SummaryRow label="Coupon discount" value={`−${formatCurrency(pricing.couponDiscount)}`} accent={pricing.couponDiscount > 0} />
+              <SummaryRow label="Shipping" value={pricing.shipping ? formatCurrency(pricing.shipping) : 'Free'} accent={!pricing.shipping} />
+              <SummaryRow label="GST / Tax" value={`${formatCurrency(pricing.tax)} included`} />
             </div>
             <div className="my-5 h-px bg-slate-100" />
-            <div className="flex items-end justify-between gap-4"><span className="text-sm font-bold text-slate-800">Total amount</span><strong className="text-2xl font-extrabold tracking-tight text-slate-950">{formatCurrency(total)}</strong></div>
+            <div className="flex items-end justify-between gap-4"><span className="text-sm font-bold text-slate-800">Total amount</span><strong className="text-2xl font-extrabold tracking-tight text-slate-950">{formatCurrency(pricing.total)}</strong></div>
             {paymentError && <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-[10px] font-bold leading-5 text-red-700">{paymentError}</div>}
-            <button type="submit" disabled={!items.length || paying} className="mt-5 flex h-13 w-full items-center justify-center gap-2 rounded-full bg-[#397a4a] px-5 text-xs font-extrabold text-white shadow-lg shadow-[#397a4a]/20 transition hover:-translate-y-0.5 hover:bg-[#2f663d] disabled:cursor-not-allowed disabled:bg-slate-300"><LockKeyhole size={15} /> {paying ? 'Opening Razorpay…' : `Pay ${formatCurrency(total)} with Razorpay`}</button>
+            <button type="submit" disabled={!items.length || hasUnavailableItems || paying} className="mt-5 flex h-13 w-full items-center justify-center gap-2 rounded-full bg-[#397a4a] px-5 text-xs font-extrabold text-white shadow-lg shadow-[#397a4a]/20 transition hover:-translate-y-0.5 hover:bg-[#2f663d] disabled:cursor-not-allowed disabled:bg-slate-300"><LockKeyhole size={15} /> {paying ? 'Opening Razorpay…' : `Pay ${formatCurrency(pricing.total)} with Razorpay`}</button>
             <p className="mt-3 text-center text-[9px] font-bold text-[#397a4a]">Razorpay Test Mode · No real money will be deducted</p>
             <div className="mt-4 grid grid-cols-2 gap-2 text-[8px] font-bold text-slate-500"><span className="flex items-center gap-1.5 rounded-xl bg-slate-50 px-2 py-2"><Truck size={12} className="text-[#397a4a]" /> Tracked delivery</span><span className="flex items-center gap-1.5 rounded-xl bg-slate-50 px-2 py-2"><PackageCheck size={12} className="text-[#397a4a]" /> Quality checked</span></div>
           </aside>

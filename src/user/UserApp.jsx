@@ -142,7 +142,7 @@ export default function UserApp({
   onNewOrder,
   onBeSellerClick,
 }) {
-  const cart = useCart(products[0])
+  const cart = useCart(products[0], products)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('All')
   const [sortBy, setSortBy] = useState('popular')
@@ -151,6 +151,7 @@ export default function UserApp({
   const [reviewsOpen, setReviewsOpen] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
+  const [checkoutCouponCode, setCheckoutCouponCode] = useState('')
   const [successfulOrder, setSuccessfulOrder] = useState(null)
   const [pendingCheckout, setPendingCheckout] = useState(false)
   const [pendingCart, setPendingCart] = useState(false)
@@ -365,7 +366,11 @@ export default function UserApp({
   }, [products, selectedProduct])
 
   const handleAdd = (product, quantity = 1) => {
-    cart.add(product, quantity)
+    const added = cart.add(product, quantity)
+    if (!added) {
+      notify(`${product.name} is currently out of stock`)
+      return
+    }
     notify(
       `${quantity > 1 ? `${quantity} x ` : ''}${product.name} added to your cart`,
     )
@@ -458,9 +463,13 @@ export default function UserApp({
   }
 
   const handleBuyNow = (product, quantity) => {
-    cart.add(product, quantity)
+    const added = cart.add(product, quantity)
+    if (!added) {
+      notify(`${product.name} is currently out of stock`)
+      return
+    }
     notify(`${product.name} is ready for checkout`)
-    handleCheckout()
+    handleCheckout({ skipCartValidation: true })
   }
 
   const handleAuthSuccess = (authenticatedUser, mode) => {
@@ -658,12 +667,24 @@ export default function UserApp({
     setAccountSection(null)
   }
 
-  const handleAccountCheckout = () => {
+  const handleAccountCheckout = (checkoutOptions) => {
     setAccountSection(null)
-    handleCheckout()
+    handleCheckout(checkoutOptions)
   }
 
-  const handleCheckout = () => {
+  const handleCheckout = ({ couponCode = '', skipCartValidation = false } = {}) => {
+    setCheckoutCouponCode(couponCode)
+    if (
+      !skipCartValidation &&
+      (
+      !cart.items.length ||
+      cart.issues.hasOutOfStock ||
+      cart.issues.removedProductCount > 0
+      )
+    ) {
+      notify('Review unavailable or updated cart items before checkout')
+      return
+    }
     if (user) {
       navigateToCheckout()
       return
@@ -682,6 +703,7 @@ export default function UserApp({
       total: formatCurrency(checkoutDetails.total ?? cart.subtotal),
       discount: checkoutDetails.discount || 0,
       deliveryCharges: checkoutDetails.shipping || 0,
+      taxAmount: checkoutDetails.tax || 0,
       itemsCount: cart.count,
       status: 'Pending',
       orderTime: new Date().toLocaleTimeString('en-IN', {
@@ -755,7 +777,7 @@ export default function UserApp({
           <CheckoutPage
             key={`${savedAddresses.find((address) => address.isDefault)?.id || 'no-address'}-${savedPayments.find((payment) => payment.isDefault)?.id || 'no-payment'}`}
             items={cart.items}
-            subtotal={cart.subtotal}
+            initialCouponCode={checkoutCouponCode}
             savedAddresses={savedAddresses}
             savedPayments={savedPayments}
             user={user}
@@ -835,7 +857,8 @@ export default function UserApp({
           )}
           orders={orders}
           cartItems={cart.items}
-          cartSubtotal={cart.subtotal}
+          savedCartItems={cart.savedItems}
+          cartIssues={cart.issues}
           savedAddresses={savedAddresses}
           savedPayments={savedPayments}
           onSectionChange={handleAccountSectionChange}
@@ -846,6 +869,10 @@ export default function UserApp({
           onAddToCart={handleAdd}
           onChangeQuantity={cart.changeQuantity}
           onRemoveCartItem={cart.remove}
+          onSaveCartItem={cart.saveForLater}
+          onMoveSavedItemToCart={cart.moveToCart}
+          onRemoveSavedItem={cart.removeSaved}
+          onDismissUnavailableCartItems={cart.removeUnavailable}
           onSaveAddress={handleSaveAddress}
           onDeleteAddress={handleDeleteAddress}
           onSetDefaultAddress={handleDefaultAddress}
