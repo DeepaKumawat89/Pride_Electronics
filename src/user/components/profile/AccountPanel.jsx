@@ -48,10 +48,24 @@ const genderOptions = [
   { value: 'Prefer not to say', label: 'Prefer not to say' },
 ]
 const orderDateOptions = [
-  { value: 'all', label: 'All dates' },
-  { value: '30', label: 'Last 30 days' },
-  { value: '90', label: 'Last 3 months' },
-  { value: '365', label: 'Last year' },
+  { value: 'all', label: 'All Dates' },
+  { value: '30', label: 'Last 30 Days' },
+  { value: '90', label: 'Last 3 Months' },
+  { value: '180', label: 'Last 6 Months' },
+  { value: '365', label: 'Last Year' },
+  { value: 'custom', label: 'Custom Date' },
+]
+const orderStatusOptions = [
+  'All',
+  'Pending',
+  'Confirmed',
+  'Processing',
+  'Shipped',
+  'Out for Delivery',
+  'Delivered',
+  'Cancelled',
+  'Returned',
+  'Refunded',
 ]
 const addressTypeOptions = ['Shipping', 'Billing']
 const addressLabelOptions = ['Home', 'Office', 'Other']
@@ -140,9 +154,12 @@ function HeaderSearch({ value, onChange, placeholder, ariaLabel }) {
 function OrderFilter({
   dateRange,
   onDateRangeChange,
+  customDateFrom,
+  onCustomDateFromChange,
+  customDateTo,
+  onCustomDateToChange,
   status,
   onStatusChange,
-  statuses,
 }) {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef(null)
@@ -207,15 +224,21 @@ function OrderFilter({
                   </button>
                 ))}
               </div>
+              {dateRange === 'custom' && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <label className="text-[8px] font-bold uppercase tracking-wider text-slate-400">From<input type="date" value={customDateFrom} max={customDateTo || undefined} onChange={(event) => onCustomDateFromChange(event.target.value)} className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-2 text-[9px] font-bold text-slate-600 outline-none focus:border-[#75916f]" /></label>
+                  <label className="text-[8px] font-bold uppercase tracking-wider text-slate-400">To<input type="date" value={customDateTo} min={customDateFrom || undefined} onChange={(event) => onCustomDateToChange(event.target.value)} className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-2 text-[9px] font-bold text-slate-600 outline-none focus:border-[#75916f]" /></label>
+                </div>
+              )}
             </div>
 
             <div className="mt-4 border-t border-slate-100 pt-4">
               <p className="text-[9px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
                 Order status
               </p>
-              <div className="mt-2 max-h-32 overflow-y-auto pr-1">
+              <div className={`mt-2 overflow-y-auto pr-1 ${dateRange === 'custom' ? 'max-h-20' : 'max-h-32'}`}>
                 <div className="flex flex-wrap gap-2">
-                {statuses.map((item) => (
+                {orderStatusOptions.map((item) => (
                   <button
                     key={item}
                     type="button"
@@ -235,6 +258,8 @@ function OrderFilter({
                 disabled={!activeFilterCount}
                 onClick={() => {
                   onDateRangeChange('all')
+                  onCustomDateFromChange('')
+                  onCustomDateToChange('')
                   onStatusChange('All')
                 }}
                 className="text-[9px] font-extrabold text-[#ff5c35] disabled:opacity-35"
@@ -293,16 +318,14 @@ export default function AccountPanel({
   const [wishlistQuery, setWishlistQuery] = useState('')
   const [orderQuery, setOrderQuery] = useState('')
   const [orderDateRange, setOrderDateRange] = useState('all')
+  const [orderCustomDateFrom, setOrderCustomDateFrom] = useState('')
+  const [orderCustomDateTo, setOrderCustomDateTo] = useState('')
   const [orderStatus, setOrderStatus] = useState('All')
   const [orderDetailsOpen, setOrderDetailsOpen] = useState(
     Boolean(initialOrderId && orders.some((order) => order.id === initialOrderId)),
   )
   const contentViewportRef = useRef(null)
   const contentRef = useRef(null)
-  const orderStatuses = useMemo(
-    () => ['All', ...new Set(orders.map((order) => order.status))],
-    [orders],
-  )
 
   useEffect(() => {
     if (!section) return undefined
@@ -410,9 +433,12 @@ export default function AccountPanel({
                   <OrderFilter
                     dateRange={orderDateRange}
                     onDateRangeChange={setOrderDateRange}
+                    customDateFrom={orderCustomDateFrom}
+                    onCustomDateFromChange={setOrderCustomDateFrom}
+                    customDateTo={orderCustomDateTo}
+                    onCustomDateToChange={setOrderCustomDateTo}
                     status={orderStatus}
                     onStatusChange={setOrderStatus}
-                    statuses={orderStatuses}
                   />
                 </div>
               )}
@@ -452,6 +478,10 @@ export default function AccountPanel({
                     onQueryChange={setOrderQuery}
                     dateRange={orderDateRange}
                     onDateRangeChange={setOrderDateRange}
+                    customDateFrom={orderCustomDateFrom}
+                    onCustomDateFromChange={setOrderCustomDateFrom}
+                    customDateTo={orderCustomDateTo}
+                    onCustomDateToChange={setOrderCustomDateTo}
                     status={orderStatus}
                     onStatusChange={setOrderStatus}
                     onNavigate={() =>
@@ -939,6 +969,10 @@ function OrdersSection({
   onQueryChange,
   dateRange,
   onDateRangeChange,
+  customDateFrom,
+  onCustomDateFromChange,
+  customDateTo,
+  onCustomDateToChange,
   status,
   onStatusChange,
   onNavigate,
@@ -956,13 +990,22 @@ function OrdersSection({
             .toLowerCase()
             .includes(query.toLowerCase())
         const matchesStatus = status === 'All' || order.status === status
-        const days = dateRange === 'all' ? Infinity : Number(dateRange)
+        const orderDate = new Date(`${order.date}T12:00:00`).getTime()
+        const days = Number(dateRange)
+        const fromDate = customDateFrom
+          ? new Date(`${customDateFrom}T00:00:00`).getTime()
+          : -Infinity
+        const toDate = customDateTo
+          ? new Date(`${customDateTo}T23:59:59`).getTime()
+          : Infinity
         const matchesDate =
-          days === Infinity ||
-          orderFilterNow - new Date(order.date).getTime() <= days * 86400000
+          dateRange === 'all' ||
+          (dateRange === 'custom'
+            ? orderDate >= fromDate && orderDate <= toDate
+            : orderFilterNow - orderDate <= days * 86400000)
         return matchesQuery && matchesStatus && matchesDate
       }),
-    [orders, query, status, dateRange],
+    [orders, query, status, dateRange, customDateFrom, customDateTo],
   )
 
   if (selectedOrder) {
@@ -998,6 +1041,8 @@ function OrdersSection({
               onQueryChange('')
               onStatusChange('All')
               onDateRangeChange('all')
+              onCustomDateFromChange('')
+              onCustomDateToChange('')
             }}
             className="text-[9px] font-extrabold text-[#ff5c35]"
           >
@@ -1116,10 +1161,13 @@ function OrderCard({ order, onSelect }) {
               {order.total}
             </p>
           </div>
-          <ChevronRight
-            size={18}
-            className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-[#ff5c35] sm:ml-auto sm:mt-4"
-          />
+          <span className="flex items-center gap-1 text-[9px] font-extrabold text-slate-400 transition group-hover:text-[#ff5c35] sm:mt-4 sm:justify-end">
+            View details
+            <ChevronRight
+              size={18}
+              className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-[#ff5c35]"
+            />
+          </span>
         </div>
       </div>
       <div className="flex flex-col gap-2 border-t border-slate-100 bg-white/70 px-4 py-3 text-[9px] text-slate-400 sm:flex-row sm:items-center sm:justify-between sm:px-5">
