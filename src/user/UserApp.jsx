@@ -536,6 +536,7 @@ export default function UserApp({
     notify(
       exists ? 'Address updated successfully' : 'Address saved successfully',
     )
+    return next.find((item) => item.id === savedAddress.id)
   }
 
   const handleDeleteAddress = (addressId) => {
@@ -710,12 +711,16 @@ export default function UserApp({
         hour: 'numeric',
         minute: '2-digit',
       }),
-      deliveryDate: 'Being scheduled',
+      deliveryDate:
+        checkoutDetails.delivery?.estimatedDate || 'Being scheduled',
+      deliveryOption: checkoutDetails.delivery?.name || 'Standard delivery',
       paymentStatus: 'Paid',
       shippingAddress: checkoutDetails.address || null,
-      paymentMethod: checkoutDetails.razorpay
-        ? 'Razorpay Test Mode'
-        : checkoutDetails.payment?.type || 'Online payment',
+      paymentMethod: checkoutDetails.payment?.type
+        ? `${checkoutDetails.payment.type} via Razorpay Test Mode`
+        : checkoutDetails.razorpay
+          ? 'Razorpay Test Mode'
+          : 'Online payment',
       razorpayPaymentId: checkoutDetails.razorpay?.razorpay_payment_id || '',
       razorpayOrderId: checkoutDetails.razorpay?.razorpay_order_id || '',
       items: cart.items.map(({ product, quantity }) => ({
@@ -781,6 +786,7 @@ export default function UserApp({
             savedAddresses={savedAddresses}
             savedPayments={savedPayments}
             user={user}
+            onSaveAddress={handleSaveAddress}
             onBack={closeCheckout}
             onPlaceOrder={handlePlaceOrder}
           />
