@@ -121,7 +121,12 @@ export default function AdminApp({
       )}
 
       {activeTab === 'users' && (
-        <CustomersPage customers={customers} searchQuery={searchQuery} />
+        <CustomersPage
+          customers={customers}
+          orders={orders}
+          refunds={refunds}
+          searchQuery={searchQuery}
+        />
       )}
     </AdminLayout>
   )

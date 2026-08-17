@@ -14,6 +14,8 @@ import {
   createRefundRecord,
   initializeRefundRecords,
 } from './admin/utils/payments'
+import { createCustomerFromUser } from './admin/utils/customers'
+import { formatCurrency, parsePrice } from './user/utils/currency'
 
 const initialInventory = initializeInventory(initialProducts, initialOrders)
 
@@ -27,6 +29,26 @@ function App() {
   const [refundsList, setRefundsList] = useState(() =>
     initializeRefundRecords(initialInventory.orders),
   )
+  const [customersList, setCustomersList] = useState(initialCustomers)
+
+  const handleCustomerAuthenticated = (user) => {
+    setCustomersList((current) => {
+      const email = String(user.email || '').trim().toLowerCase()
+      const existing = current.find(
+        (customer) => String(customer.email).toLowerCase() === email,
+      )
+      if (!existing) return [...current, createCustomerFromUser(user)]
+      return current.map((customer) =>
+        customer.id === existing.id
+          ? {
+              ...customer,
+              name: user.name || customer.name,
+              phone: user.phone || user.mobile || customer.phone,
+            }
+          : customer,
+      )
+    })
+  }
 
   // Handlers for Admin actions on Products
   const handleAddProduct = (newProduct) => {
@@ -171,6 +193,45 @@ function App() {
       },
       ...prev,
     ])
+    setCustomersList((current) => {
+      const email = String(newOrder.email || '').trim().toLowerCase()
+      const existing = current.find(
+        (customer) => String(customer.email).toLowerCase() === email,
+      )
+      const orderTotal = parsePrice(newOrder.total)
+      if (!existing) {
+        return [
+          ...current,
+          {
+            ...createCustomerFromUser({
+              name: newOrder.customer,
+              email,
+              phone: newOrder.shippingAddress?.phone,
+            }),
+            ordersCount: 1,
+            totalSpent: formatCurrency(orderTotal),
+            addresses: newOrder.shippingAddress
+              ? [newOrder.shippingAddress]
+              : [],
+          },
+        ]
+      }
+      return current.map((customer) =>
+        customer.id === existing.id
+          ? {
+              ...customer,
+              phone: newOrder.shippingAddress?.phone || customer.phone,
+              ordersCount: Number(customer.ordersCount || 0) + 1,
+              totalSpent: formatCurrency(
+                parsePrice(customer.totalSpent) + orderTotal,
+              ),
+              addresses: newOrder.shippingAddress
+                ? [...(customer.addresses || []), newOrder.shippingAddress]
+                : customer.addresses,
+            }
+          : customer,
+      )
+    })
   }
 
   const handleAdjustStock = (productId, adjustment) => {
@@ -193,6 +254,7 @@ function App() {
           products={storefrontProducts}
           orders={ordersList}
           onNewOrder={handleNewOrder}
+          onCustomerAuthenticated={handleCustomerAuthenticated}
           onBeSellerClick={() => setActivePortal('admin')}
         />
       ) : (
@@ -200,7 +262,7 @@ function App() {
           products={productsList}
           orders={ordersList}
           refunds={refundsList}
-          customers={initialCustomers}
+          customers={customersList}
           onAddProduct={handleAddProduct}
           onUpdateProduct={handleUpdateProduct}
           onDeleteProduct={handleDeleteProduct}

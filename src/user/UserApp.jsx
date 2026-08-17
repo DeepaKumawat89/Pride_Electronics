@@ -193,6 +193,7 @@ export default function UserApp({
   products = [],
   orders: sharedOrders = [],
   onNewOrder,
+  onCustomerAuthenticated,
   onBeSellerClick,
 }) {
   const cart = useCart(products[0], products)
@@ -540,6 +541,7 @@ export default function UserApp({
   const handleAuthSuccess = (authenticatedUser, mode) => {
     sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(authenticatedUser))
     setUser(authenticatedUser)
+    onCustomerAuthenticated?.(authenticatedUser)
     notify(
       mode === 'signup'
         ? `Welcome to Pride, ${authenticatedUser.name.split(' ')[0]}!`
@@ -571,6 +573,7 @@ export default function UserApp({
 
   const handleUpdateUser = (updatedUser) => {
     setUser(updatedUser)
+    onCustomerAuthenticated?.(updatedUser)
     try {
       sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(updatedUser))
     } catch {
