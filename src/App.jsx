@@ -102,6 +102,14 @@ function App() {
               inventoryState: transition.inventoryState,
               returnDisposition:
                 options.returnDisposition || item.returnDisposition,
+              trackingId:
+                options.trackingId === undefined
+                  ? item.trackingId
+                  : options.trackingId,
+              paymentStatus:
+                newStatus === 'Refunded'
+                  ? 'Refunded'
+                  : item.paymentStatus,
             }
           : item,
       ),

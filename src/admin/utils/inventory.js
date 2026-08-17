@@ -1,4 +1,9 @@
-const RESERVING_STATUSES = new Set(['Pending', 'Confirmed', 'Processing'])
+const RESERVING_STATUSES = new Set([
+  'Pending',
+  'Confirmed',
+  'Processing',
+  'Packed',
+])
 const FULFILLED_STATUSES = new Set([
   'Shipped',
   'Out for Delivery',

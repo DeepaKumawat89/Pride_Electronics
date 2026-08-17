@@ -5,10 +5,13 @@ import {
   Copy,
   CreditCard,
   Eye,
+  Package,
   PackageCheck,
   Printer,
   RotateCcw,
+  Tag,
   Truck,
+  XCircle,
 } from 'lucide-react'
 import SelectMenu from '../../components/ui/SelectMenu'
 import {
@@ -24,6 +27,7 @@ const statuses = [
   'Pending',
   'Confirmed',
   'Processing',
+  'Packed',
   'Shipped',
   'Out for Delivery',
   'Delivered',
@@ -44,12 +48,15 @@ export default function OrdersPage({
   const [statusFilter, setStatusFilter] = useState('All')
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [returnOrder, setReturnOrder] = useState(null)
+  const [trackingOrder, setTrackingOrder] = useState(null)
+  const [trackingId, setTrackingId] = useState('')
+  const [trackingError, setTrackingError] = useState('')
   const [copiedId, setCopiedId] = useState(null)
   const filtered = orders.filter(
     (order) =>
       (statusFilter === 'All' || order.status === statusFilter) &&
       (!searchQuery ||
-        `${order.id} ${order.customer} ${order.email}`
+        `${order.id} ${order.customer} ${order.email} ${order.trackingId || ''}`
           .toLowerCase()
           .includes(searchQuery.toLowerCase())),
   )
@@ -77,8 +84,30 @@ export default function OrdersPage({
         status,
         returnDisposition:
           options?.returnDisposition || current.returnDisposition,
+        trackingId:
+          options?.trackingId === undefined
+            ? current.trackingId
+            : options.trackingId,
+        paymentStatus:
+          status === 'Refunded' ? 'Refunded' : current.paymentStatus,
       }))
     }
+  }
+  const openTracking = (order) => {
+    setTrackingOrder(order)
+    setTrackingId(order.trackingId || '')
+    setTrackingError('')
+  }
+  const saveTracking = () => {
+    const normalizedTrackingId = trackingId.trim()
+    if (!normalizedTrackingId) {
+      setTrackingError('Enter a tracking ID before saving.')
+      return
+    }
+    updateOrderStatus(trackingOrder, trackingOrder.status, {
+      trackingId: normalizedTrackingId,
+    })
+    setTrackingOrder(null)
   }
 
   return (
@@ -291,9 +320,22 @@ export default function OrdersPage({
                 secondary={selectedOrder.email}
               />
               <InfoCard
-                label="Shipping & payment"
-                primary="Express delivery"
-                secondary={`${selectedOrder.paymentMethod || 'Online payment'} · Verified`}
+                label="Payment"
+                primary={selectedOrder.paymentMethod || 'Online payment'}
+                secondary={selectedOrder.paymentStatus || 'Verified'}
+              />
+              <InfoCard
+                label="Shipping address"
+                primary={formatShippingAddress(selectedOrder.shippingAddress)}
+                secondary={
+                  selectedOrder.shippingAddress?.phone ||
+                  'Phone number not provided'
+                }
+              />
+              <InfoCard
+                label="Tracking"
+                primary={selectedOrder.trackingId || 'Not added yet'}
+                secondary={selectedOrder.deliveryOption || 'Standard delivery'}
               />
             </div>
             <section className="mt-5 rounded-[22px] bg-white p-4 shadow-sm">
@@ -333,23 +375,68 @@ export default function OrdersPage({
                 {selectedOrder.total}
               </strong>
             </div>
-            <div className="mt-5 grid gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => updateOrderStatus(selectedOrder, 'Shipped')}
-                className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#17251c] text-[10px] font-extrabold text-white hover:bg-violet-700"
-              >
-                <Truck size={15} /> Mark shipped
-              </button>
-              <button
-                type="button"
-                onClick={() => updateOrderStatus(selectedOrder, 'Delivered')}
-                className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#397a4a] text-[10px] font-extrabold text-white hover:bg-[#2f663d]"
-              >
-                <CheckCircle2 size={15} /> Mark delivered
-              </button>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <OrderActions
+                order={selectedOrder}
+                onStatusChange={(status) =>
+                  updateOrderStatus(selectedOrder, status)
+                }
+                onAddTracking={() => openTracking(selectedOrder)}
+              />
             </div>
           </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={Boolean(trackingOrder)}
+        onClose={() => setTrackingOrder(null)}
+        eyebrow="Delivery tracking"
+        title={trackingOrder ? `Tracking for ${trackingOrder.id}` : ''}
+        maxWidth="max-w-lg"
+      >
+        {trackingOrder && (
+          <form
+            className="space-y-4 p-5 sm:p-7"
+            onSubmit={(event) => {
+              event.preventDefault()
+              saveTracking()
+            }}
+          >
+            <label className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-500">
+              Tracking ID
+              <input
+                autoFocus
+                value={trackingId}
+                onChange={(event) => {
+                  setTrackingId(event.target.value)
+                  setTrackingError('')
+                }}
+                placeholder="Enter courier tracking ID"
+                className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-xs font-semibold normal-case tracking-normal text-slate-800 outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#75916f]/10"
+              />
+            </label>
+            {trackingError && (
+              <p className="text-[9px] font-bold text-red-600">
+                {trackingError}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setTrackingOrder(null)}
+                className="rounded-full border border-slate-200 px-4 py-2.5 text-[9px] font-extrabold text-slate-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="rounded-full bg-[#397a4a] px-4 py-2.5 text-[9px] font-extrabold text-white hover:bg-[#2f663d]"
+              >
+                Save tracking ID
+              </button>
+            </div>
+          </form>
         )}
       </Modal>
 
@@ -410,4 +497,104 @@ function InfoCard({ label, primary, secondary }) {
       <span className="mt-1 block text-[8px] text-slate-500">{secondary}</span>
     </div>
   )
+}
+
+const nextStatusAction = {
+  Pending: { status: 'Confirmed', label: 'Confirm order', icon: CheckCircle2 },
+  Confirmed: { status: 'Processing', label: 'Process order', icon: PackageCheck },
+  Processing: { status: 'Packed', label: 'Mark packed', icon: Package },
+  Packed: { status: 'Shipped', label: 'Ship order', icon: Truck },
+  Shipped: {
+    status: 'Out for Delivery',
+    label: 'Out for delivery',
+    icon: Truck,
+  },
+  'Out for Delivery': {
+    status: 'Delivered',
+    label: 'Mark delivered',
+    icon: CheckCircle2,
+  },
+}
+
+function OrderActions({ order, onStatusChange, onAddTracking }) {
+  const nextAction = nextStatusAction[order.status]
+  const NextIcon = nextAction?.icon
+  const canTrack = ['Packed', 'Shipped', 'Out for Delivery'].includes(
+    order.status,
+  )
+  const canCancel = [
+    'Pending',
+    'Confirmed',
+    'Processing',
+    'Packed',
+    'Shipped',
+    'Out for Delivery',
+  ].includes(order.status)
+  const canRefund = ['Delivered', 'Cancelled', 'Returned'].includes(
+    order.status,
+  )
+
+  return (
+    <>
+      {nextAction && (
+        <button
+          type="button"
+          onClick={() => onStatusChange(nextAction.status)}
+          className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#397a4a] px-4 text-[10px] font-extrabold text-white hover:bg-[#2f663d]"
+        >
+          <NextIcon size={15} /> {nextAction.label}
+        </button>
+      )}
+      {order.status === 'Shipped' && (
+        <button
+          type="button"
+          onClick={() => onStatusChange('Delivered')}
+          className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#17251c] px-4 text-[10px] font-extrabold text-white hover:bg-violet-700"
+        >
+          <CheckCircle2 size={15} /> Mark delivered
+        </button>
+      )}
+      {canTrack && (
+        <button
+          type="button"
+          onClick={onAddTracking}
+          className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-white px-4 text-[10px] font-extrabold text-slate-600 shadow-sm hover:text-[#397a4a]"
+        >
+          <Tag size={15} />
+          {order.trackingId ? 'Update tracking ID' : 'Add tracking ID'}
+        </button>
+      )}
+      {canCancel && (
+        <button
+          type="button"
+          onClick={() => onStatusChange('Cancelled')}
+          className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-red-50 px-4 text-[10px] font-extrabold text-red-600 hover:bg-red-100"
+        >
+          <XCircle size={15} /> Cancel order
+        </button>
+      )}
+      {canRefund && (
+        <button
+          type="button"
+          onClick={() => onStatusChange('Refunded')}
+          className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#17251c] px-4 text-[10px] font-extrabold text-white hover:bg-violet-700"
+        >
+          <RotateCcw size={15} /> Refund order
+        </button>
+      )}
+    </>
+  )
+}
+
+function formatShippingAddress(address) {
+  if (!address) return 'Address not provided'
+  if (typeof address === 'string') return address
+  const street =
+    address.line1 ||
+    [address.houseFlat, address.street, address.area]
+      .filter(Boolean)
+      .join(', ')
+  return [street, address.city, address.state, address.pincode]
+    .filter(Boolean)
+    .join(', ')
 }
