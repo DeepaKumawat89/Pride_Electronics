@@ -60,6 +60,7 @@ const orderStatusOptions = [
   'Pending',
   'Confirmed',
   'Processing',
+  'Packed',
   'Shipped',
   'Out for Delivery',
   'Delivered',
@@ -978,9 +979,10 @@ function OrdersSection({
   onNavigate,
   onDetailsChange,
 }) {
-  const [selectedOrder, setSelectedOrder] = useState(
-    () => orders.find((order) => order.id === initialOrderId) || null,
+  const [selectedOrderId, setSelectedOrderId] = useState(
+    () => orders.find((order) => order.id === initialOrderId)?.id || null,
   )
+  const selectedOrder = orders.find((order) => order.id === selectedOrderId)
   const filtered = useMemo(
     () =>
       orders.filter((order) => {
@@ -1019,7 +1021,7 @@ function OrdersSection({
           savedAddresses[0]
         }
         onBack={() => {
-          setSelectedOrder(null)
+          setSelectedOrderId(null)
           onDetailsChange(false)
           onNavigate()
         }}
@@ -1058,7 +1060,7 @@ function OrdersSection({
               key={order.id}
               order={order}
               onSelect={() => {
-                setSelectedOrder(order)
+                setSelectedOrderId(order.id)
                 onDetailsChange(true)
                 onNavigate()
               }}

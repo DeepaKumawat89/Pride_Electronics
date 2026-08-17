@@ -163,8 +163,35 @@ function createSampleOrders(products) {
   })
 }
 
+function mergeUserOrders(localOrders, sharedOrders, user) {
+  if (!sharedOrders.length) return localOrders
+  const sharedById = new Map(
+    sharedOrders.map((order) => [String(order.id), order]),
+  )
+  const localIds = new Set(localOrders.map((order) => String(order.id)))
+  const syncedOrders = localOrders.map((order) => {
+    const sharedOrder = sharedById.get(String(order.id))
+    return sharedOrder ? { ...order, ...sharedOrder } : order
+  })
+  if (!user) return syncedOrders
+
+  const userEmail = String(user.email || '').trim().toLowerCase()
+  const userName = String(user.name || '').trim().toLowerCase()
+  const ownedOrders = sharedOrders.filter((order) => {
+    if (localIds.has(String(order.id))) return false
+    const orderEmail = String(order.email || '').trim().toLowerCase()
+    const orderCustomer = String(order.customer || '').trim().toLowerCase()
+    return (
+      (userEmail && orderEmail === userEmail) ||
+      (!orderEmail && userName && orderCustomer === userName)
+    )
+  })
+  return [...ownedOrders, ...syncedOrders]
+}
+
 export default function UserApp({
   products = [],
+  orders: sharedOrders = [],
   onNewOrder,
   onBeSellerClick,
 }) {
@@ -186,7 +213,7 @@ export default function UserApp({
   const [accountSection, setAccountSection] = useState(null)
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [user, setUser] = useState(getSessionUser)
-  const [orders, setOrders] = useState(() => createSampleOrders(products))
+  const [localOrders, setOrders] = useState(() => createSampleOrders(products))
   const [savedAddresses, setSavedAddresses] = useState(() =>
     getSessionItems(ADDRESS_SESSION_KEY, defaultAddresses).map(normalizeAddress),
   )
@@ -201,6 +228,10 @@ export default function UserApp({
   const productHistoryActive = useRef(false)
   const checkoutHistoryActive = useRef(false)
   const orderSuccessHistoryActive = useRef(false)
+  const orders = useMemo(
+    () => mergeUserOrders(localOrders, sharedOrders, user),
+    [localOrders, sharedOrders, user],
+  )
 
   useEffect(() => {
     const handleHistoryBack = () => {

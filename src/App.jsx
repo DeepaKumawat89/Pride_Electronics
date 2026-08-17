@@ -96,7 +96,10 @@ function App() {
     setOrdersList((prev) =>
       prev.map((item) =>
         item.id === orderId
-          ? {
+          ? (() => {
+              const statusChanged = item.status !== newStatus
+              const updatedAt = new Date()
+              return {
               ...item,
               status: newStatus,
               inventoryState: transition.inventoryState,
@@ -110,7 +113,22 @@ function App() {
                 newStatus === 'Refunded'
                   ? 'Refunded'
                   : item.paymentStatus,
-            }
+                statusHistory: statusChanged
+                  ? [
+                      ...(item.statusHistory || []),
+                      {
+                        status: newStatus,
+                        timestamp: updatedAt.toISOString(),
+                        date: updatedAt.toISOString().slice(0, 10),
+                        time: updatedAt.toLocaleTimeString('en-IN', {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        }),
+                      },
+                    ]
+                  : item.statusHistory,
+              }
+            })()
           : item,
       ),
     )
@@ -125,7 +143,18 @@ function App() {
       ...current,
     ])
     setOrdersList((prev) => [
-      { ...newOrder, inventoryState: 'reserved' },
+      {
+        ...newOrder,
+        inventoryState: 'reserved',
+        statusHistory: newOrder.statusHistory || [
+          {
+            status: newOrder.status || 'Pending',
+            timestamp: new Date().toISOString(),
+            date: newOrder.date,
+            time: newOrder.orderTime,
+          },
+        ],
+      },
       ...prev,
     ])
   }
@@ -148,6 +177,7 @@ function App() {
       {activePortal === 'user' ? (
         <UserApp
           products={storefrontProducts}
+          orders={ordersList}
           onNewOrder={handleNewOrder}
           onBeSellerClick={() => setActivePortal('admin')}
         />

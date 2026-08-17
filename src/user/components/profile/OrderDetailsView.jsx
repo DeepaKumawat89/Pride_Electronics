@@ -64,28 +64,68 @@ const getFinancials = (order) => {
 }
 
 const getProgress = (order) => {
+  const statusMoment = (status, fallbackDate, fallbackTime) => {
+    const event = [...(order.statusHistory || [])]
+      .reverse()
+      .find((item) => item.status === status)
+    return {
+      date: event?.date || fallbackDate,
+      time: event?.time || fallbackTime,
+    }
+  }
+  const orderedEvent = [...(order.statusHistory || [])]
+    .reverse()
+    .find((item) => ['Pending', 'Ordered'].includes(item.status))
+  const ordered = {
+    date: orderedEvent?.date || order.date,
+    time: orderedEvent?.time || order.orderTime,
+  }
+  const confirmed = statusMoment(
+    'Confirmed',
+    order.confirmedDate,
+    order.confirmedTime,
+  )
+  const processing = statusMoment(
+    'Processing',
+    order.processingDate,
+    order.processingTime,
+  )
+  const packed = statusMoment('Packed', order.packedDate, order.packedTime)
+  const shipped = statusMoment(
+    'Shipped',
+    order.shippedDate,
+    order.shippedTime,
+  )
+  const outForDelivery = statusMoment(
+    'Out for Delivery',
+    order.outForDeliveryDate,
+    order.outForDeliveryTime,
+  )
+  const delivered = statusMoment(
+    'Delivered',
+    order.status === 'Delivered' ? order.deliveryDate : undefined,
+    order.deliveredTime,
+  )
   const stages = [
-    { label: 'Ordered', date: order.date, time: order.orderTime },
-    { label: 'Confirmed', date: order.confirmedDate, time: order.confirmedTime },
-    { label: 'Shipped', date: order.shippedDate, time: order.shippedTime },
-    {
-      label: 'Out for Delivery',
-      date: order.outForDeliveryDate,
-      time: order.outForDeliveryTime,
-    },
-    {
-      label: 'Delivered',
-      date: order.status === 'Delivered' ? order.deliveryDate : undefined,
-      time: order.deliveredTime,
-    },
+    { label: 'Ordered', ...ordered },
+    { label: 'Confirmed', ...confirmed },
+    { label: 'Processing', ...processing },
+    { label: 'Packed', ...packed },
+    { label: 'Shipped', ...shipped },
+    { label: 'Out for Delivery', ...outForDelivery },
+    { label: 'Delivered', ...delivered },
   ]
   const stageByStatus = {
     Pending: 0,
     Ordered: 0,
     Confirmed: 1,
-    Shipped: 2,
-    'Out for Delivery': 3,
-    Delivered: 4,
+    Processing: 2,
+    Packed: 3,
+    Shipped: 4,
+    'Out for Delivery': 5,
+    Delivered: 6,
+    Returned: 6,
+    Refunded: 6,
   }
   return { stages, current: stageByStatus[order.status] ?? 0 }
 }
@@ -270,6 +310,9 @@ export default function OrderDetailsView({ order, user, address, onBack }) {
               <div><dt className="text-slate-400">Payment status</dt><dd className="mt-0.5 font-bold text-emerald-700">{order.paymentStatus || 'Paid'}</dd></div>
               {(order.razorpayPaymentId || order.transactionId) && (
                 <div><dt className="text-slate-400">Transaction ID</dt><dd className="mt-0.5 break-all font-mono text-[9px] font-semibold text-slate-600">{order.razorpayPaymentId || order.transactionId}</dd></div>
+              )}
+              {order.trackingId && (
+                <div><dt className="text-slate-400">Tracking ID</dt><dd className="mt-0.5 break-all font-mono text-[9px] font-semibold text-slate-600">{order.trackingId}</dd></div>
               )}
             </dl>
           </div>
