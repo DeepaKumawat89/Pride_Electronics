@@ -6,6 +6,7 @@ import CustomersPage from './pages/CustomersPage'
 import DashboardPage from './pages/DashboardPage'
 import OrdersPage from './pages/OrdersPage'
 import ProductsPage from './pages/ProductsPage'
+import InventoryPage from './pages/InventoryPage'
 
 export default function AdminApp({
   products = [],
@@ -14,6 +15,8 @@ export default function AdminApp({
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
+  inventoryHistory = [],
+  onAdjustStock,
   onUpdateOrderStatus,
   onSwitchToStore,
 }) {
@@ -95,6 +98,15 @@ export default function AdminApp({
           orders={orders}
           onUpdateOrderStatus={onUpdateOrderStatus}
           searchQuery={searchQuery}
+        />
+      )}
+
+      {activeTab === 'inventory' && (
+        <InventoryPage
+          products={products}
+          history={inventoryHistory}
+          searchQuery={searchQuery}
+          onAdjustStock={onAdjustStock}
         />
       )}
 

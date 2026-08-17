@@ -16,6 +16,7 @@ import {
   moneyValue,
   statusTone,
 } from '../utils/adminFormatters'
+import { getAvailableStock } from '../utils/inventory'
 
 const chartBars = [42, 58, 49, 72, 64, 88, 76, 93, 82, 100, 91, 108]
 
@@ -30,7 +31,8 @@ export default function DashboardPage({
     482900,
   )
   const lowStock = products.filter(
-    (product) => product.stock <= Number(product.lowStockThreshold ?? 10),
+    (product) =>
+      getAvailableStock(product) <= Number(product.lowStockThreshold ?? 10),
   )
   const pending = orders.filter((order) =>
     ['Pending', 'Processing'].includes(order.status),
@@ -264,7 +266,7 @@ export default function DashboardPage({
                     </span>
                   </span>
                   <b className="text-[9px] text-red-600">
-                    {product.stock} left
+                    {getAvailableStock(product)} available
                   </b>
                 </button>
               ))}

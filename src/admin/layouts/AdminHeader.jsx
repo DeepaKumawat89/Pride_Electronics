@@ -3,6 +3,7 @@ import { Bell, Menu, Search, X } from 'lucide-react'
 const titles = {
   dashboard: ['Dashboard', 'Monitor your store performance'],
   products: ['Product catalog', 'Manage products and inventory'],
+  inventory: ['Inventory management', 'Control stock and reservations'],
   orders: ['Order fulfillment', 'Track and process customer orders'],
   users: ['Customer accounts', 'Understand your growing audience'],
 }

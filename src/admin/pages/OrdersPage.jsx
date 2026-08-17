@@ -7,6 +7,7 @@ import {
   Eye,
   PackageCheck,
   Printer,
+  RotateCcw,
   Truck,
 } from 'lucide-react'
 import SelectMenu from '../../components/ui/SelectMenu'
@@ -18,7 +19,18 @@ import {
 } from '../components/ui/AdminUI'
 import { getInitials, statusTone } from '../utils/adminFormatters'
 
-const statuses = ['All', 'Pending', 'Processing', 'Shipped', 'Delivered']
+const statuses = [
+  'All',
+  'Pending',
+  'Confirmed',
+  'Processing',
+  'Shipped',
+  'Out for Delivery',
+  'Delivered',
+  'Cancelled',
+  'Returned',
+  'Refunded',
+]
 const statusOptions = statuses.slice(1).map((status) => ({
   value: status,
   label: status,
@@ -31,6 +43,7 @@ export default function OrdersPage({
 }) {
   const [statusFilter, setStatusFilter] = useState('All')
   const [selectedOrder, setSelectedOrder] = useState(null)
+  const [returnOrder, setReturnOrder] = useState(null)
   const [copiedId, setCopiedId] = useState(null)
   const filtered = orders.filter(
     (order) =>
@@ -52,9 +65,20 @@ export default function OrdersPage({
     setCopiedId(text)
     setTimeout(() => setCopiedId(null), 1800)
   }
-  const updateSelected = (status) => {
-    onUpdateOrderStatus(selectedOrder.id, status)
-    setSelectedOrder((current) => ({ ...current, status }))
+  const updateOrderStatus = (order, status, options) => {
+    if (status === 'Returned' && !options?.returnDisposition) {
+      setReturnOrder(order)
+      return
+    }
+    onUpdateOrderStatus(order.id, status, options)
+    if (selectedOrder?.id === order.id) {
+      setSelectedOrder((current) => ({
+        ...current,
+        status,
+        returnDisposition:
+          options?.returnDisposition || current.returnDisposition,
+      }))
+    }
   }
 
   return (
@@ -207,9 +231,7 @@ export default function OrdersPage({
                     <td className="px-5 py-4">
                       <SelectMenu
                         value={order.status}
-                        onChange={(status) =>
-                          onUpdateOrderStatus(order.id, status)
-                        }
+                        onChange={(status) => updateOrderStatus(order, status)}
                         options={statusOptions}
                         ariaLabel={`Update status for order ${order.id}`}
                         className="w-32"
@@ -314,19 +336,61 @@ export default function OrdersPage({
             <div className="mt-5 grid gap-2 sm:grid-cols-2">
               <button
                 type="button"
-                onClick={() => updateSelected('Shipped')}
+                onClick={() => updateOrderStatus(selectedOrder, 'Shipped')}
                 className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#17251c] text-[10px] font-extrabold text-white hover:bg-violet-700"
               >
                 <Truck size={15} /> Mark shipped
               </button>
               <button
                 type="button"
-                onClick={() => updateSelected('Delivered')}
+                onClick={() => updateOrderStatus(selectedOrder, 'Delivered')}
                 className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#397a4a] text-[10px] font-extrabold text-white hover:bg-[#2f663d]"
               >
                 <CheckCircle2 size={15} /> Mark delivered
               </button>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={Boolean(returnOrder)}
+        onClose={() => setReturnOrder(null)}
+        eyebrow="Return inventory decision"
+        title={returnOrder ? `Return ${returnOrder.id}` : ''}
+        maxWidth="max-w-lg"
+      >
+        {returnOrder && (
+          <div className="space-y-4 p-5 sm:p-7">
+            <p className="text-xs leading-6 text-slate-500">
+              Choose whether the accepted return should go back into sellable stock or be recorded as damaged.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                updateOrderStatus(returnOrder, 'Returned', {
+                  returnDisposition: 'restock',
+                })
+                setReturnOrder(null)
+              }}
+              className="flex w-full items-center gap-3 rounded-[20px] bg-[#e4f1e7] p-4 text-left text-[#397a4a] transition hover:bg-[#d5e9d9]"
+            >
+              <span className="grid size-10 place-items-center rounded-2xl bg-white"><RotateCcw size={17} /></span>
+              <span><strong className="block text-xs">Restock returned items</strong><span className="mt-1 block text-[9px] text-slate-500">Add the returned quantity back to available inventory.</span></span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                updateOrderStatus(returnOrder, 'Returned', {
+                  returnDisposition: 'damaged',
+                })
+                setReturnOrder(null)
+              }}
+              className="flex w-full items-center gap-3 rounded-[20px] bg-red-50 p-4 text-left text-red-600 transition hover:bg-red-100"
+            >
+              <span className="grid size-10 place-items-center rounded-2xl bg-white"><PackageCheck size={17} /></span>
+              <span><strong className="block text-xs">Damaged / Don't restock</strong><span className="mt-1 block text-[9px] text-slate-500">Record the return without adding it to sellable inventory.</span></span>
+            </button>
           </div>
         )}
       </Modal>
