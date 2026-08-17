@@ -10,6 +10,10 @@ import {
   reserveOrderStock,
   transitionOrderInventory,
 } from './admin/utils/inventory'
+import {
+  createRefundRecord,
+  initializeRefundRecords,
+} from './admin/utils/payments'
 
 const initialInventory = initializeInventory(initialProducts, initialOrders)
 
@@ -19,6 +23,9 @@ function App() {
   const [ordersList, setOrdersList] = useState(initialInventory.orders)
   const [inventoryHistory, setInventoryHistory] = useState(
     initialInventory.history,
+  )
+  const [refundsList, setRefundsList] = useState(() =>
+    initializeRefundRecords(initialInventory.orders),
   )
 
   // Handlers for Admin actions on Products
@@ -89,6 +96,13 @@ function App() {
       options.returnDisposition,
     )
     setProductsList(transition.products)
+    if (newStatus === 'Refunded') {
+      setRefundsList((current) =>
+        current.some((refund) => refund.orderId === orderId)
+          ? current
+          : [createRefundRecord(order), ...current],
+      )
+    }
     setInventoryHistory((current) => [
       ...transition.history.reverse(),
       ...current,
@@ -185,6 +199,7 @@ function App() {
         <AdminApp
           products={productsList}
           orders={ordersList}
+          refunds={refundsList}
           customers={initialCustomers}
           onAddProduct={handleAddProduct}
           onUpdateProduct={handleUpdateProduct}

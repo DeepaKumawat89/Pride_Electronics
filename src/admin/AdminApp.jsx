@@ -7,10 +7,12 @@ import DashboardPage from './pages/DashboardPage'
 import OrdersPage from './pages/OrdersPage'
 import ProductsPage from './pages/ProductsPage'
 import InventoryPage from './pages/InventoryPage'
+import PaymentsPage from './pages/PaymentsPage'
 
 export default function AdminApp({
   products = [],
   orders = [],
+  refunds = [],
   customers = [],
   onAddProduct,
   onUpdateProduct,
@@ -107,6 +109,14 @@ export default function AdminApp({
           history={inventoryHistory}
           searchQuery={searchQuery}
           onAdjustStock={onAdjustStock}
+        />
+      )}
+
+      {activeTab === 'payments' && (
+        <PaymentsPage
+          orders={orders}
+          refunds={refunds}
+          searchQuery={searchQuery}
         />
       )}
 

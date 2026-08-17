@@ -4,6 +4,7 @@ const titles = {
   dashboard: ['Dashboard', 'Monitor your store performance'],
   products: ['Product catalog', 'Manage products and inventory'],
   inventory: ['Inventory management', 'Control stock and reservations'],
+  payments: ['Payment management', 'Reconcile transactions and refunds'],
   orders: ['Order fulfillment', 'Track and process customer orders'],
   users: ['Customer accounts', 'Understand your growing audience'],
 }

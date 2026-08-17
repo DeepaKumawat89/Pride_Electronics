@@ -2,6 +2,7 @@ import {
   LayoutDashboard,
   LogOut,
   Package,
+  CreditCard,
   ShoppingBag,
   Store,
   Users,
@@ -34,6 +35,12 @@ const navItems = [
     label: 'Inventory',
     caption: 'Stock & reservations',
     icon: Warehouse,
+  },
+  {
+    id: 'payments',
+    label: 'Payments',
+    caption: 'Transactions & refunds',
+    icon: CreditCard,
   },
   {
     id: 'users',
