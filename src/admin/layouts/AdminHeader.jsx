@@ -5,6 +5,7 @@ const titles = {
   products: ['Product catalog', 'Manage products and inventory'],
   inventory: ['Inventory management', 'Control stock and reservations'],
   payments: ['Payment management', 'Reconcile transactions and refunds'],
+  returns: ['Return management', 'Review returns, pickups, and resolutions'],
   orders: ['Order fulfillment', 'Track and process customer orders'],
   users: ['Customer accounts', 'Understand your growing audience'],
 }

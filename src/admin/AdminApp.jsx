@@ -8,11 +8,13 @@ import OrdersPage from './pages/OrdersPage'
 import ProductsPage from './pages/ProductsPage'
 import InventoryPage from './pages/InventoryPage'
 import PaymentsPage from './pages/PaymentsPage'
+import ReturnsPage from './pages/ReturnsPage'
 
 export default function AdminApp({
   products = [],
   orders = [],
   refunds = [],
+  returns = [],
   customers = [],
   onAddProduct,
   onUpdateProduct,
@@ -20,6 +22,7 @@ export default function AdminApp({
   inventoryHistory = [],
   onAdjustStock,
   onUpdateOrderStatus,
+  onUpdateReturn,
   onSwitchToStore,
 }) {
   const { admin, loading, login, logout } = useAdminAuth()
@@ -120,11 +123,20 @@ export default function AdminApp({
         />
       )}
 
+      {activeTab === 'returns' && (
+        <ReturnsPage
+          returns={returns}
+          searchQuery={searchQuery}
+          onUpdateReturn={onUpdateReturn}
+        />
+      )}
+
       {activeTab === 'users' && (
         <CustomersPage
           customers={customers}
           orders={orders}
           refunds={refunds}
+          returns={returns}
           searchQuery={searchQuery}
         />
       )}

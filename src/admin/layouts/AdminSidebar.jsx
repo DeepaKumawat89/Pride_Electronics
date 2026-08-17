@@ -3,6 +3,7 @@ import {
   LogOut,
   Package,
   CreditCard,
+  RotateCcw,
   ShoppingBag,
   Store,
   Users,
@@ -41,6 +42,12 @@ const navItems = [
     label: 'Payments',
     caption: 'Transactions & refunds',
     icon: CreditCard,
+  },
+  {
+    id: 'returns',
+    label: 'Returns',
+    caption: 'Review & resolution',
+    icon: RotateCcw,
   },
   {
     id: 'users',

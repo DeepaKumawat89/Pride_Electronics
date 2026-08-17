@@ -287,6 +287,7 @@ export default function AccountPanel({
   user,
   wishlistProducts,
   orders,
+  returnRequests,
   initialOrderId,
   cartItems,
   savedCartItems,
@@ -306,6 +307,7 @@ export default function AccountPanel({
   onRemoveSavedItem,
   onDismissUnavailableCartItems,
   onCheckout,
+  onCreateReturnRequest,
   onLogout,
   onSaveAddress,
   onDeleteAddress,
@@ -472,6 +474,7 @@ export default function AccountPanel({
                 {section === 'orders' && (
                   <OrdersSection
                     orders={orders}
+                    returnRequests={returnRequests}
                     initialOrderId={initialOrderId}
                     user={user}
                     savedAddresses={savedAddresses}
@@ -489,6 +492,7 @@ export default function AccountPanel({
                       contentViewportRef.current?.scrollTo({ top: 0 })
                     }
                     onDetailsChange={setOrderDetailsOpen}
+                    onCreateReturnRequest={onCreateReturnRequest}
                   />
                 )}
                 {section === 'cart' && (
@@ -963,6 +967,7 @@ function WishlistSection({ products, query, onRemove, onView, onAdd }) {
 
 function OrdersSection({
   orders,
+  returnRequests,
   initialOrderId,
   user,
   savedAddresses,
@@ -978,6 +983,7 @@ function OrdersSection({
   onStatusChange,
   onNavigate,
   onDetailsChange,
+  onCreateReturnRequest,
 }) {
   const [selectedOrderId, setSelectedOrderId] = useState(
     () => orders.find((order) => order.id === initialOrderId)?.id || null,
@@ -1014,6 +1020,10 @@ function OrdersSection({
     return (
       <OrderDetailsView
         order={selectedOrder}
+        returnRequest={returnRequests.find(
+          (request) => request.orderId === selectedOrder.id,
+        )}
+        onSubmitReturn={onCreateReturnRequest}
         user={user}
         address={
           selectedOrder.shippingAddress ||

@@ -25,12 +25,20 @@ const uniqueAddresses = (addresses) => {
   })
 }
 
-export function buildCustomerProfile(customer, orders = [], refunds = []) {
+export function buildCustomerProfile(
+  customer,
+  orders = [],
+  refunds = [],
+  returnRequests = [],
+) {
   const customerOrders = orders
     .filter((order) => matchesCustomer(customer, order))
     .sort((a, b) => new Date(b.date) - new Date(a.date))
   const linkedRefunds = refunds.filter((refund) =>
     customerOrders.some((order) => order.id === refund.orderId),
+  )
+  const linkedReturns = returnRequests.filter((request) =>
+    customerOrders.some((order) => order.id === request.orderId),
   )
   const orderSpend = customerOrders.reduce(
     (sum, order) => sum + parsePrice(order.total),
@@ -59,11 +67,14 @@ export function buildCustomerProfile(customer, orders = [], refunds = []) {
     wishlist: customer.wishlist || customer.wishlistProducts || [],
     addresses,
     reviews: customer.reviews || [],
-    returns: customerOrders.filter(
-      (order) =>
-        ['Returned', 'Refunded'].includes(order.status) ||
-        order.returnDisposition,
-    ),
+    returns:
+      linkedReturns.length > 0
+        ? linkedReturns
+        : customerOrders.filter(
+            (order) =>
+              ['Returned', 'Refunded'].includes(order.status) ||
+              order.returnDisposition,
+          ),
     payments: createPaymentRecords(customerOrders, linkedRefunds),
   }
 }

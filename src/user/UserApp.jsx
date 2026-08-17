@@ -192,7 +192,9 @@ function mergeUserOrders(localOrders, sharedOrders, user) {
 export default function UserApp({
   products = [],
   orders: sharedOrders = [],
+  returns: returnRequests = [],
   onNewOrder,
+  onCreateReturnRequest,
   onCustomerAuthenticated,
   onBeSellerClick,
 }) {
@@ -957,6 +959,7 @@ export default function UserApp({
             likedIds.includes(product.id),
           )}
           orders={orders}
+          returnRequests={returnRequests}
           initialOrderId={orderToViewId}
           cartItems={cart.items}
           savedCartItems={cart.savedItems}
@@ -982,6 +985,7 @@ export default function UserApp({
           onDeletePayment={handleDeletePayment}
           onSetDefaultPayment={handleDefaultPayment}
           onCheckout={handleAccountCheckout}
+          onCreateReturnRequest={onCreateReturnRequest}
           onLogout={handleLogout}
         />
       )}

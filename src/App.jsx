@@ -15,6 +15,11 @@ import {
   initializeRefundRecords,
 } from './admin/utils/payments'
 import { createCustomerFromUser } from './admin/utils/customers'
+import {
+  createReturnRequest,
+  initializeReturnRequests,
+  transitionReturnRequest,
+} from './admin/utils/returns'
 import { formatCurrency, parsePrice } from './user/utils/currency'
 
 const initialInventory = initializeInventory(initialProducts, initialOrders)
@@ -30,6 +35,9 @@ function App() {
     initializeRefundRecords(initialInventory.orders),
   )
   const [customersList, setCustomersList] = useState(initialCustomers)
+  const [returnsList, setReturnsList] = useState(() =>
+    initializeReturnRequests(initialInventory.orders),
+  )
 
   const handleCustomerAuthenticated = (user) => {
     setCustomersList((current) => {
@@ -170,6 +178,44 @@ function App() {
     )
   }
 
+  const handleCreateReturnRequest = (orderId, details) => {
+    const order = ordersList.find((item) => item.id === orderId)
+    if (!order) return null
+    const request = createReturnRequest(order, details)
+    setReturnsList((current) =>
+      current.some(
+        (item) =>
+          item.orderId === orderId &&
+          !['Completed', 'Rejected'].includes(item.status),
+      )
+        ? current
+        : [request, ...current],
+    )
+    return request
+  }
+
+  const handleUpdateReturn = (requestId, action, options = {}) => {
+    const currentRequest = returnsList.find((item) => item.id === requestId)
+    if (!currentRequest) return
+    const result = transitionReturnRequest(
+      returnsList,
+      requestId,
+      action,
+      options,
+    )
+    if (result.error) return
+    setReturnsList(result.requests)
+    if (action === 'inspect') {
+      handleUpdateOrderStatus(currentRequest.orderId, 'Returned', {
+        returnDisposition:
+          options.inspectionResult === 'Sellable' ? 'restock' : 'damaged',
+      })
+    }
+    if (action === 'complete_refund') {
+      handleUpdateOrderStatus(currentRequest.orderId, 'Refunded')
+    }
+  }
+
   // Handler for User checkout order placement
   const handleNewOrder = (newOrder) => {
     const reservation = reserveOrderStock(productsList, newOrder)
@@ -253,7 +299,9 @@ function App() {
         <UserApp
           products={storefrontProducts}
           orders={ordersList}
+          returns={returnsList}
           onNewOrder={handleNewOrder}
+          onCreateReturnRequest={handleCreateReturnRequest}
           onCustomerAuthenticated={handleCustomerAuthenticated}
           onBeSellerClick={() => setActivePortal('admin')}
         />
@@ -262,6 +310,7 @@ function App() {
           products={productsList}
           orders={ordersList}
           refunds={refundsList}
+          returns={returnsList}
           customers={customersList}
           onAddProduct={handleAddProduct}
           onUpdateProduct={handleUpdateProduct}
@@ -269,6 +318,7 @@ function App() {
           inventoryHistory={inventoryHistory}
           onAdjustStock={handleAdjustStock}
           onUpdateOrderStatus={handleUpdateOrderStatus}
+          onUpdateReturn={handleUpdateReturn}
           onSwitchToStore={() => setActivePortal('user')}
         />
       )}

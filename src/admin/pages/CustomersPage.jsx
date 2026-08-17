@@ -36,6 +36,7 @@ export default function CustomersPage({
   customers = [],
   orders = [],
   refunds = [],
+  returns = [],
   searchQuery = '',
 }) {
   const [copiedId, setCopiedId] = useState(null)
@@ -44,9 +45,9 @@ export default function CustomersPage({
   const profiles = useMemo(
     () =>
       customers.map((customer) =>
-        buildCustomerProfile(customer, orders, refunds),
+        buildCustomerProfile(customer, orders, refunds, returns),
       ),
-    [customers, orders, refunds],
+    [customers, orders, refunds, returns],
   )
   const selectedCustomer = profiles.find(
     (customer) => customer.id === selectedCustomerId,
@@ -162,7 +163,7 @@ function ProfileContent({ customer, section }) {
   if (!items.length) return <ProfileEmpty section={section} />
   if (section === 'orders') return <ProfileList items={items} render={(order) => <><Detail label="Order ID" value={order.id} /><Detail label="Date" value={order.date} /><Detail label="Amount" value={order.total} /><Detail label="Status" value={order.status} /></>} />
   if (section === 'payments') return <ProfileList items={items} render={(payment) => <><Detail label="Transaction ID" value={payment.id} /><Detail label="Order ID" value={payment.orderId} /><Detail label="Amount" value={payment.amount} /><Detail label="Status" value={payment.status} /></>} />
-  if (section === 'returns') return <ProfileList items={items} render={(order) => <><Detail label="Order ID" value={order.id} /><Detail label="Status" value={order.status} /><Detail label="Disposition" value={order.returnDisposition || 'Refunded'} /><Detail label="Amount" value={order.total} /></>} />
+  if (section === 'returns') return <ProfileList items={items} render={(item) => <><Detail label="Return / Order ID" value={item.orderId ? `${item.id} · ${item.orderId}` : item.id} /><Detail label="Status" value={item.status} /><Detail label="Resolution" value={item.resolution || item.returnDisposition || 'Not decided'} /><Detail label="Amount" value={item.amount || item.total} /></>} />
   if (section === 'addresses') return <ProfileList items={items} render={(address) => <><Detail label="Type" value={address.label || address.type || 'Address'} /><Detail label="Name" value={address.fullName || customer.name} /><Detail label="Phone" value={address.phone} /><Detail label="Address" value={formatAddress(address)} /></>} />
   if (section === 'reviews') return <ProfileList items={items} render={(review) => <><Detail label="Product" value={review.productName || review.product} /><Detail label="Rating" value={review.rating ? `${review.rating} / 5` : 'Not rated'} /><Detail label="Date" value={review.date} /><Detail label="Review" value={review.text || review.review} /></>} />
   return <ProfileList items={items} render={(product) => <><Detail label="Product" value={product.name || product.productName} /><Detail label="Category" value={product.category} /><Detail label="Price" value={product.price} /><Detail label="Stock" value={product.stock == null ? 'Not available' : product.stock > 0 ? 'In stock' : 'Out of stock'} /></>} />

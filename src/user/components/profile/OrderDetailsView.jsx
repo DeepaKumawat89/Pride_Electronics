@@ -5,6 +5,7 @@ import {
   CreditCard,
   Download,
   Headphones,
+  ImagePlus,
   MapPin,
   Package,
   ReceiptText,
@@ -163,13 +164,21 @@ function SummaryRow({ label, value, muted = false }) {
   )
 }
 
-export default function OrderDetailsView({ order, user, address, onBack }) {
+export default function OrderDetailsView({
+  order,
+  user,
+  address,
+  returnRequest,
+  onSubmitReturn,
+  onBack,
+}) {
   const [rating, setRating] = useState(0)
   const [review, setReview] = useState('')
   const [submittedFeedback, setSubmittedFeedback] = useState(null)
   const [activeAction, setActiveAction] = useState('')
   const [returnReason, setReturnReason] = useState('')
   const [returnSubmitted, setReturnSubmitted] = useState(false)
+  const [returnImages, setReturnImages] = useState([])
   const [invoiceDownloading, setInvoiceDownloading] = useState(false)
   const financials = getFinancials(order)
   const delivery = getAddressParts(address)
@@ -182,6 +191,23 @@ export default function OrderDetailsView({ order, user, address, onBack }) {
   const returnEligible =
     order.returnEligible ??
     (delivered && daysSinceDelivery >= 0 && daysSinceDelivery <= 30)
+  const submittedReturn = returnRequest || returnSubmitted
+
+  const selectReturnImages = async (event) => {
+    const files = [...event.target.files].slice(0, 3)
+    const images = await Promise.all(
+      files.map(
+        (file) =>
+          new Promise((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve({ name: file.name, url: reader.result })
+            reader.onerror = () => resolve(null)
+            reader.readAsDataURL(file)
+          }),
+      ),
+    )
+    setReturnImages(images.filter(Boolean))
+  }
 
   const downloadInvoice = async () => {
     setInvoiceDownloading(true)
@@ -386,15 +412,19 @@ export default function OrderDetailsView({ order, user, address, onBack }) {
 
           {activeAction === 'Return Product' && returnEligible && (
             <div className="mt-5 border-t border-slate-100 pt-5">
-              {returnSubmitted ? (
-                <p className="flex items-center gap-2 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={15} /> Return request submitted for “{returnReason}”. Pickup details will be shared after review.</p>
+              {submittedReturn ? (
+                <p className="flex items-center gap-2 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={15} /> Return request {returnRequest?.status || 'submitted'} for “{returnRequest?.reason || returnReason}”. Pickup details will be shared after review.</p>
               ) : (
-                <form onSubmit={(event) => { event.preventDefault(); if (returnReason) setReturnSubmitted(true) }} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <form onSubmit={(event) => { event.preventDefault(); if (returnReason) { onSubmitReturn?.(order.id, { reason: returnReason, images: returnImages }); setReturnSubmitted(true) } }} className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
                   <label className="min-w-0 flex-1 text-[9px] font-extrabold uppercase tracking-wider text-slate-500">Return reason
                     <select required value={returnReason} onChange={(event) => setReturnReason(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold normal-case tracking-normal text-slate-700 outline-none focus:border-[#75916f]">
                       <option value="">Select a reason</option>
                       {RETURN_REASONS.map((reason) => <option key={reason}>{reason}</option>)}
                     </select>
+                  </label>
+                  <label className="min-w-0 text-[9px] font-extrabold uppercase tracking-wider text-slate-500">Product images
+                    <span className="mt-2 flex h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold normal-case tracking-normal text-slate-500"><ImagePlus size={14} />{returnImages.length ? `${returnImages.length} image(s) selected` : 'Attach up to 3 images'}</span>
+                    <input type="file" accept="image/*" multiple onChange={selectReturnImages} className="sr-only" />
                   </label>
                   <button className="h-11 rounded-full bg-[#253329] px-5 text-[10px] font-extrabold text-white">Initiate Return</button>
                 </form>
