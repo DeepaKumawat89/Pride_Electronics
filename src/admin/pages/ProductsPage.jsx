@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import {
   Check,
+  Copy,
   Edit2,
+  Eye,
+  EyeOff,
   LayoutGrid,
   List,
   Plus,
@@ -21,6 +24,8 @@ const categoryOptions = [
 
 const emptyProduct = {
   name: '',
+  sku: '',
+  brand: 'Pride',
   category: 'Components & DIY',
   price: '₹12,499',
   originalPrice: '₹15,999',
@@ -29,11 +34,40 @@ const emptyProduct = {
   reviewsCount: 15,
   badge: 'NEW',
   discount: '20% OFF',
+  taxRate: 18,
+  lowStockThreshold: 10,
+  enabled: true,
   image:
     'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1000&q=80',
   description:
     'High performance electronic hardware component built for precision engineering.',
   specs: 'High Speed Processing, USB-C 3.2, Low Power Consumption',
+  additionalImages: '',
+  videos: '',
+  modelNumber: '',
+  warranty: '2-year limited manufacturer warranty',
+  weight: '',
+  dimensions: '',
+  deliveryInformation: 'Standard delivery available across serviceable PIN codes.',
+}
+
+const parseList = (value) =>
+  String(value || '')
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+const createDuplicateProduct = (product) => {
+  const duplicateId = Date.now()
+  return {
+    ...product,
+    id: duplicateId,
+    name: `${product.name} Copy`,
+    sku: `${product.sku || `PE-${product.id}`}-COPY-${String(duplicateId).slice(-4)}`,
+    createdAt: new Date().toISOString().slice(0, 10),
+    featured: false,
+    enabled: false,
+  }
 }
 
 export default function ProductsPage({
@@ -56,7 +90,7 @@ export default function ProductsPage({
     (product) =>
       (category === 'All' || product.category === category) &&
       (!searchQuery ||
-        `${product.name} ${product.category}`
+        `${product.name} ${product.sku || ''} ${product.brand || ''} ${product.category}`
           .toLowerCase()
           .includes(searchQuery.toLowerCase())),
   )
@@ -68,7 +102,15 @@ export default function ProductsPage({
   }
   const openEdit = (product) => {
     setEditingProduct(product)
-    setForm({ ...product, specs: product.specs?.join(', ') || '' })
+    setForm({
+      ...emptyProduct,
+      ...product,
+      specs: product.specs?.join(', ') || '',
+      additionalImages: (product.images || [])
+        .filter((image) => image !== product.image)
+        .join('\n'),
+      videos: (product.videos || []).join('\n'),
+    })
     setModalOpen(true)
   }
   const closeModal = () => {
@@ -77,23 +119,34 @@ export default function ProductsPage({
   }
   const submit = (event) => {
     event.preventDefault()
+    const productId = editingProduct?.id || Date.now()
     const nextProduct = {
       ...editingProduct,
       ...form,
-      id: editingProduct?.id || Date.now(),
+      id: productId,
       stock: Number(form.stock),
+      lowStockThreshold: Number(form.lowStockThreshold),
+      taxRate: Number(form.taxRate),
       rating: Number(form.rating),
       reviewsCount: Number(form.reviewsCount),
-      specs: String(form.specs)
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean),
+      sku: form.sku.trim() || `PE-${String(productId).slice(-6)}`,
+      specs: parseList(form.specs),
+      images: [form.image, ...parseList(form.additionalImages)].filter(
+        (image, index, allImages) => image && allImages.indexOf(image) === index,
+      ),
+      videos: parseList(form.videos),
       featured: editingProduct?.featured ?? true,
+      enabled: form.enabled !== false,
     }
     if (editingProduct) onUpdateProduct(nextProduct)
     else onAddProduct(nextProduct)
     closeModal()
   }
+  const duplicateProduct = (product) => {
+    onAddProduct(createDuplicateProduct(product))
+  }
+  const toggleProduct = (product) =>
+    onUpdateProduct({ ...product, enabled: product.enabled === false })
   const field = (key) => ({
     value: form[key],
     onChange: (event) =>
@@ -104,8 +157,8 @@ export default function ProductsPage({
     <div className="space-y-6">
       <PageHeader
         eyebrow="Catalog management"
-        title={`${filtered.length} products in view`}
-        description="Create products, update prices and specifications, and keep inventory healthy across the storefront."
+        title="All Products"
+        description={`${filtered.length} products in view. Create products, update prices and specifications, and keep inventory healthy across the storefront.`}
         actions={
           <>
             <div className="flex rounded-full border border-slate-200 bg-white p-1 shadow-sm">
@@ -166,6 +219,8 @@ export default function ProductsPage({
               key={product.id}
               product={product}
               onEdit={() => openEdit(product)}
+              onDuplicate={() => duplicateProduct(product)}
+              onToggle={() => toggleProduct(product)}
               onDelete={() => onDeleteProduct(product.id)}
             />
           ))}
@@ -199,6 +254,8 @@ export default function ProductsPage({
                     key={product.id}
                     product={product}
                     onEdit={() => openEdit(product)}
+                    onDuplicate={() => duplicateProduct(product)}
+                    onToggle={() => toggleProduct(product)}
                     onDelete={() => onDeleteProduct(product.id)}
                   />
                 ))}
@@ -247,8 +304,15 @@ export default function ProductsPage({
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
+            <FormSectionTitle title="Basic Information" />
             <FormField label="Product name" wide>
               <input required {...field('name')} className={inputClass} />
+            </FormField>
+            <FormField label="SKU">
+              <input {...field('sku')} placeholder="Generated if left blank" className={inputClass} />
+            </FormField>
+            <FormField label="Brand">
+              <input required {...field('brand')} className={inputClass} />
             </FormField>
             <FormField label="Category">
               <SelectMenu
@@ -261,12 +325,32 @@ export default function ProductsPage({
                 buttonClassName={inputClass}
               />
             </FormField>
+            <FormField label="Badge">
+              <input {...field('badge')} className={inputClass} />
+            </FormField>
+            <FormField label="Description" wide>
+              <textarea
+                required
+                {...field('description')}
+                className={`${inputClass} min-h-24 py-3`}
+              />
+            </FormField>
+
+            <FormSectionTitle title="Pricing" />
+            <FormField label="MRP">
+              <input required {...field('originalPrice')} className={inputClass} />
+            </FormField>
             <FormField label="Selling price">
               <input required {...field('price')} className={inputClass} />
             </FormField>
-            <FormField label="Original price">
-              <input {...field('originalPrice')} className={inputClass} />
+            <FormField label="Discount">
+              <input {...field('discount')} className={inputClass} />
             </FormField>
+            <FormField label="Tax / GST (%)">
+              <input required type="number" min="0" max="100" step="0.01" {...field('taxRate')} className={inputClass} />
+            </FormField>
+
+            <FormSectionTitle title="Inventory" />
             <FormField label="Stock">
               <input
                 required
@@ -276,6 +360,11 @@ export default function ProductsPage({
                 className={inputClass}
               />
             </FormField>
+            <FormField label="Low stock threshold">
+              <input required type="number" min="0" {...field('lowStockThreshold')} className={inputClass} />
+            </FormField>
+
+            <FormSectionTitle title="Catalog Display" />
             <FormField label="Rating">
               <input
                 required
@@ -287,26 +376,48 @@ export default function ProductsPage({
                 className={inputClass}
               />
             </FormField>
-            <FormField label="Badge">
-              <input {...field('badge')} className={inputClass} />
+            <FormField label="Review count">
+              <input required type="number" min="0" {...field('reviewsCount')} className={inputClass} />
             </FormField>
-            <FormField label="Discount">
-              <input {...field('discount')} className={inputClass} />
-            </FormField>
-            <FormField label="Image URL" wide>
+
+            <FormSectionTitle title="Media" />
+            <FormField label="Main image URL" wide>
               <input required {...field('image')} className={inputClass} />
             </FormField>
-            <FormField label="Description" wide>
+            <FormField label="Additional image URLs" wide>
               <textarea
-                {...field('description')}
-                className={`${inputClass} min-h-24 py-3`}
+                {...field('additionalImages')}
+                placeholder="One URL per line"
+                className={`${inputClass} min-h-20 py-3`}
               />
+            </FormField>
+            <FormField label="Video URLs" wide>
+              <textarea {...field('videos')} placeholder="One URL per line" className={`${inputClass} min-h-20 py-3`} />
+            </FormField>
+
+            <FormSectionTitle title="Specifications" />
+            <FormField label="Model">
+              <input {...field('modelNumber')} className={inputClass} />
+            </FormField>
+            <FormField label="Warranty">
+              <input {...field('warranty')} className={inputClass} />
             </FormField>
             <FormField label="Technical specifications (comma separated)" wide>
               <textarea
                 {...field('specs')}
                 className={`${inputClass} min-h-20 py-3`}
               />
+            </FormField>
+
+            <FormSectionTitle title="Shipping" />
+            <FormField label="Weight">
+              <input {...field('weight')} placeholder="For example, 1.2 kg" className={inputClass} />
+            </FormField>
+            <FormField label="Dimensions">
+              <input {...field('dimensions')} placeholder="L × W × H" className={inputClass} />
+            </FormField>
+            <FormField label="Delivery information" wide>
+              <textarea {...field('deliveryInformation')} className={`${inputClass} min-h-20 py-3`} />
             </FormField>
             <button
               type="submit"
@@ -324,6 +435,15 @@ export default function ProductsPage({
 
 const inputClass =
   'h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-xs outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#75916f]/10'
+function FormSectionTitle({ title }) {
+  return (
+    <div className="border-b border-slate-200 pb-2 pt-2 sm:col-span-2">
+      <h4 className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#397a4a]">
+        {title}
+      </h4>
+    </div>
+  )
+}
 function FormField({ label, wide, children }) {
   return (
     <label className={wide ? 'sm:col-span-2' : ''}>
@@ -345,11 +465,12 @@ function ViewButton({ active, onClick, icon: Icon, label }) {
     </button>
   )
 }
-function ProductRow({ product, onEdit, onDelete }) {
+function ProductRow({ product, onEdit, onDuplicate, onToggle, onDelete }) {
+  const lowStockThreshold = Number(product.lowStockThreshold ?? 10)
   const stockTone =
-    product.stock < 10
+    product.stock <= lowStockThreshold
       ? 'bg-red-500'
-      : product.stock < 25
+      : product.stock <= lowStockThreshold * 2
         ? 'bg-amber-500'
         : 'bg-emerald-500'
   return (
@@ -365,9 +486,15 @@ function ProductRow({ product, onEdit, onDelete }) {
             <strong className="block max-w-64 truncate text-[10px] text-slate-900">
               {product.name}
             </strong>
-            <span className="mt-1 inline-flex rounded-full bg-[#e4f1e7] px-2 py-1 text-[7px] font-extrabold text-[#397a4a]">
-              {product.badge}
+            <span className="mt-0.5 block text-[8px] font-semibold text-slate-400">
+              {product.sku || `PE-${String(product.id).padStart(4, '0')}`}
             </span>
+            <div className="mt-1 flex flex-wrap gap-1">
+              <span className="inline-flex rounded-full bg-[#e4f1e7] px-2 py-1 text-[7px] font-extrabold text-[#397a4a]">
+                {product.badge}
+              </span>
+              {product.enabled === false && <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-[7px] font-extrabold text-slate-500">Disabled</span>}
+            </div>
           </div>
         </div>
       </td>
@@ -386,11 +513,14 @@ function ProductRow({ product, onEdit, onDelete }) {
         <p className="text-[9px] font-extrabold text-slate-700">
           {product.stock} units
         </p>
+        <p className="mt-0.5 text-[7px] font-semibold text-slate-400">
+          Low stock at {lowStockThreshold}
+        </p>
         <div className="mt-2 h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
           <div
             className={`h-full rounded-full ${stockTone}`}
             style={{
-              width: `${Math.min(100, Math.max(5, product.stock * 2))}%`,
+              width: `${Math.min(100, Math.max(5, (product.stock / Math.max(1, lowStockThreshold * 3)) * 100))}%`,
             }}
           />
         </div>
@@ -407,13 +537,20 @@ function ProductRow({ product, onEdit, onDelete }) {
       <td className="px-5 py-4">
         <div className="flex justify-end gap-2">
           <IconButton icon={Edit2} label="Edit" onClick={onEdit} />
+          <IconButton icon={Copy} label="Duplicate" onClick={onDuplicate} />
+          <IconButton
+            icon={product.enabled === false ? Eye : EyeOff}
+            label={product.enabled === false ? 'Enable' : 'Disable'}
+            onClick={onToggle}
+          />
           <IconButton icon={Trash2} label="Delete" onClick={onDelete} danger />
         </div>
       </td>
     </tr>
   )
 }
-function ProductGridCard({ product, onEdit, onDelete }) {
+function ProductGridCard({ product, onEdit, onDuplicate, onToggle, onDelete }) {
+  const lowStock = product.stock <= Number(product.lowStockThreshold ?? 10)
   return (
     <article className="group overflow-hidden rounded-[26px] border border-slate-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
       <div className="relative overflow-hidden">
@@ -423,17 +560,17 @@ function ProductGridCard({ product, onEdit, onDelete }) {
           className="aspect-[4/3] size-full object-cover transition duration-500 group-hover:scale-105"
         />
         <span className="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-1.5 text-[8px] font-extrabold text-slate-700 backdrop-blur">
-          {product.badge}
+          {product.enabled === false ? 'DISABLED' : product.badge}
         </span>
         <span
-          className={`absolute bottom-3 right-3 rounded-full bg-white/90 px-2.5 py-1.5 text-[8px] font-extrabold backdrop-blur ${product.stock < 10 ? 'text-red-600' : 'text-emerald-700'}`}
+          className={`absolute bottom-3 right-3 rounded-full bg-white/90 px-2.5 py-1.5 text-[8px] font-extrabold backdrop-blur ${lowStock ? 'text-red-600' : 'text-emerald-700'}`}
         >
           {product.stock} in stock
         </span>
       </div>
       <div className="p-4">
         <p className="text-[8px] font-extrabold uppercase tracking-wider text-[#397a4a]">
-          {product.category}
+          {product.category} · {product.sku || `PE-${String(product.id).padStart(4, '0')}`}
         </p>
         <h3 className="mt-2 min-h-10 line-clamp-2 text-xs font-extrabold leading-5 text-slate-900">
           {product.name}
@@ -452,6 +589,22 @@ function ProductGridCard({ product, onEdit, onDelete }) {
             className="flex h-10 flex-1 items-center justify-center gap-2 rounded-full bg-[#17251c] text-[9px] font-extrabold text-white hover:bg-[#397a4a]"
           >
             <Edit2 size={13} /> Edit
+          </button>
+          <button
+            type="button"
+            onClick={onDuplicate}
+            className="grid size-10 place-items-center rounded-full bg-slate-100 text-slate-600 hover:bg-[#397a4a] hover:text-white"
+            aria-label="Duplicate product"
+          >
+            <Copy size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={onToggle}
+            className="grid size-10 place-items-center rounded-full bg-slate-100 text-slate-600 hover:bg-[#397a4a] hover:text-white"
+            aria-label={product.enabled === false ? 'Enable product' : 'Disable product'}
+          >
+            {product.enabled === false ? <Eye size={14} /> : <EyeOff size={14} />}
           </button>
           <button
             type="button"

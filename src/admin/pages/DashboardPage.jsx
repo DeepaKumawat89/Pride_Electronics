@@ -29,7 +29,9 @@ export default function DashboardPage({
     (sum, order) => sum + moneyValue(order.total),
     482900,
   )
-  const lowStock = products.filter((product) => product.stock < 10)
+  const lowStock = products.filter(
+    (product) => product.stock <= Number(product.lowStockThreshold ?? 10),
+  )
   const pending = orders.filter((order) =>
     ['Pending', 'Processing'].includes(order.status),
   ).length

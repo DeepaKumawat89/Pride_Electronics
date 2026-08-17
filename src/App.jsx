@@ -41,7 +41,7 @@ function App() {
       {/* Render Selected View */}
       {activePortal === 'user' ? (
         <UserApp
-          products={productsList}
+          products={productsList.filter((product) => product.enabled !== false)}
           onNewOrder={handleNewOrder}
           onBeSellerClick={() => setActivePortal('admin')}
         />
