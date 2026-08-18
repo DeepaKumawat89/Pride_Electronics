@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   CreditCard,
   Download,
+  Eye,
   Headphones,
   ImagePlus,
   MapPin,
@@ -15,7 +16,8 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { formatCurrency, parsePrice } from '../../utils/currency'
-import downloadInvoicePdf from './InvoicePdf'
+import downloadInvoicePdf, { viewInvoicePdf } from './InvoicePdf'
+import { initialInvoiceSettings } from '../../../data/invoice'
 
 const RETURN_REASONS = [
   'Product is damaged',
@@ -50,17 +52,29 @@ const getAddressParts = (address) => {
   }
 }
 
-const getFinancials = (order) => {
+const getFinancials = (order, taxSettings) => {
   const itemTotal = (order.items || []).reduce(
     (sum, item) => sum + parsePrice(item.price) * Number(item.qty || 1),
     0,
   )
   const discount = parsePrice(order.discount || 0)
   const delivery = parsePrice(order.deliveryCharges || 0)
-  const total = parsePrice(order.total) || Math.max(0, itemTotal - discount + delivery)
-  const tax =
-    parsePrice(order.taxAmount || 0) ||
-    Math.round((Math.max(0, itemTotal - discount) * 18) / 118)
+  const taxRate = taxSettings.gstEnabled === false
+    ? 0
+    : Number(taxSettings.defaultRate || 0)
+  const taxableValue = Math.max(0, itemTotal - discount)
+  const tax = taxSettings.gstEnabled === false
+    ? 0
+    : parsePrice(order.taxAmount || 0) ||
+      Math.round(
+        taxSettings.pricesIncludeTax
+          ? (taxableValue * taxRate) / (100 + taxRate || 100)
+          : (taxableValue * taxRate) / 100,
+      )
+  const total = parsePrice(order.total) || Math.max(
+    0,
+    itemTotal - discount + delivery + (taxSettings.pricesIncludeTax ? 0 : tax),
+  )
   return { itemTotal, discount, delivery, tax, total }
 }
 
@@ -171,6 +185,7 @@ export default function OrderDetailsView({
   returnRequest,
   onSubmitReturn,
   onBack,
+  invoiceSettings = initialInvoiceSettings,
 }) {
   const [rating, setRating] = useState(0)
   const [review, setReview] = useState('')
@@ -180,7 +195,8 @@ export default function OrderDetailsView({
   const [returnSubmitted, setReturnSubmitted] = useState(false)
   const [returnImages, setReturnImages] = useState([])
   const [invoiceDownloading, setInvoiceDownloading] = useState(false)
-  const financials = getFinancials(order)
+  const [invoiceViewing, setInvoiceViewing] = useState(false)
+  const financials = getFinancials(order, invoiceSettings.tax)
   const delivery = getAddressParts(address)
   const progress = getProgress(order)
   const delivered = order.status === 'Delivered'
@@ -212,9 +228,18 @@ export default function OrderDetailsView({
   const downloadInvoice = async () => {
     setInvoiceDownloading(true)
     try {
-      await downloadInvoicePdf(order, user, address)
+      await downloadInvoicePdf(order, user, address, invoiceSettings)
     } finally {
       setInvoiceDownloading(false)
+    }
+  }
+
+  const viewInvoice = async () => {
+    setInvoiceViewing(true)
+    try {
+      await viewInvoicePdf(order, user, address, invoiceSettings)
+    } finally {
+      setInvoiceViewing(false)
     }
   }
 
@@ -351,7 +376,7 @@ export default function OrderDetailsView({
               <SummaryRow label="Item total" value={formatCurrency(financials.itemTotal)} />
               <SummaryRow label="Discount" value={`− ${formatCurrency(financials.discount)}`} muted />
               <SummaryRow label="Delivery charges" value={financials.delivery ? formatCurrency(financials.delivery) : 'FREE'} muted={!financials.delivery} />
-              <SummaryRow label="GST / Taxes (included)" value={formatCurrency(financials.tax)} />
+              <SummaryRow label={`GST / Taxes (${invoiceSettings.tax.pricesIncludeTax ? 'included' : 'added'})`} value={formatCurrency(financials.tax)} />
               <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-4">
                 <strong className="text-sm text-slate-900">Grand Total</strong>
                 <strong className="text-xl text-[#253329]">{formatCurrency(financials.total)}</strong>
@@ -446,10 +471,16 @@ export default function OrderDetailsView({
             <SectionTitle icon={ReceiptText}>Invoice</SectionTitle>
             <p className="mt-1 text-[9px] text-slate-400">Your professional PDF invoice is available for this order.</p>
           </div>
-          <button type="button" onClick={downloadInvoice} disabled={invoiceDownloading} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#253329] px-5 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35] disabled:opacity-60">
-            <Download size={15} />
-            {invoiceDownloading ? 'Preparing PDF...' : 'Download Invoice'}
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button type="button" onClick={viewInvoice} disabled={invoiceViewing} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 text-[10px] font-extrabold text-slate-600 transition hover:border-[#75916f] hover:text-[#253329] disabled:opacity-60">
+              <Eye size={15} />
+              {invoiceViewing ? 'Preparing Preview...' : 'View Invoice'}
+            </button>
+            <button type="button" onClick={downloadInvoice} disabled={invoiceDownloading} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#253329] px-5 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35] disabled:opacity-60">
+              <Download size={15} />
+              {invoiceDownloading ? 'Preparing PDF...' : 'Download Invoice'}
+            </button>
+          </div>
         </div>
       </section>
     </div>

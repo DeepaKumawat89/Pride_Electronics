@@ -22,6 +22,7 @@ import {
 } from '../../utils/address'
 import { loadRazorpayCheckout, postRazorpayApi } from '../../utils/razorpay'
 import { initialShippingSettings } from '../../../data/shipping'
+import { initialInvoiceSettings } from '../../../data/invoice'
 
 const createPaymentReceipt = () => `pride_${Date.now()}`
 
@@ -56,7 +57,7 @@ const razorpayMethodFor = (payment) => {
   return 'upi'
 }
 
-export default function CheckoutPage({ items = [], initialCouponCode = '', coupons = [], savedAddresses = [], savedPayments = [], user, onSaveAddress, onBack, onPlaceOrder, shippingSettings = initialShippingSettings }) {
+export default function CheckoutPage({ items = [], initialCouponCode = '', coupons = [], savedAddresses = [], savedPayments = [], user, onSaveAddress, onBack, onPlaceOrder, shippingSettings = initialShippingSettings, taxSettings = initialInvoiceSettings.tax }) {
   const defaultAddress = savedAddresses.find((address) => address.isDefault) || savedAddresses[0]
   const defaultPayment = savedPayments.find((payment) => payment.isDefault) || savedPayments[0]
   const [addressId, setAddressId] = useState(defaultAddress?.id || '')
@@ -83,6 +84,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
     coupons,
     user?.email,
     shippingSettings,
+    taxSettings,
   )
   const formDeliveryAvailability = getPinDeliveryAvailability(
     addressForm.pincode,
@@ -400,7 +402,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
               <SummaryRow label="Discount" value={`−${formatCurrency(pricing.productDiscount)}`} accent={pricing.productDiscount > 0} />
               <SummaryRow label="Coupon discount" value={`−${formatCurrency(pricing.couponDiscount)}`} accent={pricing.couponDiscount > 0} />
               <SummaryRow label="Shipping" value={selectedDelivery.charge ? formatCurrency(selectedDelivery.charge) : 'Free'} accent={!selectedDelivery.charge} />
-              <SummaryRow label="GST / Tax" value={`${formatCurrency(pricing.tax)} included`} />
+              <SummaryRow label="GST / Tax" value={`${formatCurrency(pricing.tax)} ${taxSettings.pricesIncludeTax ? 'included' : 'added'}`} />
             </div>
             <div className="my-5 h-px bg-slate-100" />
             <div className="flex items-end justify-between gap-4"><span className="text-sm font-bold text-slate-800">Total amount</span><strong className="text-2xl font-extrabold tracking-tight text-slate-950">{formatCurrency(checkoutTotal)}</strong></div>

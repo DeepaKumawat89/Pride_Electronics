@@ -11,6 +11,7 @@ const titles = {
   users: ['Customer accounts', 'Understand your growing audience'],
   offers: ['Offers & banners', 'Manage storefront promotions'],
   shipping: ['Shipping management', 'Configure delivery and courier operations'],
+  'tax-invoice': ['Tax & invoice', 'Configure GST, business details, and numbering'],
 }
 
 export default function AdminHeader({

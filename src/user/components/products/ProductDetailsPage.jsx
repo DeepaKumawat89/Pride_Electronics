@@ -29,6 +29,7 @@ import {
 import ProductCard from './ProductCard'
 import ProductReviews from './ProductReviews'
 import { initialShippingSettings } from '../../../data/shipping'
+import { initialInvoiceSettings } from '../../../data/invoice'
 
 function getSpecificationMeta(spec) {
   const value = spec.toLowerCase()
@@ -38,7 +39,7 @@ function getSpecificationMeta(spec) {
   return { title: 'Features & Compatibility', description: 'Design details, supported features, and everyday usability', icon: Settings2 }
 }
 
-export default function ProductDetailsPage({ product, relatedProducts = [], deliveryAddress, likedIds = [], onBack, onLike, onAdd, onBuyNow, onViewProduct, onViewAllReviews, shippingSettings = initialShippingSettings }) {
+export default function ProductDetailsPage({ product, relatedProducts = [], deliveryAddress, likedIds = [], onBack, onLike, onAdd, onBuyNow, onViewProduct, onViewAllReviews, shippingSettings = initialShippingSettings, taxSettings = initialInvoiceSettings.tax }) {
   const [activeImageIndex, setActiveImageIndex] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [expandedSpec, setExpandedSpec] = useState(null)
@@ -140,7 +141,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                 <strong className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">{formatCurrency(parsePrice(product.price))}</strong>
                 <span className="text-sm font-semibold text-slate-400 line-through">{formatCurrency(parsePrice(product.originalPrice))}</span>
                 <span className="rounded-full bg-[#e4f1e7] px-2.5 py-1 text-[10px] font-extrabold text-[#366643]">{product.discount}</span>
-                <p className="w-full text-[10px] font-bold text-slate-400">Inclusive of all taxes</p>
+                <p className="w-full text-[10px] font-bold text-slate-400">{taxSettings.pricesIncludeTax ? 'Inclusive of all taxes' : 'Taxes calculated at checkout'}</p>
               </div>
 
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">

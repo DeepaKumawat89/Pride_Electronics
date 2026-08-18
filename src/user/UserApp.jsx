@@ -24,6 +24,7 @@ import {
 } from './utils/productSearch'
 import { sortCatalogProducts } from './utils/catalog'
 import { normalizeAddress } from './utils/address'
+import { createInvoiceNumber, initialInvoiceSettings } from '../data/invoice'
 
 const AUTH_SESSION_KEY = 'pride_authenticated_user'
 const ADDRESS_SESSION_KEY = 'pride_saved_addresses'
@@ -196,6 +197,7 @@ export default function UserApp({
   coupons = [],
   marketingSettings,
   shippingSettings,
+  invoiceSettings = initialInvoiceSettings,
   onNewOrder,
   onCreateReturnRequest,
   onCustomerAuthenticated,
@@ -797,6 +799,7 @@ export default function UserApp({
       deliveryCharges: checkoutDetails.shipping || 0,
       taxAmount: checkoutDetails.tax || 0,
       couponCode: checkoutDetails.couponCode || '',
+      invoiceNumber: createInvoiceNumber(invoiceSettings, new Date()),
       itemsCount: cart.count,
       status: 'Pending',
       orderTime: new Date().toLocaleTimeString('en-IN', {
@@ -831,6 +834,14 @@ export default function UserApp({
         image: product.image,
         qty: quantity,
         price: product.price,
+        unitPrice: product.originalPrice || product.price,
+        discount:
+          Math.max(
+            0,
+            parsePrice(product.originalPrice || product.price) -
+              parsePrice(product.price),
+          ) * quantity,
+        taxRate: product.taxRate ?? invoiceSettings.tax.defaultRate,
       })),
     }
     onNewOrder?.(order)
@@ -891,6 +902,7 @@ export default function UserApp({
             onBack={closeCheckout}
             onPlaceOrder={handlePlaceOrder}
             shippingSettings={shippingSettings}
+            taxSettings={invoiceSettings.tax}
           />
         ) : selectedProduct && reviewsOpen ? (
           <ProductReviewsPage product={selectedProduct} onBack={closeReviews} />
@@ -911,6 +923,7 @@ export default function UserApp({
             onViewProduct={navigateToProduct}
             onViewAllReviews={navigateToReviews}
             shippingSettings={shippingSettings}
+            taxSettings={invoiceSettings.tax}
           />
         ) : (
           <>
@@ -1002,6 +1015,7 @@ export default function UserApp({
           onCreateReturnRequest={onCreateReturnRequest}
           onLogout={handleLogout}
           shippingSettings={shippingSettings}
+          invoiceSettings={invoiceSettings}
         />
       )}
       {logoutConfirmOpen && (

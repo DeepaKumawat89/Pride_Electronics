@@ -1,13 +1,8 @@
 import { parsePrice } from '../../utils/currency'
-
-const BUSINESS = {
-  name: 'PRIDE ELECTRONICS',
-  address: '42 Silicon Avenue, Hinjawadi, Pune, Maharashtra 411057',
-  phone: '+91 98765 43210',
-  email: 'support@prideelectronics.in',
-  website: 'www.prideelectronics.in',
-  gstin: '27AABCP1234F1Z5',
-}
+import {
+  createInvoiceNumber,
+  initialInvoiceSettings,
+} from '../../../data/invoice'
 
 const COLORS = {
   dark: [37, 51, 41],
@@ -135,7 +130,7 @@ const numberToIndianWords = (value) => {
   return `Indian Rupees ${parts.join(' ')} Only`
 }
 
-const createInvoiceData = (order) => {
+const createInvoiceData = (order, taxSettings) => {
   const items = (order.items || []).map((item, index) => {
     const quantity = Number(item.qty || 1)
     const unitPrice = parsePrice(item.unitPrice ?? item.price)
@@ -163,9 +158,21 @@ const createInvoiceData = (order) => {
   )
   const taxableValue = Math.max(0, subtotal - discount)
   const explicitTax = parsePrice(order.taxAmount ?? order.tax ?? 0)
-  const tax = explicitTax || Math.round((taxableValue * 18) / 118)
+  const defaultTaxRate = taxSettings.gstEnabled === false
+    ? 0
+    : Number(taxSettings.defaultRate || 0)
+  const tax = taxSettings.gstEnabled === false
+    ? 0
+    : explicitTax || Math.round(
+        taxSettings.pricesIncludeTax
+          ? (taxableValue * defaultTaxRate) / (100 + defaultTaxRate || 100)
+          : (taxableValue * defaultTaxRate) / 100,
+      )
   const total =
-    parsePrice(order.total) || Math.max(0, subtotal - discount + delivery)
+    parsePrice(order.total) || Math.max(
+      0,
+      subtotal - discount + delivery + (taxSettings.pricesIncludeTax ? 0 : tax),
+    )
 
   let allocatedDiscount = 0
   const detailedItems = items.map((item, index) => {
@@ -178,7 +185,14 @@ const createInvoiceData = (order) => {
     allocatedDiscount += proportionalDiscount
     const lineDiscount = item.directDiscount + proportionalDiscount
     const lineAmount = Math.max(0, item.gross - lineDiscount)
-    const lineTax = Math.round((lineAmount * 18) / 118)
+    const lineTaxRate = taxSettings.gstEnabled === false
+      ? 0
+      : Number(item.taxRate ?? defaultTaxRate)
+    const lineTax = Math.round(
+      taxSettings.pricesIncludeTax
+        ? (lineAmount * lineTaxRate) / (100 + lineTaxRate || 100)
+        : (lineAmount * lineTaxRate) / 100,
+    )
     return { ...item, lineDiscount, lineAmount, lineTax }
   })
 
@@ -192,7 +206,12 @@ const createInvoiceData = (order) => {
   }
 }
 
-export default async function downloadInvoicePdf(order, customer, address) {
+async function createInvoicePdfDocument(
+  order,
+  customer,
+  address,
+  invoiceSettings = initialInvoiceSettings,
+) {
   const { jsPDF } = await import('jspdf')
   const pdf = new jsPDF({
     orientation: 'portrait',
@@ -201,10 +220,22 @@ export default async function downloadInvoicePdf(order, customer, address) {
     compress: true,
     putOnlyUsedFonts: true,
   })
-  const data = createInvoiceData(order)
+  const business = invoiceSettings.business || initialInvoiceSettings.business
+  const taxSettings = invoiceSettings.tax || initialInvoiceSettings.tax
+  const data = createInvoiceData(order, taxSettings)
+  const legacySequence = Number(String(order.id || '').replace(/\D/g, ''))
   const invoiceNumber =
     order.invoiceNumber ||
-    `PE-${String(order.date || '').replaceAll('-', '')}-${String(order.id).replace(/^ORD-?/, '')}`
+    createInvoiceNumber(
+      {
+        ...invoiceSettings,
+        numbering: {
+          ...invoiceSettings.numbering,
+          nextNumber: legacySequence || invoiceSettings.numbering.nextNumber,
+        },
+      },
+      order.date,
+    )
   const billing = normalizeParty(
     order.billingAddress || order.shippingAddress || address,
     customer,
@@ -244,13 +275,17 @@ export default async function downloadInvoicePdf(order, customer, address) {
 
     pdf.setTextColor(...COLORS.dark)
     pdf.setFontSize(14)
-    pdf.text(BUSINESS.name, margin + 20, y + 4)
+    pdf.text(business.legalName, margin + 20, y + 4)
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(6.8)
     pdf.setTextColor(...COLORS.muted)
-    pdf.text(BUSINESS.address, margin + 20, y + 8.5)
-    pdf.text(`${BUSINESS.phone}  |  ${BUSINESS.email}`, margin + 20, y + 12)
-    pdf.text(`${BUSINESS.website}  |  GSTIN: ${BUSINESS.gstin}`, margin + 20, y + 15.5)
+    pdf.text(business.address, margin + 20, y + 8.5)
+    pdf.text(`${business.phone}  |  ${business.email}`, margin + 20, y + 12)
+    pdf.text(
+      `${business.website}${taxSettings.gstEnabled ? `  |  GSTIN: ${taxSettings.gstin}` : ''}`,
+      margin + 20,
+      y + 15.5,
+    )
 
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(18)
@@ -560,13 +595,13 @@ export default async function downloadInvoicePdf(order, customer, address) {
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(7.3)
     pdf.setTextColor(...COLORS.dark)
-    pdf.text('Pride Electronics', margin, footerTop + 5)
+    pdf.text(business.displayName, margin, footerTop + 5)
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(6.2)
     pdf.setTextColor(...COLORS.muted)
     pdf.text('Power your build with Pride Electronics.', margin, footerTop + 9)
     pdf.text(
-      `${BUSINESS.website}  |  ${BUSINESS.email}  |  ${BUSINESS.phone}`,
+      `${business.website}  |  ${business.email}  |  ${business.phone}`,
       margin,
       footerTop + 13,
     )
@@ -585,9 +620,50 @@ export default async function downloadInvoicePdf(order, customer, address) {
   pdf.setProperties({
     title: `${invoiceNumber} - Pride Electronics Tax Invoice`,
     subject: `Tax invoice for order ${order.id}`,
-    author: BUSINESS.name,
-    creator: BUSINESS.name,
+    author: business.legalName,
+    creator: business.legalName,
     keywords: 'tax invoice, electronics, GST, Pride Electronics',
   })
+  return { pdf, invoiceNumber }
+}
+
+export async function viewInvoicePdf(
+  order,
+  customer,
+  address,
+  invoiceSettings = initialInvoiceSettings,
+) {
+  const previewWindow = window.open('', '_blank')
+  if (previewWindow) {
+    previewWindow.document.title = 'Preparing invoice preview…'
+    previewWindow.document.body.textContent = 'Preparing invoice preview…'
+  }
+  const { pdf } = await createInvoicePdfDocument(
+    order,
+    customer,
+    address,
+    invoiceSettings,
+  )
+  const previewUrl = pdf.output('bloburl')
+  if (previewWindow) {
+    previewWindow.opener = null
+    previewWindow.location.href = previewUrl
+  } else {
+    window.open(previewUrl, '_blank', 'noopener,noreferrer')
+  }
+}
+
+export default async function downloadInvoicePdf(
+  order,
+  customer,
+  address,
+  invoiceSettings = initialInvoiceSettings,
+) {
+  const { pdf, invoiceNumber } = await createInvoicePdfDocument(
+    order,
+    customer,
+    address,
+    invoiceSettings,
+  )
   pdf.save(`${invoiceNumber}.pdf`)
 }

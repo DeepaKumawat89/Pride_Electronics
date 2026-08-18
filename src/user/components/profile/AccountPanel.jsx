@@ -40,6 +40,7 @@ import {
 import { accountMenuItems } from './accountMenuItems'
 import OrderDetailsView from './OrderDetailsView'
 import { initialShippingSettings } from '../../../data/shipping'
+import { initialInvoiceSettings } from '../../../data/invoice'
 
 const genderOptions = [
   { value: '', label: 'Select gender' },
@@ -297,6 +298,7 @@ export default function AccountPanel({
   onDeletePayment,
   onSetDefaultPayment,
   shippingSettings = initialShippingSettings,
+  invoiceSettings = initialInvoiceSettings,
 }) {
   const [logoutOpen, setLogoutOpen] = useState(false)
   const [contentScrolled, setContentScrolled] = useState(false)
@@ -475,6 +477,7 @@ export default function AccountPanel({
                     }
                     onDetailsChange={setOrderDetailsOpen}
                     onCreateReturnRequest={onCreateReturnRequest}
+                    invoiceSettings={invoiceSettings}
                   />
                 )}
                 {section === 'cart' && (
@@ -492,6 +495,7 @@ export default function AccountPanel({
                     onDismissUnavailable={onDismissUnavailableCartItems}
                     onCheckout={onCheckout}
                     shippingSettings={shippingSettings}
+                    taxSettings={invoiceSettings.tax}
                   />
                 )}
                 {section === 'address' && (
@@ -970,6 +974,7 @@ function OrdersSection({
   onNavigate,
   onDetailsChange,
   onCreateReturnRequest,
+  invoiceSettings,
 }) {
   const [selectedOrderId, setSelectedOrderId] = useState(
     () => orders.find((order) => order.id === initialOrderId)?.id || null,
@@ -1021,6 +1026,7 @@ function OrdersSection({
           onDetailsChange(false)
           onNavigate()
         }}
+        invoiceSettings={invoiceSettings}
       />
     )
   }
@@ -1218,6 +1224,7 @@ function CartSection({
   onDismissUnavailable,
   onCheckout,
   shippingSettings,
+  taxSettings,
 }) {
   const [coupon, setCoupon] = useState('')
   const [appliedCoupon, setAppliedCoupon] = useState('')
@@ -1231,8 +1238,9 @@ function CartSection({
         coupons,
         userKey,
         shippingSettings,
+        taxSettings,
       ),
-    [appliedCoupon, coupons, items, shippingSettings, userKey],
+    [appliedCoupon, coupons, items, shippingSettings, taxSettings, userKey],
   )
   const hasOutOfStockItems = items.some(
     ({ product }) => Number(product.stock) <= 0,
@@ -1396,7 +1404,7 @@ function CartSection({
             value={pricing.shipping ? formatCurrency(pricing.shipping) : 'Free'}
             accent={!pricing.shipping}
           />
-          <CartSummaryRow label="GST / Tax" value={`${formatCurrency(pricing.tax)} included`} />
+          <CartSummaryRow label="GST / Tax" value={`${formatCurrency(pricing.tax)} ${taxSettings.pricesIncludeTax ? 'included' : 'added'}`} />
         </div>
         <div className="my-5 h-px bg-[#253329]/10" />
         <div className="flex items-end justify-between">

@@ -14,6 +14,8 @@ import OffersPage from './pages/OffersPage'
 import ShippingPage from './pages/ShippingPage'
 import { initialMarketingSettings } from '../data/marketing'
 import { initialShippingSettings } from '../data/shipping'
+import { initialInvoiceSettings } from '../data/invoice'
+import TaxInvoicePage from './pages/TaxInvoicePage'
 
 export default function AdminApp({
   products = [],
@@ -24,6 +26,7 @@ export default function AdminApp({
   customers = [],
   marketingSettings = initialMarketingSettings,
   shippingSettings = initialShippingSettings,
+  invoiceSettings = initialInvoiceSettings,
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
@@ -36,6 +39,7 @@ export default function AdminApp({
   onDeleteCoupon,
   onUpdateMarketingSettings,
   onUpdateShippingSettings,
+  onUpdateInvoiceSettings,
   onSwitchToStore,
 }) {
   const { admin, loading, login, logout } = useAdminAuth()
@@ -178,6 +182,13 @@ export default function AdminApp({
         <ShippingPage
           settings={shippingSettings}
           onUpdate={onUpdateShippingSettings}
+        />
+      )}
+
+      {activeTab === 'tax-invoice' && (
+        <TaxInvoicePage
+          settings={invoiceSettings}
+          onUpdate={onUpdateInvoiceSettings}
         />
       )}
     </AdminLayout>

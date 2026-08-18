@@ -11,6 +11,7 @@ import {
   Warehouse,
   Images,
   Truck,
+  ReceiptText,
   X,
   Zap,
 } from 'lucide-react'
@@ -75,6 +76,12 @@ const navItems = [
     label: 'Shipping',
     caption: 'Delivery & couriers',
     icon: Truck,
+  },
+  {
+    id: 'tax-invoice',
+    label: 'Tax & invoice',
+    caption: 'GST & business details',
+    icon: ReceiptText,
   },
 ]
 

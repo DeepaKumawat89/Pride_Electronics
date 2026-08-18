@@ -1,5 +1,6 @@
 import { initialCoupons } from '../../data/coupons.js'
 import { initialShippingSettings } from '../../data/shipping.js'
+import { initialInvoiceSettings } from '../../data/invoice.js'
 import { parsePrice } from './currency.js'
 
 export const FREE_SHIPPING_THRESHOLD = 999
@@ -81,6 +82,7 @@ export function calculateCartPricing(
   coupons = initialCoupons,
   userKey = '',
   shippingSettings = initialShippingSettings,
+  taxSettings = initialInvoiceSettings.tax,
 ) {
   const mrpSubtotal = items.reduce(
     (sum, { product, quantity }) =>
@@ -118,8 +120,28 @@ export function calculateCartPricing(
       : Number(shippingSettings.standardCharge ?? STANDARD_SHIPPING_CHARGE)
   const shipping = coupon.freeShipping ? 0 : standardShipping
   const taxableAmount = Math.max(0, sellingSubtotal - coupon.discount)
-  const tax = Math.round((taxableAmount * 18) / 118)
-  const total = Math.max(0, taxableAmount + shipping)
+  const taxRate = taxSettings.gstEnabled === false
+    ? 0
+    : Number(taxSettings.defaultRate || 0)
+  const tax = taxSettings.gstEnabled === false
+    ? 0
+    : Math.round(
+        items.reduce((sum, { product, quantity }) => {
+          const lineValue = parsePrice(product.price) * Number(quantity || 0)
+          const couponShare = sellingSubtotal
+            ? (coupon.discount * lineValue) / sellingSubtotal
+            : 0
+          const lineTaxableValue = Math.max(0, lineValue - couponShare)
+          const lineTaxRate = Number(product.taxRate ?? taxRate)
+          return sum + (taxSettings.pricesIncludeTax
+            ? (lineTaxableValue * lineTaxRate) / (100 + lineTaxRate || 100)
+            : (lineTaxableValue * lineTaxRate) / 100)
+        }, 0),
+      )
+  const total = Math.max(
+    0,
+    taxableAmount + shipping + (taxSettings.pricesIncludeTax ? 0 : tax),
+  )
 
   return {
     mrpSubtotal,

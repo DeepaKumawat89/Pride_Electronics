@@ -6,6 +6,7 @@ import { initialOrders, initialCustomers } from './data/adminData'
 import { initialCoupons } from './data/coupons'
 import { initialMarketingSettings } from './data/marketing'
 import { initialShippingSettings } from './data/shipping'
+import { initialInvoiceSettings } from './data/invoice'
 import {
   adjustProductStock,
   getAvailableStock,
@@ -48,6 +49,7 @@ function App() {
   const [shippingSettings, setShippingSettings] = useState(
     initialShippingSettings,
   )
+  const [invoiceSettings, setInvoiceSettings] = useState(initialInvoiceSettings)
 
   const handleCustomerAuthenticated = (user) => {
     setCustomersList((current) => {
@@ -251,6 +253,13 @@ function App() {
       },
       ...prev,
     ])
+    setInvoiceSettings((current) => ({
+      ...current,
+      numbering: {
+        ...current.numbering,
+        nextNumber: Math.max(1, Number(current.numbering.nextNumber) || 1) + 1,
+      },
+    }))
     setCustomersList((current) => {
       const email = String(newOrder.email || '').trim().toLowerCase()
       const existing = current.find(
@@ -353,6 +362,7 @@ function App() {
           coupons={couponsList}
           marketingSettings={marketingSettings}
           shippingSettings={shippingSettings}
+          invoiceSettings={invoiceSettings}
           onNewOrder={handleNewOrder}
           onCreateReturnRequest={handleCreateReturnRequest}
           onCustomerAuthenticated={handleCustomerAuthenticated}
@@ -368,6 +378,7 @@ function App() {
           customers={customersList}
           marketingSettings={marketingSettings}
           shippingSettings={shippingSettings}
+          invoiceSettings={invoiceSettings}
           onAddProduct={handleAddProduct}
           onUpdateProduct={handleUpdateProduct}
           onDeleteProduct={handleDeleteProduct}
@@ -380,6 +391,7 @@ function App() {
           onDeleteCoupon={handleDeleteCoupon}
           onUpdateMarketingSettings={setMarketingSettings}
           onUpdateShippingSettings={setShippingSettings}
+          onUpdateInvoiceSettings={setInvoiceSettings}
           onSwitchToStore={() => setActivePortal('user')}
         />
       )}
