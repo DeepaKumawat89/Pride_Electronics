@@ -46,7 +46,9 @@ export default function ProductCatalog({
   onBuyNow,
   onView,
   offers,
+  categoryNames = catalogCategories.slice(1),
 }) {
+  const availableCategories = ['All', ...categoryNames]
   const [subcategory, setSubcategory] = useState('All')
   const [catalogFilters, setCatalogFilters] = useState(defaultCatalogFilters)
   const filterOptions = useMemo(
@@ -154,6 +156,7 @@ export default function ProductCatalog({
             onFilterChange={updateFilter}
             options={filterOptions}
             onClear={clearCatalogFilters}
+            categories={availableCategories}
           />
           <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white pl-4 text-xs font-bold text-slate-600 sm:w-52 sm:flex-none">
             <SlidersHorizontal size={14} className="shrink-0" />
@@ -170,7 +173,7 @@ export default function ProductCatalog({
       </div>
 
       <div className="mt-6 flex gap-2 overflow-x-auto pb-2">
-        {catalogCategories.map((filter) => (
+        {availableCategories.map((filter) => (
           <button
             key={filter}
             type="button"
@@ -288,7 +291,7 @@ export default function ProductCatalog({
               Try another search or explore a suggested category.
             </p>
             <div className="mt-5 flex flex-wrap justify-center gap-2">
-              {catalogCategories.slice(1).map((filter) => (
+              {availableCategories.slice(1).map((filter) => (
                 <button
                   key={filter}
                   type="button"
@@ -348,6 +351,7 @@ function CatalogFilters({
   onFilterChange,
   options,
   onClear,
+  categories,
 }) {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef(null)
@@ -424,7 +428,7 @@ function CatalogFilters({
               <FilterChoiceGroup
                 label="Category"
                 value={activeCategory}
-                options={catalogCategories}
+                options={categories}
                 onChange={onCategoryChange}
               />
               <FilterChoiceGroup

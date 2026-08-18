@@ -8,13 +8,24 @@ const categoryDefinitions = [
   { name: 'Smart Power', label: 'Power & charging', icon: Zap, color: 'bg-[#dfeee4]' },
 ]
 
-export default function CategoryStrip({ onSelect, promotions = [] }) {
-  const categories = categoryDefinitions
+export default function CategoryStrip({ onSelect, promotions = [], managedCategories = null }) {
+  const configuredCategories = managedCategories || []
+  const baseCategories = Array.isArray(managedCategories)
+    ? categoryDefinitions.filter((category) =>
+        configuredCategories.some((item) => item.name === category.name),
+      )
+    : categoryDefinitions
+  const customCategories = configuredCategories
+    .filter((item) => !categoryDefinitions.some((category) => category.name === item.name))
+    .map((item) => ({ name: item.name, label: item.name, icon: Cable, color: 'bg-[#e5e1ef]' }))
+  const categories = [...baseCategories, ...customCategories]
     .map((category) => ({
       ...category,
       ...(promotions.find((item) => item.name === category.name) || {}),
+      managedEnabled: configuredCategories.find((item) => item.name === category.name)?.enabled,
     }))
-    .filter((category) => category.enabled !== false)
+    .filter((category) => category.enabled !== false && category.managedEnabled !== false)
+  if (!categories.length) return null
   return (
     <section className="mx-auto max-w-[1440px] px-4 py-14 sm:px-6 lg:px-10 lg:py-20">
       <div className="mb-7 flex items-end justify-between">

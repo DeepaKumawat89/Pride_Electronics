@@ -41,8 +41,8 @@ function ReviewCard({ review }) {
   )
 }
 
-export default function ProductReviews({ product, showAll = false, reviewsOnly = false, onViewAll }) {
-  const visibleReviews = showAll ? customerReviews : customerReviews.slice(0, 2)
+export default function ProductReviews({ product, reviews = customerReviews, showAll = false, reviewsOnly = false, onViewAll }) {
+  const visibleReviews = showAll ? reviews : reviews.slice(0, 2)
 
   if (reviewsOnly) {
     return (
@@ -52,7 +52,8 @@ export default function ProductReviews({ product, showAll = false, reviewsOnly =
           <p className="text-xs font-semibold text-slate-400">Showing {visibleReviews.length} featured reviews</p>
         </div>
         <div className="mt-7 grid gap-4 md:grid-cols-2">
-          {visibleReviews.map((review) => <ReviewCard key={review.name} review={review} />)}
+          {visibleReviews.map((review) => <ReviewCard key={review.id || review.name} review={review} />)}
+          {!visibleReviews.length && <p className="col-span-full rounded-[22px] border border-dashed border-slate-200 px-5 py-10 text-center text-xs font-semibold text-slate-400">No published reviews yet.</p>}
         </div>
       </section>
     )
@@ -68,7 +69,8 @@ export default function ProductReviews({ product, showAll = false, reviewsOnly =
       <div className={`mt-7 grid gap-5 ${showAll ? 'lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start' : 'lg:grid-cols-[360px_minmax(0,1fr)]'}`}>
         <RatingSummary product={product} />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-          {visibleReviews.map((review) => <ReviewCard key={review.name} review={review} />)}
+          {visibleReviews.map((review) => <ReviewCard key={review.id || review.name} review={review} />)}
+          {!visibleReviews.length && <p className="rounded-[22px] border border-dashed border-slate-200 px-5 py-10 text-center text-xs font-semibold text-slate-400 sm:col-span-2 lg:col-span-1">No published reviews yet.</p>}
           {!showAll && (
             <button type="button" onClick={onViewAll} className="flex h-12 items-center justify-center gap-2 rounded-full border border-[#b9d4bf] bg-[#f2f8f3] text-xs font-extrabold text-[#397a4a] transition hover:border-[#397a4a] hover:bg-[#397a4a] hover:text-white sm:col-span-2 lg:col-span-1">
               View All Reviews <ArrowRight size={15} />

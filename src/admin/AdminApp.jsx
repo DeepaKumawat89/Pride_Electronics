@@ -18,6 +18,10 @@ import { initialInvoiceSettings } from '../data/invoice'
 import TaxInvoicePage from './pages/TaxInvoicePage'
 import AdminSettingsPage from './pages/AdminSettingsPage'
 import { initialAdminSettings } from '../data/adminSettings'
+import CategoriesPage from './pages/CategoriesPage'
+import ReviewsPage from './pages/ReviewsPage'
+import ReportsPage from './pages/ReportsPage'
+import { EmptyState } from './components/ui/AdminUI'
 
 export default function AdminApp({
   products = [],
@@ -26,6 +30,8 @@ export default function AdminApp({
   returns = [],
   coupons = [],
   customers = [],
+  categories = [],
+  reviews = [],
   marketingSettings = initialMarketingSettings,
   shippingSettings = initialShippingSettings,
   invoiceSettings = initialInvoiceSettings,
@@ -40,6 +46,13 @@ export default function AdminApp({
   onAddCoupon,
   onUpdateCoupon,
   onDeleteCoupon,
+  onAddCategory,
+  onUpdateCategory,
+  onDeleteCategory,
+  onUpdateReview,
+  onDeleteReview,
+  onUpdatePaymentStatus,
+  onUpdateCustomer,
   onUpdateMarketingSettings,
   onUpdateShippingSettings,
   onUpdateInvoiceSettings,
@@ -50,6 +63,14 @@ export default function AdminApp({
   const [activeTab, setActiveTab] = useState('dashboard')
   const [searchQuery, setSearchQuery] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const activeRole = adminSettings.roles.find((role) => role.name === admin?.role)
+  const permissions = activeRole?.permissions || []
+  const canAccess = (tab) =>
+    permissions.includes('*') || permissions.includes(tab)
+  const firstPermittedTab = permissions.includes('*')
+    ? 'dashboard'
+    : permissions[0] || null
+  const permittedTab = canAccess(activeTab) ? activeTab : firstPermittedTab
 
   useEffect(() => {
     if (!isSidebarOpen) return undefined
@@ -93,7 +114,8 @@ export default function AdminApp({
   }
 
   const handleSelectTab = (tab) => {
-    setActiveTab(tab)
+    setActiveTab(canAccess(tab) ? tab : firstPermittedTab || 'unauthorized')
+    setSearchQuery('')
     setIsSidebarOpen(false)
   }
 
@@ -107,12 +129,9 @@ export default function AdminApp({
     )
   }
 
-  const activeRole = adminSettings.roles.find((role) => role.name === admin.role)
-  const permissions = activeRole?.permissions || ['dashboard']
-
   return (
     <AdminLayout
-      activeTab={activeTab}
+      activeTab={permittedTab || 'unauthorized'}
       admin={admin}
       sidebarOpen={isSidebarOpen}
       onCloseSidebar={() => setIsSidebarOpen(false)}
@@ -126,7 +145,10 @@ export default function AdminApp({
       permissions={permissions}
       storeName={adminSettings.store.name}
     >
-      {activeTab === 'dashboard' && (
+      {!permittedTab && (
+        <EmptyState title="Access restricted" text="Your admin role does not have permission to open a management section. Contact a store administrator." />
+      )}
+      {permittedTab === 'dashboard' && (
         <DashboardPage
           products={products}
           orders={orders}
@@ -135,17 +157,29 @@ export default function AdminApp({
         />
       )}
 
-      {activeTab === 'products' && (
+      {permittedTab === 'products' && (
         <ProductsPage
           products={products}
           onAddProduct={onAddProduct}
           onUpdateProduct={onUpdateProduct}
           onDeleteProduct={onDeleteProduct}
           searchQuery={searchQuery}
+          categories={categories}
         />
       )}
 
-      {activeTab === 'orders' && (
+      {permittedTab === 'categories' && (
+        <CategoriesPage
+          categories={categories}
+          products={products}
+          onAddCategory={onAddCategory}
+          onUpdateCategory={onUpdateCategory}
+          onDeleteCategory={onDeleteCategory}
+          searchQuery={searchQuery}
+        />
+      )}
+
+      {permittedTab === 'orders' && (
         <OrdersPage
           orders={orders}
           onUpdateOrderStatus={onUpdateOrderStatus}
@@ -154,7 +188,7 @@ export default function AdminApp({
         />
       )}
 
-      {activeTab === 'inventory' && (
+      {permittedTab === 'inventory' && (
         <InventoryPage
           products={products}
           history={inventoryHistory}
@@ -163,15 +197,16 @@ export default function AdminApp({
         />
       )}
 
-      {activeTab === 'payments' && (
+      {permittedTab === 'payments' && (
         <PaymentsPage
           orders={orders}
           refunds={refunds}
           searchQuery={searchQuery}
+          onUpdatePaymentStatus={onUpdatePaymentStatus}
         />
       )}
 
-      {activeTab === 'returns' && (
+      {permittedTab === 'returns' && (
         <ReturnsPage
           returns={returns}
           searchQuery={searchQuery}
@@ -180,7 +215,7 @@ export default function AdminApp({
         />
       )}
 
-      {activeTab === 'coupons' && (
+      {permittedTab === 'coupons' && (
         <CouponsPage
           coupons={coupons}
           onAddCoupon={onAddCoupon}
@@ -190,17 +225,27 @@ export default function AdminApp({
         />
       )}
 
-      {activeTab === 'users' && (
+      {permittedTab === 'users' && (
         <CustomersPage
           customers={customers}
           orders={orders}
           refunds={refunds}
           returns={returns}
           searchQuery={searchQuery}
+          onUpdateCustomer={onUpdateCustomer}
         />
       )}
 
-      {activeTab === 'offers' && (
+      {permittedTab === 'reviews' && (
+        <ReviewsPage
+          reviews={reviews}
+          onUpdateReview={onUpdateReview}
+          onDeleteReview={onDeleteReview}
+          searchQuery={searchQuery}
+        />
+      )}
+
+      {permittedTab === 'offers' && (
         <OffersPage
           settings={marketingSettings}
           products={products}
@@ -208,21 +253,32 @@ export default function AdminApp({
         />
       )}
 
-      {activeTab === 'shipping' && (
+      {permittedTab === 'shipping' && (
         <ShippingPage
           settings={shippingSettings}
           onUpdate={onUpdateShippingSettings}
         />
       )}
 
-      {activeTab === 'tax-invoice' && (
+      {permittedTab === 'tax-invoice' && (
         <TaxInvoicePage
           settings={invoiceSettings}
           onUpdate={onUpdateInvoiceSettings}
         />
       )}
 
-      {activeTab === 'settings' && (
+      {permittedTab === 'reports' && (
+        <ReportsPage
+          products={products}
+          orders={orders}
+          customers={customers}
+          refunds={refunds}
+          invoiceSettings={invoiceSettings}
+          searchQuery={searchQuery}
+        />
+      )}
+
+      {permittedTab === 'settings' && (
         <AdminSettingsPage
           settings={adminSettings}
           admin={admin}

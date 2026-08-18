@@ -14,7 +14,7 @@ import {
 import SelectMenu from '../../components/ui/SelectMenu'
 import { EmptyState, Modal, PageHeader } from '../components/ui/AdminUI'
 
-const categoryOptions = [
+const fallbackCategoryOptions = [
   'Audio',
   'Wearables',
   'Components & DIY',
@@ -72,11 +72,15 @@ const createDuplicateProduct = (product) => {
 
 export default function ProductsPage({
   products = [],
+  categories: managedCategories = [],
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
   searchQuery = '',
 }) {
+  const categoryOptions = managedCategories.length
+    ? managedCategories.map((category) => ({ value: category.name, label: category.name }))
+    : fallbackCategoryOptions
   const [category, setCategory] = useState('All')
   const [viewMode, setViewMode] = useState('table')
   const [modalOpen, setModalOpen] = useState(false)
@@ -97,7 +101,10 @@ export default function ProductsPage({
 
   const openAdd = () => {
     setEditingProduct(null)
-    setForm(emptyProduct)
+    setForm({
+      ...emptyProduct,
+      category: categoryOptions[0]?.value || emptyProduct.category,
+    })
     setModalOpen(true)
   }
   const openEdit = (product) => {
@@ -147,6 +154,11 @@ export default function ProductsPage({
   }
   const toggleProduct = (product) =>
     onUpdateProduct({ ...product, enabled: product.enabled === false })
+  const deleteProduct = (product) => {
+    if (window.confirm(`Delete ${product.name}? This action cannot be undone.`)) {
+      onDeleteProduct(product.id)
+    }
+  }
   const field = (key) => ({
     value: form[key],
     onChange: (event) =>
@@ -221,7 +233,7 @@ export default function ProductsPage({
               onEdit={() => openEdit(product)}
               onDuplicate={() => duplicateProduct(product)}
               onToggle={() => toggleProduct(product)}
-              onDelete={() => onDeleteProduct(product.id)}
+              onDelete={() => deleteProduct(product)}
             />
           ))}
         </div>
@@ -256,7 +268,7 @@ export default function ProductsPage({
                     onEdit={() => openEdit(product)}
                     onDuplicate={() => duplicateProduct(product)}
                     onToggle={() => toggleProduct(product)}
-                    onDelete={() => onDeleteProduct(product.id)}
+                    onDelete={() => deleteProduct(product)}
                   />
                 ))}
               </tbody>

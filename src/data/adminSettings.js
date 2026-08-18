@@ -1,15 +1,18 @@
 export const adminPermissionOptions = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'products', label: 'Products' },
+  { id: 'categories', label: 'Categories' },
   { id: 'orders', label: 'Orders' },
   { id: 'inventory', label: 'Inventory' },
   { id: 'payments', label: 'Payments' },
   { id: 'returns', label: 'Returns' },
   { id: 'coupons', label: 'Coupons' },
   { id: 'users', label: 'Customers' },
+  { id: 'reviews', label: 'Review moderation' },
   { id: 'offers', label: 'Offers & banners' },
   { id: 'shipping', label: 'Shipping' },
   { id: 'tax-invoice', label: 'Tax & invoice' },
+  { id: 'reports', label: 'Reports & invoices' },
   { id: 'settings', label: 'Settings' },
 ]
 
@@ -73,13 +76,13 @@ export const initialAdminSettings = {
       id: 'role-order-manager',
       name: 'Order Manager',
       description: 'Manage orders, payments, returns, and customers.',
-      permissions: ['dashboard', 'orders', 'payments', 'returns', 'users'],
+      permissions: ['dashboard', 'orders', 'payments', 'returns', 'users', 'reports'],
     },
     {
       id: 'role-catalog-manager',
       name: 'Catalog Manager',
       description: 'Manage products, inventory, offers, and coupons.',
-      permissions: ['dashboard', 'products', 'inventory', 'offers', 'coupons'],
+      permissions: ['dashboard', 'products', 'categories', 'inventory', 'offers', 'coupons', 'reviews'],
     },
   ],
 }

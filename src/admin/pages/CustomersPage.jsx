@@ -38,6 +38,7 @@ export default function CustomersPage({
   refunds = [],
   returns = [],
   searchQuery = '',
+  onUpdateCustomer,
 }) {
   const [copiedId, setCopiedId] = useState(null)
   const [selectedCustomerId, setSelectedCustomerId] = useState(null)
@@ -67,7 +68,7 @@ export default function CustomersPage({
     /vip|pro/i.test(customer.role),
   ).length
   const active = profiles.filter((customer) =>
-    /active/i.test(customer.status),
+    String(customer.status).toLowerCase() === 'active',
   ).length
   const copy = (text) => {
     navigator.clipboard?.writeText(text)
@@ -79,12 +80,12 @@ export default function CustomersPage({
     <div className="space-y-6">
       <PageHeader
         eyebrow="Audience management"
-        title={`${profiles.length + 1280} customer accounts`}
+        title={`${profiles.length} customer accounts`}
         description="Understand customer value, membership tiers, purchase activity, and account verification at a glance."
       />
       <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <StatCard icon={Users} label="Total accounts" value={profiles.length + 1280} detail="Registered shoppers" />
-        <StatCard icon={Award} label="VIP & Pro" value={premium + 142} detail="Premium members" tone="violet" />
+        <StatCard icon={Users} label="Total accounts" value={profiles.length} detail="Registered shoppers" />
+        <StatCard icon={Award} label="VIP & Pro" value={premium} detail="Premium members" tone="violet" />
         <StatCard icon={IndianRupee} label="Average spend" value={formatAdminCurrency(spend / (profiles.length || 1))} detail="Lifetime value" tone="orange" />
         <StatCard icon={UserCheck} label="Active accounts" value={`${Math.round((active / (profiles.length || 1)) * 100)}%`} detail="Verified and active" tone="amber" />
       </section>
@@ -104,7 +105,7 @@ export default function CustomersPage({
               <tbody className="divide-y divide-slate-100">
                 {filtered.map((customer, index) => {
                   const percent = Math.min(100, Math.max(10, moneyValue(customer.totalSpending) / 3500))
-                  const activeAccount = /active/i.test(customer.status)
+                  const activeAccount = String(customer.status).toLowerCase() === 'active'
                   return (
                     <tr key={customer.id} className="transition hover:bg-[#fafcf9]">
                       <td className="px-5 py-4"><div className="flex items-center gap-3"><span className={`grid size-11 shrink-0 place-items-center rounded-full text-[9px] font-extrabold ${index % 3 === 0 ? 'bg-[#dcebdd] text-[#397a4a]' : index % 3 === 1 ? 'bg-[#ffe9e2] text-[#b33b20]' : 'bg-violet-50 text-violet-700'}`}>{getInitials(customer.name)}</span><span className="min-w-0"><strong className="block max-w-48 truncate text-[10px] text-slate-900">{customer.name}</strong><span className="mt-0.5 block max-w-48 truncate text-[8px] text-slate-400">{customer.email}</span></span></div></td>
@@ -140,6 +141,9 @@ export default function CustomersPage({
               <Detail label="Total spending" value={selectedCustomer.totalSpending} />
               <Detail label="Last order" value={selectedCustomer.lastOrder ? `${selectedCustomer.lastOrder.id} · ${selectedCustomer.lastOrder.date}` : 'No linked orders'} />
               <Detail label="Customer ID" value={selectedCustomer.id} />
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button type="button" onClick={() => { const status = selectedCustomer.status === 'Active' ? 'Suspended' : 'Active'; onUpdateCustomer({ ...customers.find((customer) => customer.id === selectedCustomer.id), status }); setSelectedCustomerId(null) }} className={`rounded-full px-4 py-2.5 text-[9px] font-extrabold ${selectedCustomer.status === 'Active' ? 'bg-red-50 text-red-600' : 'bg-[#397a4a] text-white'}`}>{selectedCustomer.status === 'Active' ? 'Suspend account' : 'Activate account'}</button>
             </div>
             <div className="mt-5 flex gap-2 overflow-x-auto pb-2">
               {profileSections.map(([id, label, Icon]) => (

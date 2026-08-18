@@ -26,6 +26,8 @@ import { sortCatalogProducts } from './utils/catalog'
 import { normalizeAddress } from './utils/address'
 import { createInvoiceNumber, initialInvoiceSettings } from '../data/invoice'
 import { initialAdminSettings } from '../data/adminSettings'
+import { initialCategories } from '../data/categories'
+import { customerReviews } from './components/products/productReviewData'
 
 const AUTH_SESSION_KEY = 'pride_authenticated_user'
 const ADDRESS_SESSION_KEY = 'pride_saved_addresses'
@@ -220,6 +222,8 @@ export default function UserApp({
   shippingSettings,
   invoiceSettings = initialInvoiceSettings,
   adminSettings = initialAdminSettings,
+  categories = initialCategories,
+  reviews = customerReviews,
   onNewOrder,
   onCreateReturnRequest,
   onCancelOrder,
@@ -1007,7 +1011,7 @@ export default function UserApp({
             storeName={adminSettings.store.name}
           />
         ) : selectedProduct && reviewsOpen ? (
-          <ProductReviewsPage product={selectedProduct} onBack={closeReviews} />
+          <ProductReviewsPage product={selectedProduct} reviews={reviews} onBack={closeReviews} />
         ) : selectedProduct ? (
           <ProductDetailsPage
             key={selectedProduct.id}
@@ -1026,6 +1030,7 @@ export default function UserApp({
             onViewAllReviews={navigateToReviews}
             shippingSettings={shippingSettings}
             taxSettings={invoiceSettings.tax}
+            reviews={reviews}
           />
         ) : (
           <>
@@ -1039,6 +1044,7 @@ export default function UserApp({
             />
             <CategoryStrip
               promotions={marketingSettings?.categoryPromotions}
+              managedCategories={categories}
               onSelect={handleCategory}
             />
             <BenefitsStrip shippingSettings={shippingSettings} />
@@ -1056,6 +1062,7 @@ export default function UserApp({
               onBuyNow={handleBuyNow}
               onView={navigateToProduct}
               offers={marketingSettings}
+              categoryNames={categories.filter((item) => item.enabled !== false).map((item) => item.name)}
             />
             <PromoBanner
               banner={marketingSettings?.promotionalBanner}

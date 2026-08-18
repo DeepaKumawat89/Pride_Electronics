@@ -21,6 +21,7 @@ import {
   StatCard,
 } from '../components/ui/AdminUI'
 import { getInitials, statusTone } from '../utils/adminFormatters'
+import { getPaymentStatus } from '../utils/payments'
 
 const statuses = [
   'All',
@@ -68,6 +69,12 @@ export default function OrdersPage({
   const delivered = orders.filter(
     (order) => order.status === 'Delivered',
   ).length
+  const verifiedPayments = orders.filter(
+    (order) => getPaymentStatus(order) === 'Successful',
+  ).length
+  const paymentRate = orders.length
+    ? `${((verifiedPayments / orders.length) * 100).toFixed(1)}%`
+    : '0%'
 
   const copy = (text) => {
     navigator.clipboard?.writeText(text)
@@ -149,7 +156,7 @@ export default function OrdersPage({
         <StatCard
           icon={CreditCard}
           label="Payment rate"
-          value="98.7%"
+          value={paymentRate}
           detail="Successfully verified"
           tone="violet"
         />

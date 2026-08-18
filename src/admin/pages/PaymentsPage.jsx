@@ -34,6 +34,7 @@ export default function PaymentsPage({
   orders = [],
   refunds = [],
   searchQuery = '',
+  onUpdatePaymentStatus,
 }) {
   const [statusFilter, setStatusFilter] = useState('All')
   const [selectedPayment, setSelectedPayment] = useState(null)
@@ -149,6 +150,12 @@ export default function PaymentsPage({
                 <p className="text-[10px] text-slate-400">No refund is linked to this payment.</p>
               )}
             </ReconciliationSection>
+            {['Pending', 'Failed'].includes(selectedPayment.status) && (
+              <div className="flex items-center justify-between gap-4 rounded-2xl bg-emerald-50 px-4 py-3">
+                <p className="text-[9px] font-semibold text-emerald-800">Use this only after verifying the transaction with the payment provider.</p>
+                <button type="button" onClick={() => { onUpdatePaymentStatus?.(selectedPayment.orderId, 'Paid'); setSelectedPayment(null) }} className="shrink-0 rounded-full bg-[#397a4a] px-4 py-2.5 text-[8px] font-extrabold text-white">Mark verified</button>
+              </div>
+            )}
           </div>
         )}
       </Modal>

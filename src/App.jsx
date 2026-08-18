@@ -8,6 +8,8 @@ import { initialMarketingSettings } from './data/marketing'
 import { initialShippingSettings } from './data/shipping'
 import { initialInvoiceSettings } from './data/invoice'
 import { initialAdminSettings } from './data/adminSettings'
+import { initialCategories } from './data/categories'
+import { customerReviews as initialReviews } from './user/components/products/productReviewData'
 import {
   adjustProductStock,
   getAvailableStock,
@@ -68,6 +70,8 @@ function App() {
     initializeReturnRequests(initialInventory.orders),
   )
   const [couponsList, setCouponsList] = useState(initialCoupons)
+  const [categoriesList, setCategoriesList] = useState(initialCategories)
+  const [reviewsList, setReviewsList] = useState(initialReviews)
   const [marketingSettings, setMarketingSettings] = useState(
     () => loadSettings(SETTINGS_KEYS.marketing, initialMarketingSettings),
   )
@@ -306,11 +310,40 @@ function App() {
   }
 
   const handleSubmitOrderFeedback = (orderId, feedback) => {
+    const order = ordersList.find((item) => item.id === orderId)
     setOrdersList((current) =>
       current.map((order) =>
         order.id === orderId ? { ...order, feedback } : order,
       ),
     )
+    if (order && !reviewsList.some((review) => review.orderId === orderId)) {
+      const productName = order.items?.[0]?.productName || 'Order purchase'
+      setReviewsList((current) => [
+        {
+          id: `review-${Date.now()}`,
+          orderId,
+          productName,
+          name: order.customer || 'Pride customer',
+          initials: String(order.customer || 'PC')
+            .split(/\s+/)
+            .map((part) => part[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase(),
+          rating: Number(feedback.rating) || 0,
+          date: new Date().toLocaleDateString('en-IN', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+          }),
+          title: `Review for ${productName}`,
+          text: feedback.review,
+          status: 'Pending',
+          tone: 'bg-[#dcebdd] text-[#366643]',
+        },
+        ...current,
+      ])
+    }
   }
 
   // Handler for User checkout order placement
@@ -414,6 +447,64 @@ function App() {
       current.filter((coupon) => coupon.id !== couponId),
     )
 
+  const handleAddCategory = (category) =>
+    setCategoriesList((current) => [...current, category])
+  const handleUpdateCategory = (category, previousName) => {
+    setCategoriesList((current) =>
+      current.map((item) => (item.id === category.id ? category : item)),
+    )
+    if (previousName && previousName !== category.name) {
+      setProductsList((current) =>
+        current.map((product) =>
+          product.category === previousName
+            ? { ...product, category: category.name }
+            : product,
+        ),
+      )
+    }
+  }
+  const handleDeleteCategory = (categoryId) => {
+    const category = categoriesList.find((item) => item.id === categoryId)
+    if (!category) return 'Category not found.'
+    if (productsList.some((product) => product.category === category.name)) {
+      return 'Move or delete products in this category before deleting it.'
+    }
+    setCategoriesList((current) =>
+      current.filter((item) => item.id !== categoryId),
+    )
+    return ''
+  }
+
+  const handleUpdateReview = (review) =>
+    setReviewsList((current) =>
+      current.map((item) => (item.id === review.id ? review : item)),
+    )
+  const handleDeleteReview = (reviewId) =>
+    setReviewsList((current) =>
+      current.filter((review) => review.id !== reviewId),
+    )
+
+  const handleUpdatePaymentStatus = (orderId, paymentStatus) =>
+    setOrdersList((current) =>
+      current.map((order) =>
+        order.id === orderId
+          ? {
+              ...order,
+              paymentStatus,
+              paymentDate:
+                paymentStatus === 'Paid'
+                  ? new Date().toISOString()
+                  : order.paymentDate,
+            }
+          : order,
+      ),
+    )
+
+  const handleUpdateCustomer = (customer) =>
+    setCustomersList((current) =>
+      current.map((item) => (item.id === customer.id ? customer : item)),
+    )
+
   const handleAdjustStock = (productId, adjustment) => {
     const result = adjustProductStock(productsList, productId, adjustment)
     if (result.error) return result.error
@@ -423,7 +514,12 @@ function App() {
   }
 
   const storefrontProducts = productsList
-    .filter((product) => product.enabled !== false)
+    .filter(
+      (product) =>
+        product.enabled !== false &&
+        categoriesList.find((category) => category.name === product.category)
+          ?.enabled !== false,
+    )
     .map((product) => ({
       ...product,
       stock: getAvailableStock(product),
@@ -447,6 +543,8 @@ function App() {
           shippingSettings={shippingSettings}
           invoiceSettings={invoiceSettings}
           adminSettings={adminSettings}
+          categories={categoriesList}
+          reviews={reviewsList.filter((review) => review.status === 'Published')}
           onNewOrder={handleNewOrder}
           onCreateReturnRequest={handleCreateReturnRequest}
           onCancelOrder={handleCancelOrder}
@@ -462,6 +560,8 @@ function App() {
           returns={returnsList}
           coupons={couponsList}
           customers={customersList}
+          categories={categoriesList}
+          reviews={reviewsList}
           marketingSettings={marketingSettings}
           shippingSettings={shippingSettings}
           invoiceSettings={invoiceSettings}
@@ -476,6 +576,13 @@ function App() {
           onAddCoupon={handleAddCoupon}
           onUpdateCoupon={handleUpdateCoupon}
           onDeleteCoupon={handleDeleteCoupon}
+          onAddCategory={handleAddCategory}
+          onUpdateCategory={handleUpdateCategory}
+          onDeleteCategory={handleDeleteCategory}
+          onUpdateReview={handleUpdateReview}
+          onDeleteReview={handleDeleteReview}
+          onUpdatePaymentStatus={handleUpdatePaymentStatus}
+          onUpdateCustomer={handleUpdateCustomer}
           onUpdateMarketingSettings={updateMarketingSettings}
           onUpdateShippingSettings={updateShippingSettings}
           onUpdateInvoiceSettings={updateInvoiceSettings}

@@ -39,7 +39,7 @@ function getSpecificationMeta(spec) {
   return { title: 'Features & Compatibility', description: 'Design details, supported features, and everyday usability', icon: Settings2 }
 }
 
-export default function ProductDetailsPage({ product, relatedProducts = [], deliveryAddress, likedIds = [], onBack, onLike, onAdd, onBuyNow, onViewProduct, onViewAllReviews, shippingSettings = initialShippingSettings, taxSettings = initialInvoiceSettings.tax }) {
+export default function ProductDetailsPage({ product, relatedProducts = [], deliveryAddress, likedIds = [], reviews, onBack, onLike, onAdd, onBuyNow, onViewProduct, onViewAllReviews, shippingSettings = initialShippingSettings, taxSettings = initialInvoiceSettings.tax }) {
   const [activeImageIndex, setActiveImageIndex] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [expandedSpec, setExpandedSpec] = useState(null)
@@ -292,7 +292,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
         </section>
 
         <div className="mx-auto mt-6 max-w-[1220px]">
-          <ProductReviews product={product} onViewAll={onViewAllReviews} />
+          <ProductReviews product={product} reviews={reviews} onViewAll={onViewAllReviews} />
         </div>
 
         {!!relatedProducts.length && (

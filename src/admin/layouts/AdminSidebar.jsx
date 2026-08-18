@@ -13,6 +13,9 @@ import {
   Truck,
   ReceiptText,
   Settings,
+  BarChart3,
+  MessageSquareText,
+  Tags,
   X,
   Zap,
 } from 'lucide-react'
@@ -29,6 +32,12 @@ const navItems = [
     label: 'Products',
     caption: 'Catalog & inventory',
     icon: Package,
+  },
+  {
+    id: 'categories',
+    label: 'Categories',
+    caption: 'Catalog structure',
+    icon: Tags,
   },
   {
     id: 'orders',
@@ -67,6 +76,12 @@ const navItems = [
     icon: Users,
   },
   {
+    id: 'reviews',
+    label: 'Reviews',
+    caption: 'Customer moderation',
+    icon: MessageSquareText,
+  },
+  {
     id: 'offers',
     label: 'Offers & banners',
     caption: 'Storefront promotions',
@@ -83,6 +98,12 @@ const navItems = [
     label: 'Tax & invoice',
     caption: 'GST & business details',
     icon: ReceiptText,
+  },
+  {
+    id: 'reports',
+    label: 'Reports',
+    caption: 'Exports & invoices',
+    icon: BarChart3,
   },
   {
     id: 'settings',

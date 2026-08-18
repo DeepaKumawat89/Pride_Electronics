@@ -9,7 +9,7 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react'
-import { PageHeader, StatCard } from '../components/ui/AdminUI'
+import { EmptyState, PageHeader, StatCard } from '../components/ui/AdminUI'
 import {
   formatAdminCurrency,
   getInitials,
@@ -18,18 +18,15 @@ import {
 } from '../utils/adminFormatters'
 import { getAvailableStock } from '../utils/inventory'
 
-const chartBars = [42, 58, 49, 72, 64, 88, 76, 93, 82, 100, 91, 108]
-
 export default function DashboardPage({
   products = [],
   orders = [],
   customers = [],
   onNavigate,
 }) {
-  const totalRevenue = orders.reduce(
-    (sum, order) => sum + moneyValue(order.total),
-    482900,
-  )
+  const totalRevenue = orders
+    .filter((order) => !['Cancelled', 'Refunded'].includes(order.status))
+    .reduce((sum, order) => sum + moneyValue(order.total), 0)
   const lowStock = products.filter(
     (product) =>
       getAvailableStock(product) <= Number(product.lowStockThreshold ?? 10),
@@ -38,6 +35,24 @@ export default function DashboardPage({
     ['Pending', 'Processing'].includes(order.status),
   ).length
   const categories = new Set(products.map((product) => product.category)).size
+  const now = new Date()
+  const chartMonths = Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - 11 + index, 1)
+    return {
+      key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+      label: date.toLocaleDateString('en-IN', { month: 'short' }),
+    }
+  })
+  const chartValues = chartMonths.map(({ key }) =>
+    orders
+      .filter(
+        (order) =>
+          String(order.date || '').slice(0, 7) === key &&
+          !['Cancelled', 'Refunded'].includes(order.status),
+      )
+      .reduce((sum, order) => sum + moneyValue(order.total), 0),
+  )
+  const chartMaximum = Math.max(...chartValues, 1)
 
   return (
     <div className="space-y-6">
@@ -61,12 +76,12 @@ export default function DashboardPage({
           icon={IndianRupee}
           label="Total revenue"
           value={formatAdminCurrency(totalRevenue)}
-          detail="+18.4% this month"
+          detail="Excludes cancelled and refunded"
         />
         <StatCard
           icon={ShoppingBag}
           label="Total orders"
-          value={orders.length + 42}
+          value={orders.length}
           detail={`${pending} need attention`}
           tone="orange"
         />
@@ -80,8 +95,8 @@ export default function DashboardPage({
         <StatCard
           icon={Users}
           label="Customers"
-          value={customers.length + 1280}
-          detail="+64 this week"
+          value={customers.length}
+          detail="Registered accounts"
           tone="amber"
         />
       </section>
@@ -101,29 +116,25 @@ export default function DashboardPage({
               Last 12 months
             </span>
           </div>
-          <div className="p-5 sm:p-7">
+          {orders.length ? <div className="p-5 sm:p-7">
             <div className="flex h-56 items-end gap-2 rounded-[22px] bg-gradient-to-b from-[#f4f8f4] to-white px-3 pb-3 pt-6 sm:gap-3 sm:px-5">
-              {chartBars.map((height, index) => (
+              {chartValues.map((value, index) => (
                 <div key={index} className="group flex h-full flex-1 items-end">
                   <div
                     className="relative w-full rounded-t-xl bg-[#9bcaa6] transition group-hover:bg-[#397a4a]"
-                    style={{ height: `${Math.min(height, 100)}%` }}
+                    style={{ height: `${(value / chartMaximum) * 100}%` }}
                   >
                     <span className="absolute -top-6 left-1/2 hidden -translate-x-1/2 rounded bg-slate-950 px-1.5 py-1 text-[7px] font-bold text-white group-hover:block">
-                      {height}k
+                      {formatAdminCurrency(value)}
                     </span>
                   </div>
                 </div>
               ))}
             </div>
             <div className="mt-3 flex justify-between text-[8px] font-bold uppercase text-slate-400">
-              <span>Sep</span>
-              <span>Dec</span>
-              <span>Mar</span>
-              <span>Jun</span>
-              <span>Aug</span>
+              {[0, 3, 6, 9, 11].map((index) => <span key={chartMonths[index].key}>{chartMonths[index].label}</span>)}
             </div>
-          </div>
+          </div> : <div className="p-5 sm:p-7"><EmptyState title="No sales data yet" text="Revenue activity will appear after the first order is placed." /></div>}
         </article>
 
         <article className="rounded-[28px] bg-[#17251c] p-5 text-white shadow-sm sm:p-6">
@@ -165,6 +176,7 @@ export default function DashboardPage({
                 </strong>
               </button>
             ))}
+            {!products.length && <p className="rounded-2xl border border-white/10 px-4 py-8 text-center text-[9px] font-bold text-white/45">No products in the catalog yet.</p>}
           </div>
           <button
             type="button"
@@ -226,6 +238,7 @@ export default function DashboardPage({
                 </span>
               </button>
             ))}
+            {!orders.length && <div className="p-5 sm:p-6"><EmptyState title="No orders yet" text="New customer orders will appear here." /></div>}
           </div>
         </article>
 
