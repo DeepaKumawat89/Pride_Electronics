@@ -290,6 +290,8 @@ export default function AccountPanel({
   onDismissUnavailableCartItems,
   onCheckout,
   onCreateReturnRequest,
+  onCancelOrder,
+  onSubmitOrderFeedback,
   onLogout,
   onSaveAddress,
   onDeleteAddress,
@@ -477,6 +479,8 @@ export default function AccountPanel({
                     }
                     onDetailsChange={setOrderDetailsOpen}
                     onCreateReturnRequest={onCreateReturnRequest}
+                    onCancelOrder={onCancelOrder}
+                    onSubmitOrderFeedback={onSubmitOrderFeedback}
                     invoiceSettings={invoiceSettings}
                   />
                 )}
@@ -974,6 +978,8 @@ function OrdersSection({
   onNavigate,
   onDetailsChange,
   onCreateReturnRequest,
+  onCancelOrder,
+  onSubmitOrderFeedback,
   invoiceSettings,
 }) {
   const [selectedOrderId, setSelectedOrderId] = useState(
@@ -1015,6 +1021,8 @@ function OrdersSection({
           (request) => request.orderId === selectedOrder.id,
         )}
         onSubmitReturn={onCreateReturnRequest}
+        onCancelOrder={onCancelOrder}
+        onSubmitFeedback={onSubmitOrderFeedback}
         user={user}
         address={
           selectedOrder.shippingAddress ||
@@ -1604,9 +1612,15 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
               <input
                 required
                 type="tel"
+                inputMode="tel"
+                pattern="[6-9][0-9]{9}"
+                maxLength={10}
                 value={form.phone}
                 onChange={(event) =>
-                  setForm({ ...form, phone: event.target.value })
+                  setForm({
+                    ...form,
+                    phone: event.target.value.replace(/\D/g, '').slice(0, 10),
+                  })
                 }
                 className={fieldClass}
               />

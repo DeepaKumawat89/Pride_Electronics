@@ -35,6 +35,7 @@ const REVIEWS_HASH_SUFFIX = '-reviews'
 const CHECKOUT_HASH = '#checkout'
 const ORDER_SUCCESS_HASH = '#order-success'
 const ORDER_SUCCESS_SESSION_KEY = 'pride_last_successful_order'
+const USER_SESSION_DURATION = 2 * 60 * 60 * 1000
 
 function formatVerifiedPaymentMethod(payment, fallback, gatewayLabel = 'Razorpay Test Mode') {
   if (!payment?.method) return fallback || 'Razorpay Test Mode'
@@ -60,7 +61,26 @@ function formatVerifiedPaymentStatus(status) {
 
 function getSessionUser() {
   try {
-    return JSON.parse(sessionStorage.getItem(AUTH_SESSION_KEY) || 'null')
+    const session = JSON.parse(
+      sessionStorage.getItem(AUTH_SESSION_KEY) || 'null',
+    )
+    if (!session) return null
+    if (session.sessionExpiresAt && session.sessionExpiresAt <= Date.now()) {
+      sessionStorage.removeItem(AUTH_SESSION_KEY)
+      return null
+    }
+    if (!session.sessionExpiresAt) {
+      const upgradedSession = {
+        ...session,
+        sessionExpiresAt: Date.now() + USER_SESSION_DURATION,
+      }
+      sessionStorage.setItem(
+        AUTH_SESSION_KEY,
+        JSON.stringify(upgradedSession),
+      )
+      return upgradedSession
+    }
+    return session
   } catch {
     return null
   }
@@ -202,6 +222,8 @@ export default function UserApp({
   adminSettings = initialAdminSettings,
   onNewOrder,
   onCreateReturnRequest,
+  onCancelOrder,
+  onSubmitOrderFeedback,
   onCustomerAuthenticated,
   onBeSellerClick,
 }) {
@@ -548,9 +570,13 @@ export default function UserApp({
   }
 
   const handleAuthSuccess = (authenticatedUser, mode) => {
-    sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(authenticatedUser))
-    setUser(authenticatedUser)
-    onCustomerAuthenticated?.(authenticatedUser)
+    const sessionUser = {
+      ...authenticatedUser,
+      sessionExpiresAt: Date.now() + USER_SESSION_DURATION,
+    }
+    sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(sessionUser))
+    setUser(sessionUser)
+    onCustomerAuthenticated?.(sessionUser)
     notify(
       mode === 'signup'
         ? `Welcome to Pride, ${authenticatedUser.name.split(' ')[0]}!`
@@ -564,7 +590,9 @@ export default function UserApp({
       setPendingCart(false)
       cartReturnSection.current = null
       cartHistoryActive.current = true
-      window.history.pushState({ prideAccount: 'cart' }, '', '#account-cart')
+      if (window.location.hash !== '#account-cart') {
+        window.history.pushState({ prideAccount: 'cart' }, '', '#account-cart')
+      }
       setAccountSection('cart')
     }
     if (pendingWishlistRequest) {
@@ -694,6 +722,34 @@ export default function UserApp({
     setAccountSection(null)
     notify('You have been logged out successfully')
   }
+
+  useEffect(() => {
+    if (!user?.sessionExpiresAt) return undefined
+    const remaining = user.sessionExpiresAt - Date.now()
+    const expireSession = () => {
+      const wasCheckingOut = checkoutOpen
+      const previousSection = accountSection
+      sessionStorage.removeItem(AUTH_SESSION_KEY)
+      setUser(null)
+      setAccountSection(null)
+      setCheckoutOpen(false)
+      setPendingCheckout(wasCheckingOut)
+      setPendingCart(previousSection === 'cart')
+      setPendingWishlistRequest(
+        previousSection === 'wishlist' ? { productId: null } : null,
+      )
+      setAuthOpen(true)
+      setToast('Your session expired. Please login again to continue.')
+      clearTimeout(toastTimer.current)
+      toastTimer.current = setTimeout(() => setToast(''), 4200)
+    }
+    if (remaining <= 0) {
+      expireSession()
+      return undefined
+    }
+    const timer = window.setTimeout(expireSession, remaining)
+    return () => window.clearTimeout(timer)
+  }, [accountSection, checkoutOpen, user])
 
   const handleProfileSelect = (section) => {
     setOrderToViewId(null)
@@ -874,6 +930,37 @@ export default function UserApp({
     notify(`Order ${order.id} placed successfully`)
   }
 
+  const handleCancelUserOrder = (orderId) => {
+    const order = orders.find((item) => item.id === orderId)
+    if (!order || !['Pending', 'Confirmed', 'Processing'].includes(order.status)) {
+      notify('This order can no longer be cancelled')
+      return false
+    }
+    const paymentStatus = /cash|cod/i.test(order.paymentMethod || '')
+      ? 'Cancelled'
+      : 'Refund Pending'
+    setOrders((current) =>
+      current.map((item) =>
+        item.id === orderId
+          ? { ...item, status: 'Cancelled', paymentStatus }
+          : item,
+      ),
+    )
+    onCancelOrder?.(orderId)
+    notify(`Order ${orderId} cancelled successfully`)
+    return true
+  }
+
+  const handleSubmitFeedback = (orderId, feedback) => {
+    setOrders((current) =>
+      current.map((order) =>
+        order.id === orderId ? { ...order, feedback } : order,
+      ),
+    )
+    onSubmitOrderFeedback?.(orderId, feedback)
+    notify('Thank you. Your feedback was submitted successfully')
+  }
+
   return (
     <div className="min-h-screen overflow-x-clip bg-[#f7f8f5] pb-16 lg:pb-0">
       <AnnouncementBar shippingSettings={shippingSettings} />
@@ -1028,6 +1115,8 @@ export default function UserApp({
           onSetDefaultPayment={handleDefaultPayment}
           onCheckout={handleAccountCheckout}
           onCreateReturnRequest={onCreateReturnRequest}
+          onCancelOrder={handleCancelUserOrder}
+          onSubmitOrderFeedback={handleSubmitFeedback}
           onLogout={handleLogout}
           shippingSettings={shippingSettings}
           invoiceSettings={invoiceSettings}

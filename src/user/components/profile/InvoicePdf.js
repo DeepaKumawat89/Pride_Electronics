@@ -638,18 +638,30 @@ export async function viewInvoicePdf(
     previewWindow.document.title = 'Preparing invoice preview…'
     previewWindow.document.body.textContent = 'Preparing invoice preview…'
   }
-  const { pdf } = await createInvoicePdfDocument(
-    order,
-    customer,
-    address,
-    invoiceSettings,
-  )
+  let pdf
+  try {
+    const document = await createInvoicePdfDocument(
+      order,
+      customer,
+      address,
+      invoiceSettings,
+    )
+    pdf = document.pdf
+  } catch (error) {
+    previewWindow?.close()
+    throw error
+  }
   const previewUrl = pdf.output('bloburl')
   if (previewWindow) {
     previewWindow.opener = null
     previewWindow.location.href = previewUrl
   } else {
-    window.open(previewUrl, '_blank', 'noopener,noreferrer')
+    const fallbackWindow = window.open(
+      previewUrl,
+      '_blank',
+      'noopener,noreferrer',
+    )
+    if (!fallbackWindow) throw new Error('Invoice preview was blocked.')
   }
 }
 

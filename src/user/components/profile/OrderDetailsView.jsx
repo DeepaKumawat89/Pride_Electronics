@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Star,
   Truck,
+  XCircle,
 } from 'lucide-react'
 import { useState } from 'react'
 import { formatCurrency, parsePrice } from '../../utils/currency'
@@ -184,18 +185,23 @@ export default function OrderDetailsView({
   address,
   returnRequest,
   onSubmitReturn,
+  onCancelOrder,
+  onSubmitFeedback,
   onBack,
   invoiceSettings = initialInvoiceSettings,
 }) {
   const [rating, setRating] = useState(0)
   const [review, setReview] = useState('')
-  const [submittedFeedback, setSubmittedFeedback] = useState(null)
+  const [submittedFeedback, setSubmittedFeedback] = useState(
+    order.feedback || null,
+  )
   const [activeAction, setActiveAction] = useState('')
   const [returnReason, setReturnReason] = useState('')
   const [returnSubmitted, setReturnSubmitted] = useState(false)
   const [returnImages, setReturnImages] = useState([])
   const [invoiceDownloading, setInvoiceDownloading] = useState(false)
   const [invoiceViewing, setInvoiceViewing] = useState(false)
+  const [invoiceMessage, setInvoiceMessage] = useState({ tone: '', text: '' })
   const financials = getFinancials(order, invoiceSettings.tax)
   const delivery = getAddressParts(address)
   const progress = getProgress(order)
@@ -208,6 +214,9 @@ export default function OrderDetailsView({
     order.returnEligible ??
     (delivered && daysSinceDelivery >= 0 && daysSinceDelivery <= 30)
   const submittedReturn = returnRequest || returnSubmitted
+  const cancellable = ['Pending', 'Confirmed', 'Processing'].includes(
+    order.status,
+  )
 
   const selectReturnImages = async (event) => {
     const files = [...event.target.files].slice(0, 3)
@@ -226,24 +235,39 @@ export default function OrderDetailsView({
   }
 
   const downloadInvoice = async () => {
+    setInvoiceMessage({ tone: '', text: '' })
     setInvoiceDownloading(true)
     try {
       await downloadInvoicePdf(order, user, address, invoiceSettings)
+      setInvoiceMessage({ tone: 'success', text: 'Invoice downloaded successfully.' })
+    } catch {
+      setInvoiceMessage({
+        tone: 'error',
+        text: 'Unable to generate the invoice. Please try again.',
+      })
     } finally {
       setInvoiceDownloading(false)
     }
   }
 
   const viewInvoice = async () => {
+    setInvoiceMessage({ tone: '', text: '' })
     setInvoiceViewing(true)
     try {
       await viewInvoicePdf(order, user, address, invoiceSettings)
+      setInvoiceMessage({ tone: 'success', text: 'Invoice opened in a new tab.' })
+    } catch {
+      setInvoiceMessage({
+        tone: 'error',
+        text: 'Unable to open the invoice. Allow pop-ups and try again.',
+      })
     } finally {
       setInvoiceViewing(false)
     }
   }
 
   const helpActions = [
+    ...(cancellable ? [['Cancel Order', XCircle]] : []),
     ...(returnEligible ? [['Return Product', RotateCcw]] : []),
     ['Report an Issue', Package],
     ['Billing & Payment Help', CreditCard],
@@ -402,7 +426,11 @@ export default function OrderDetailsView({
               <form
                 onSubmit={(event) => {
                   event.preventDefault()
-                  if (rating && review.trim()) setSubmittedFeedback({ rating, review: review.trim() })
+                  if (rating && review.trim()) {
+                    const feedback = { rating, review: review.trim() }
+                    setSubmittedFeedback(feedback)
+                    onSubmitFeedback?.(order.id, feedback)
+                  }
                 }}
                 className="mt-4 max-w-3xl"
               >
@@ -458,7 +486,14 @@ export default function OrderDetailsView({
             </div>
           )}
 
-          {activeAction && activeAction !== 'Return Product' && (
+          {activeAction === 'Cancel Order' && cancellable && (
+            <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <div><p className="text-[10px] font-extrabold text-slate-800">Cancel this order?</p><p className="mt-1 text-[9px] leading-4 text-slate-400">Reserved stock will be released. Paid orders will move to refund processing.</p></div>
+              <div className="flex gap-2"><button type="button" onClick={() => setActiveAction('')} className="rounded-full border border-slate-200 px-4 py-2.5 text-[9px] font-extrabold text-slate-500">Keep Order</button><button type="button" onClick={() => { if (onCancelOrder?.(order.id) !== false) setActiveAction('') }} className="rounded-full bg-red-600 px-4 py-2.5 text-[9px] font-extrabold text-white">Confirm Cancellation</button></div>
+            </div>
+          )}
+
+          {activeAction && !['Return Product', 'Cancel Order'].includes(activeAction) && (
             <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-[10px] leading-5 text-slate-500">Tell our support team about your {activeAction.toLowerCase()} request for order {order.id}.</p>
               <a href={`mailto:support@prideelectronics.in?subject=${encodeURIComponent(`${activeAction} - ${order.id}`)}`} className="w-fit rounded-full bg-[#253329] px-4 py-2.5 text-[9px] font-extrabold text-white">Contact Support</a>
@@ -470,6 +505,7 @@ export default function OrderDetailsView({
           <div>
             <SectionTitle icon={ReceiptText}>Invoice</SectionTitle>
             <p className="mt-1 text-[9px] text-slate-400">Your professional PDF invoice is available for this order.</p>
+            {invoiceMessage.text && <p className={`mt-2 text-[9px] font-bold ${invoiceMessage.tone === 'success' ? 'text-emerald-700' : 'text-red-600'}`}>{invoiceMessage.text}</p>}
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <button type="button" onClick={viewInvoice} disabled={invoiceViewing} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 text-[10px] font-extrabold text-slate-600 transition hover:border-[#75916f] hover:text-[#253329] disabled:opacity-60">

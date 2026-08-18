@@ -168,6 +168,10 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
       setAddressError('Complete all address fields before continuing.')
       return
     }
+    if (!/^[6-9]\d{9}$/.test(addressForm.phone)) {
+      setAddressError('Enter a valid 10-digit Indian mobile number.')
+      return
+    }
     if (!formDeliveryAvailability.available) {
       setAddressError(formDeliveryAvailability.message)
       return
@@ -275,12 +279,19 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
         modal: {
           backdropclose: false,
           escape: true,
-          ondismiss: () => setPaying(false),
+          ondismiss: () => {
+            setPaymentError('Payment was cancelled. Your order was not placed.')
+            setPaying(false)
+          },
         },
         handler: async (response) => {
           try {
             const verification = await postRazorpayApi('verify', response)
-            if (!verification.verified) throw new Error('Payment could not be verified.')
+            if (!verification.verified) {
+              throw new Error(
+                'Payment verification failed. Your order was not placed; contact support if an amount was debited.',
+              )
+            }
             onPlaceOrder({
               ...checkoutDetails,
               razorpay: response,
@@ -352,7 +363,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
               ) : (
                 <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <input value={addressForm.fullName} onChange={(event) => setAddressForm({ ...addressForm, fullName: event.target.value })} placeholder="Full name" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
-                  <input value={addressForm.phone} onChange={(event) => setAddressForm({ ...addressForm, phone: event.target.value })} placeholder="Phone number" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
+                  <input value={addressForm.phone} onChange={(event) => setAddressForm({ ...addressForm, phone: event.target.value.replace(/\D/g, '').slice(0, 10) })} inputMode="tel" pattern="[6-9][0-9]{9}" placeholder="Phone number" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
                   <input value={addressForm.houseFlat} onChange={(event) => setAddressForm({ ...addressForm, houseFlat: event.target.value })} placeholder="House / Flat" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
                   <input value={addressForm.street} onChange={(event) => setAddressForm({ ...addressForm, street: event.target.value })} placeholder="Street" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
                   <input value={addressForm.area} onChange={(event) => setAddressForm({ ...addressForm, area: event.target.value })} placeholder="Area" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10 sm:col-span-2" />

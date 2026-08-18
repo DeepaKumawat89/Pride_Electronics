@@ -233,7 +233,7 @@ function App() {
               paymentStatus:
                 newStatus === 'Refunded'
                   ? 'Refunded'
-                  : item.paymentStatus,
+                  : options.paymentStatus || item.paymentStatus,
                 statusHistory: statusChanged
                   ? [
                       ...(item.statusHistory || []),
@@ -291,6 +291,26 @@ function App() {
     if (action === 'complete_refund') {
       handleUpdateOrderStatus(currentRequest.orderId, 'Refunded')
     }
+  }
+
+  const handleCancelOrder = (orderId) => {
+    const order = ordersList.find((item) => item.id === orderId)
+    if (!order || !['Pending', 'Confirmed', 'Processing'].includes(order.status)) {
+      return false
+    }
+    const paymentStatus = /cash|cod/i.test(order.paymentMethod || '')
+      ? 'Cancelled'
+      : 'Refund Pending'
+    handleUpdateOrderStatus(orderId, 'Cancelled', { paymentStatus })
+    return true
+  }
+
+  const handleSubmitOrderFeedback = (orderId, feedback) => {
+    setOrdersList((current) =>
+      current.map((order) =>
+        order.id === orderId ? { ...order, feedback } : order,
+      ),
+    )
   }
 
   // Handler for User checkout order placement
@@ -429,6 +449,8 @@ function App() {
           adminSettings={adminSettings}
           onNewOrder={handleNewOrder}
           onCreateReturnRequest={handleCreateReturnRequest}
+          onCancelOrder={handleCancelOrder}
+          onSubmitOrderFeedback={handleSubmitOrderFeedback}
           onCustomerAuthenticated={handleCustomerAuthenticated}
           onBeSellerClick={() => setActivePortal('admin')}
         />
