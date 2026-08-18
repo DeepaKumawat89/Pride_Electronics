@@ -26,16 +26,19 @@ import { sortCatalogProducts } from './utils/catalog'
 import { normalizeAddress } from './utils/address'
 import { createInvoiceNumber, initialInvoiceSettings } from '../data/invoice'
 import { initialAdminSettings } from '../data/adminSettings'
-import { initialCategories } from '../data/categories'
-import { customerReviews } from './components/products/productReviewData'
 import {
   observeUserSession,
   saveUserProfile,
   signOutUser,
 } from '../firebase/userAuth'
+import {
+  saveUserAccount,
+  subscribeToUserAccount,
+  subscribeToUserOrders,
+  subscribeToUserReturns,
+} from '../firebase/storeData'
+import { getCustomerCouponUsage } from '../firebase/customerData'
 
-const ADDRESS_SESSION_KEY = 'pride_saved_addresses'
-const PAYMENT_SESSION_KEY = 'pride_saved_payments'
 const PRODUCT_HASH_PREFIX = '#product-'
 const REVIEWS_HASH_SUFFIX = '-reviews'
 const CHECKOUT_HASH = '#checkout'
@@ -72,34 +75,6 @@ function getSessionItems(key, fallback) {
   }
 }
 
-const defaultAddresses = [
-  {
-    id: 'address-home',
-    type: 'Shipping',
-    label: 'Home',
-    fullName: 'Pride Customer',
-    phone: '+91 98765 43210',
-    houseFlat: '42',
-    street: 'Silicon Avenue',
-    area: 'Hinjawadi',
-    line1: '42, Silicon Avenue, Hinjawadi',
-    city: 'Pune',
-    state: 'Maharashtra',
-    pincode: '411057',
-    isDefault: true,
-  },
-]
-const defaultPayments = [
-  {
-    id: 'payment-visa',
-    type: 'Credit Card',
-    holder: 'Pride Customer',
-    last4: '4242',
-    expiry: '12/28',
-    isDefault: true,
-  },
-]
-
 function mergeUserOrders(localOrders, sharedOrders, user) {
   if (!sharedOrders.length) return localOrders
   const sharedById = new Map(
@@ -129,14 +104,14 @@ function mergeUserOrders(localOrders, sharedOrders, user) {
 export default function UserApp({
   products = [],
   orders: sharedOrders = [],
-  returns: returnRequests = [],
+  returns: sharedReturnRequests = [],
   coupons = [],
   marketingSettings,
   shippingSettings,
   invoiceSettings = initialInvoiceSettings,
   adminSettings = initialAdminSettings,
-  categories = initialCategories,
-  reviews = customerReviews,
+  categories = [],
+  reviews = [],
   onNewOrder,
   onCreateReturnRequest,
   onCancelOrder,
@@ -144,11 +119,15 @@ export default function UserApp({
   onCustomerAuthenticated,
   onBeSellerClick,
 }) {
-  const cart = useCart(products[0], products)
+  const cart = useCart(null, products)
+  const hydrateCart = cart.hydrate
+  const cartPersistence = cart.persistence
+  const cartPersistenceRef = useRef(cartPersistence)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('All')
   const [sortBy, setSortBy] = useState('popular')
   const [likedIds, setLikedIds] = useState([])
+  const likedIdsRef = useRef(likedIds)
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [reviewsOpen, setReviewsOpen] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
@@ -163,15 +142,16 @@ export default function UserApp({
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [user, setUser] = useState(null)
   const [localOrders, setOrders] = useState([])
-  const [savedAddresses, setSavedAddresses] = useState(() =>
-    getSessionItems(ADDRESS_SESSION_KEY, defaultAddresses).map(normalizeAddress),
-  )
-  const [savedPayments, setSavedPayments] = useState(() =>
-    getSessionItems(PAYMENT_SESSION_KEY, defaultPayments),
-  )
+  const [savedAddresses, setSavedAddresses] = useState([])
+  const [savedPayments, setSavedPayments] = useState([])
+  const [userReturns, setUserReturns] = useState([])
+  const [couponUsage, setCouponUsage] = useState({})
   const [toast, setToast] = useState('')
   const toastTimer = useRef(null)
   const onCustomerAuthenticatedRef = useRef(onCustomerAuthenticated)
+  const accountHydrated = useRef(false)
+  const accountSaveTimer = useRef(null)
+  const accountSnapshot = useRef('')
   const cartReturnSection = useRef(null)
   const cartHistoryActive = useRef(false)
   const productReturnSection = useRef(null)
@@ -182,6 +162,23 @@ export default function UserApp({
     () => mergeUserOrders(localOrders, sharedOrders, user),
     [localOrders, sharedOrders, user],
   )
+  const returnRequests = user ? userReturns : sharedReturnRequests
+  const customerEmail = user?.email || ''
+  const customerCoupons = useMemo(
+    () =>
+      coupons.map((coupon) => ({
+        ...coupon,
+        usageBy: customerEmail
+          ? { [customerEmail.trim().toLowerCase()]: Number(couponUsage[coupon.code] || 0) }
+          : {},
+      })),
+    [couponUsage, coupons, customerEmail],
+  )
+
+  useEffect(() => {
+    cartPersistenceRef.current = cartPersistence
+    likedIdsRef.current = likedIds
+  }, [cartPersistence, likedIds])
 
   useEffect(() => {
     const handleHistoryBack = () => {
@@ -293,6 +290,104 @@ export default function UserApp({
     [],
   )
 
+  useEffect(() => {
+    accountHydrated.current = false
+    accountSnapshot.current = ''
+    if (!user?.uid) {
+      return undefined
+    }
+
+    const handleError = (error) => {
+      setToast(error.message || 'Unable to load your Firebase account data.')
+      clearTimeout(toastTimer.current)
+      toastTimer.current = setTimeout(() => setToast(''), 4200)
+    }
+    const unsubscribers = [
+      subscribeToUserAccount(
+        user.uid,
+        (account) => {
+          const guestCart = cartPersistenceRef.current
+          const remoteCart = account.cartItems || []
+          const cartByProduct = new Map(
+            [...remoteCart, ...(guestCart.cartItems || [])].map((item) => [
+              String(item.productId),
+              item,
+            ]),
+          )
+          const mergedCartItems = [...cartByProduct.values()]
+          const savedProductIds = new Set(
+            [...(account.savedCartItems || []), ...(guestCart.savedCartItems || [])]
+              .map((item) => item.productId || item)
+              .filter((productId) => !cartByProduct.has(String(productId)))
+              .map(String),
+          )
+          const nextAccount = {
+            wishlistIds: [...new Set([...(account.wishlistIds || []), ...likedIdsRef.current])],
+            addresses: (account.addresses || []).map(normalizeAddress),
+            paymentMethods: account.paymentMethods || [],
+            cartItems: mergedCartItems,
+            savedCartItems: [...savedProductIds].map((productId) => ({ productId })),
+          }
+          accountSnapshot.current = JSON.stringify({
+            wishlistIds: account.wishlistIds || [],
+            addresses: (account.addresses || []).map(normalizeAddress),
+            paymentMethods: account.paymentMethods || [],
+            cartItems: remoteCart,
+            savedCartItems: account.savedCartItems || [],
+          })
+          setLikedIds(nextAccount.wishlistIds)
+          setSavedAddresses(nextAccount.addresses)
+          setSavedPayments(nextAccount.paymentMethods)
+          hydrateCart(nextAccount)
+          accountHydrated.current = true
+        },
+        handleError,
+      ),
+      subscribeToUserOrders(user.uid, setOrders, handleError),
+      subscribeToUserReturns(user.uid, setUserReturns, handleError),
+    ]
+    return () => {
+      accountHydrated.current = false
+      clearTimeout(accountSaveTimer.current)
+      unsubscribers.forEach((unsubscribe) => unsubscribe())
+    }
+  }, [user?.uid, hydrateCart])
+
+  useEffect(() => {
+    if (!user?.uid) return undefined
+    let active = true
+    getCustomerCouponUsage()
+      .then((usage) => {
+        if (active) setCouponUsage(usage)
+      })
+      .catch(() => {
+        if (active) setCouponUsage({})
+      })
+    return () => {
+      active = false
+    }
+  }, [user?.uid])
+
+  useEffect(() => {
+    if (!user?.uid || !accountHydrated.current) return undefined
+    const account = {
+      wishlistIds: likedIds,
+      addresses: savedAddresses,
+      paymentMethods: savedPayments,
+      ...cartPersistence,
+    }
+    const serializedAccount = JSON.stringify(account)
+    if (serializedAccount === accountSnapshot.current) return undefined
+    accountSnapshot.current = serializedAccount
+    clearTimeout(accountSaveTimer.current)
+    accountSaveTimer.current = setTimeout(() => {
+      void saveUserAccount(user.uid, account).catch((error) => {
+        setToast(error.message || 'Unable to save your account changes.')
+      })
+    }, 350)
+    return () => clearTimeout(accountSaveTimer.current)
+  }, [cartPersistence, likedIds, savedAddresses, savedPayments, user?.uid])
+
   const filteredProducts = useMemo(() => {
     const matchingProducts = products
       .filter((product) => category === 'All' || product.category === category)
@@ -401,6 +496,15 @@ export default function UserApp({
       )
     return [...sameCategory, ...otherRelevant].slice(0, 4)
   }, [products, selectedProduct])
+  const selectedProductReviews = useMemo(
+    () =>
+      selectedProduct
+        ? reviews.filter(
+            (review) => String(review.productId) === String(selectedProduct.id),
+          )
+        : [],
+    [reviews, selectedProduct],
+  )
 
   const handleAdd = (product, quantity = 1) => {
     const added = cart.add(product, quantity)
@@ -569,7 +673,6 @@ export default function UserApp({
 
   const persistAddresses = (nextAddresses) => {
     setSavedAddresses(nextAddresses)
-    sessionStorage.setItem(ADDRESS_SESSION_KEY, JSON.stringify(nextAddresses))
   }
 
   const handleSaveAddress = (address) => {
@@ -617,7 +720,6 @@ export default function UserApp({
 
   const persistPayments = (nextPayments) => {
     setSavedPayments(nextPayments)
-    sessionStorage.setItem(PAYMENT_SESSION_KEY, JSON.stringify(nextPayments))
   }
 
   const handleSavePayment = (payment) => {
@@ -667,6 +769,16 @@ export default function UserApp({
     try {
       await signOutUser()
     } finally {
+      accountHydrated.current = false
+      accountSnapshot.current = ''
+      clearTimeout(accountSaveTimer.current)
+      setOrders([])
+      setUserReturns([])
+      setLikedIds([])
+      setSavedAddresses([])
+      setSavedPayments([])
+      setCouponUsage({})
+      hydrateCart({})
       setUser(null)
       setAccountSection(null)
       notify('You have been logged out successfully')
@@ -759,7 +871,7 @@ export default function UserApp({
     notify('Please login or sign up to continue to checkout')
   }
 
-  const handlePlaceOrder = (checkoutDetails = {}) => {
+  const handlePlaceOrder = async (checkoutDetails = {}) => {
     const verifiedPayment = checkoutDetails.verifiedPayment
     const verifiedAmount = Number(verifiedPayment?.amount)
     const gatewayLabel = adminSettings.payment.testMode
@@ -835,52 +947,85 @@ export default function UserApp({
         taxRate: product.taxRate ?? invoiceSettings.tax.defaultRate,
       })),
     }
-    onNewOrder?.(order)
-    setOrders((current) => [order, ...current])
+    const savedOrder = (await onNewOrder?.(order)) || order
+    setOrders((current) =>
+      current.some((item) => item.id === savedOrder.id)
+        ? current
+        : [savedOrder, ...current],
+    )
+    if (savedOrder.couponCode) {
+      setCouponUsage((current) => ({
+        ...current,
+        [savedOrder.couponCode]: Number(current[savedOrder.couponCode] || 0) + 1,
+      }))
+    }
     cart.clear()
     setCheckoutOpen(false)
     checkoutHistoryActive.current = false
-    sessionStorage.setItem(ORDER_SUCCESS_SESSION_KEY, JSON.stringify(order))
+    sessionStorage.setItem(ORDER_SUCCESS_SESSION_KEY, JSON.stringify(savedOrder))
     orderSuccessHistoryActive.current = true
     window.history.replaceState(
-      { prideOrderSuccess: order.id },
+      { prideOrderSuccess: savedOrder.id },
       '',
       ORDER_SUCCESS_HASH,
     )
-    setSuccessfulOrder(order)
+    setSuccessfulOrder(savedOrder)
     window.scrollTo({ top: 0, behavior: 'smooth' })
-    notify(`Order ${order.id} placed successfully`)
+    notify(`Order ${savedOrder.id} placed successfully`)
+    return savedOrder
   }
 
-  const handleCancelUserOrder = (orderId) => {
+  const handleCancelUserOrder = async (orderId) => {
     const order = orders.find((item) => item.id === orderId)
     if (!order || !['Pending', 'Confirmed', 'Processing'].includes(order.status)) {
       notify('This order can no longer be cancelled')
       return false
     }
-    const paymentStatus = /cash|cod/i.test(order.paymentMethod || '')
-      ? 'Cancelled'
-      : 'Refund Pending'
-    setOrders((current) =>
-      current.map((item) =>
-        item.id === orderId
-          ? { ...item, status: 'Cancelled', paymentStatus }
-          : item,
-      ),
-    )
-    onCancelOrder?.(orderId)
-    notify(`Order ${orderId} cancelled successfully`)
-    return true
+    try {
+      const savedOrder = await onCancelOrder?.(orderId)
+      if (savedOrder) {
+        setOrders((current) =>
+          current.map((item) => (item.id === orderId ? savedOrder : item)),
+        )
+      }
+      notify(`Order ${orderId} cancelled successfully`)
+      return true
+    } catch (error) {
+      notify(error.message || 'Unable to cancel the order')
+      return false
+    }
   }
 
-  const handleSubmitFeedback = (orderId, feedback) => {
-    setOrders((current) =>
-      current.map((order) =>
-        order.id === orderId ? { ...order, feedback } : order,
-      ),
-    )
-    onSubmitOrderFeedback?.(orderId, feedback)
-    notify('Thank you. Your feedback was submitted successfully')
+  const handleSubmitFeedback = async (orderId, feedback) => {
+    try {
+      await onSubmitOrderFeedback?.(orderId, feedback)
+      setOrders((current) =>
+        current.map((order) =>
+          order.id === orderId ? { ...order, feedback } : order,
+        ),
+      )
+      notify('Thank you. Your feedback was submitted successfully')
+    } catch (error) {
+      notify(error.message || 'Unable to submit your feedback')
+    }
+  }
+
+  const handleCreateReturnRequest = async (orderId, details) => {
+    try {
+      const request = await onCreateReturnRequest?.(orderId, details)
+      if (request) {
+        setUserReturns((current) =>
+          current.some((item) => item.id === request.id)
+            ? current
+            : [request, ...current],
+        )
+        notify('Return request submitted successfully')
+      }
+      return request
+    } catch (error) {
+      notify(error.message || 'Unable to submit the return request')
+      return null
+    }
   }
 
   return (
@@ -888,6 +1033,7 @@ export default function UserApp({
       <AnnouncementBar shippingSettings={shippingSettings} />
       <Header
         products={products}
+        categories={categories}
         searchQuery={query}
         user={user}
         cartCount={cart.count}
@@ -916,7 +1062,7 @@ export default function UserApp({
             key={`${savedAddresses.find((address) => address.isDefault)?.id || 'no-address'}-${savedPayments.find((payment) => payment.isDefault)?.id || 'no-payment'}`}
             items={cart.items}
             initialCouponCode={checkoutCouponCode}
-            coupons={coupons}
+            coupons={customerCoupons}
             savedAddresses={savedAddresses}
             savedPayments={savedPayments}
             user={user}
@@ -929,7 +1075,7 @@ export default function UserApp({
             storeName={adminSettings.store.name}
           />
         ) : selectedProduct && reviewsOpen ? (
-          <ProductReviewsPage product={selectedProduct} reviews={reviews} onBack={closeReviews} />
+          <ProductReviewsPage product={selectedProduct} reviews={selectedProductReviews} onBack={closeReviews} />
         ) : selectedProduct ? (
           <ProductDetailsPage
             key={selectedProduct.id}
@@ -948,7 +1094,7 @@ export default function UserApp({
             onViewAllReviews={navigateToReviews}
             shippingSettings={shippingSettings}
             taxSettings={invoiceSettings.tax}
-            reviews={reviews}
+            reviews={selectedProductReviews}
           />
         ) : (
           <>
@@ -1013,7 +1159,7 @@ export default function UserApp({
           )}
           orders={orders}
           returnRequests={returnRequests}
-          coupons={coupons}
+          coupons={customerCoupons}
           initialOrderId={orderToViewId}
           cartItems={cart.items}
           savedCartItems={cart.savedItems}
@@ -1039,7 +1185,7 @@ export default function UserApp({
           onDeletePayment={handleDeletePayment}
           onSetDefaultPayment={handleDefaultPayment}
           onCheckout={handleAccountCheckout}
-          onCreateReturnRequest={onCreateReturnRequest}
+          onCreateReturnRequest={handleCreateReturnRequest}
           onCancelOrder={handleCancelUserOrder}
           onSubmitOrderFeedback={handleSubmitFeedback}
           onLogout={handleLogout}

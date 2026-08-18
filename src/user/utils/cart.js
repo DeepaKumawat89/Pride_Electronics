@@ -1,6 +1,3 @@
-import { initialCoupons } from '../../data/coupons.js'
-import { initialShippingSettings } from '../../data/shipping.js'
-import { initialInvoiceSettings } from '../../data/invoice.js'
 import { parsePrice } from './currency.js'
 
 export const FREE_SHIPPING_THRESHOLD = 999
@@ -25,7 +22,7 @@ export function validateCartCoupon(
   code,
   subtotal,
   now = new Date(),
-  coupons = initialCoupons,
+  coupons = [],
   context = {},
 ) {
   const normalizedCode = code.trim().toUpperCase()
@@ -79,10 +76,10 @@ export function calculateCartPricing(
   items,
   couponCode = '',
   now = new Date(),
-  coupons = initialCoupons,
+  coupons = [],
   userKey = '',
-  shippingSettings = initialShippingSettings,
-  taxSettings = initialInvoiceSettings.tax,
+  shippingSettings = {},
+  taxSettings = {},
 ) {
   const mrpSubtotal = items.reduce(
     (sum, { product, quantity }) =>

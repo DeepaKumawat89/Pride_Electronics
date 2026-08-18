@@ -235,8 +235,12 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
     setPaying(true)
 
     if (paymentMode === 'cod') {
-      setPaying(false)
-      onPlaceOrder({ ...checkoutDetails, cod: true })
+      try {
+        await onPlaceOrder({ ...checkoutDetails, cod: true })
+      } catch (error) {
+        setPaymentError(error.message || 'Unable to place the order.')
+        setPaying(false)
+      }
       return
     }
 
@@ -292,7 +296,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
                 'Payment verification failed. Your order was not placed; contact support if an amount was debited.',
               )
             }
-            onPlaceOrder({
+            await onPlaceOrder({
               ...checkoutDetails,
               razorpay: response,
               verifiedPayment: verification.payment,

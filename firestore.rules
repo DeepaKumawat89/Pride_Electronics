@@ -1,0 +1,99 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() && (
+        request.auth.token.admin == true ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function owns(resourceData) {
+      return signedIn() && resourceData.userId == request.auth.uid;
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if isAdmin() || settingId in [
+        'marketing',
+        'shipping',
+        'invoice',
+        'storefront'
+      ];
+      allow write: if isAdmin();
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if isAdmin() || resource.data.status == 'Published' || owns(resource.data);
+      allow write: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAdmin() || owns(resource.data);
+      allow write: if isAdmin();
+    }
+
+    match /returns/{returnId} {
+      allow read: if isAdmin() || owns(resource.data);
+      allow write: if isAdmin();
+    }
+
+    match /refunds/{refundId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /inventoryHistory/{entryId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
+      allow create: if false;
+      allow update: if isAdmin() || (
+        signedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'wishlistIds',
+          'addresses',
+          'paymentMethods',
+          'cartItems',
+          'savedCartItems',
+          'updatedAt'
+        ])
+      );
+      allow delete: if false;
+    }
+
+    match /admins/{adminId} {
+      allow read: if signedIn() && request.auth.uid == adminId;
+      allow write: if isAdmin();
+    }
+
+    match /couponUsages/{usageId} {
+      allow read, write: if false;
+    }
+
+    match /_authPhoneIndex/{phone} {
+      allow read, write: if false;
+    }
+  }
+}

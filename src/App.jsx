@@ -1,32 +1,20 @@
 import { useEffect, useState } from 'react'
+import { onAuthStateChanged } from 'firebase/auth'
 import UserApp from './user/UserApp'
 import AdminApp from './admin/AdminApp'
-import { initialOrders, initialCustomers } from './data/adminData'
-import { initialCoupons } from './data/coupons'
 import { initialMarketingSettings } from './data/marketing'
 import { initialShippingSettings } from './data/shipping'
 import { initialInvoiceSettings } from './data/invoice'
 import { initialAdminSettings } from './data/adminSettings'
-import { initialCategories } from './data/categories'
-import { customerReviews as initialReviews } from './user/components/products/productReviewData'
 import {
   adjustProductStock,
   getAvailableStock,
-  initializeInventory,
-  reserveOrderStock,
   transitionOrderInventory,
 } from './admin/utils/inventory'
+import { createRefundRecord } from './admin/utils/payments'
 import {
-  createRefundRecord,
-  initializeRefundRecords,
-} from './admin/utils/payments'
-import { createCustomerFromUser } from './admin/utils/customers'
-import {
-  createReturnRequest,
-  initializeReturnRequests,
   transitionReturnRequest,
 } from './admin/utils/returns'
-import { formatCurrency, parsePrice } from './user/utils/currency'
 import {
   createProduct,
   createProductId,
@@ -39,8 +27,24 @@ import {
   removeProductImages,
   uploadProductImages,
 } from './firebase/productImages'
+import { auth } from './firebase/firebase'
+import {
+  removeRecord,
+  saveRecord,
+  saveRecords,
+  saveSetting,
+  subscribeToCollection,
+  subscribeToPublishedReviews,
+  subscribeToSetting,
+} from './firebase/storeData'
+import {
+  cancelCustomerOrder,
+  createCustomerReturn,
+  placeCustomerOrder,
+  submitCustomerOrderFeedback,
+} from './firebase/customerData'
+import { updateCustomerAccountStatus } from './firebase/adminData'
 
-const initialInventory = initializeInventory([], initialOrders)
 const getChangedProducts = (currentProducts, nextProducts) =>
   nextProducts.filter((nextProduct) => {
     const currentProduct = currentProducts.find(
@@ -48,62 +52,58 @@ const getChangedProducts = (currentProducts, nextProducts) =>
     )
     return JSON.stringify(currentProduct) !== JSON.stringify(nextProduct)
   })
-const SETTINGS_KEYS = {
-  marketing: 'pride_marketing_settings',
-  shipping: 'pride_shipping_settings',
-  invoice: 'pride_invoice_settings',
-  admin: 'pride_admin_settings',
-}
+const mergeSetting = (fallback, stored) =>
+  stored
+    ? Object.fromEntries(
+        Object.entries(fallback).map(([section, defaultValue]) => [
+          section,
+          Array.isArray(defaultValue)
+            ? stored[section] || defaultValue
+            : typeof defaultValue === 'object'
+              ? { ...defaultValue, ...(stored[section] || {}) }
+              : stored[section] ?? defaultValue,
+        ]),
+      )
+    : fallback
 
-const loadSettings = (key, fallback) => {
-  try {
-    const stored = JSON.parse(localStorage.getItem(key) || '{}')
-    return Object.fromEntries(
-      Object.entries(fallback).map(([section, defaultValue]) => [
-        section,
-        Array.isArray(defaultValue)
-          ? stored[section] || defaultValue
-          : typeof defaultValue === 'object'
-            ? { ...defaultValue, ...(stored[section] || {}) }
-            : stored[section] ?? defaultValue,
-      ]),
-    )
-  } catch {
-    return fallback
-  }
-}
+const dateValue = (value) =>
+  value?.toDate?.().toISOString().slice(0, 10) ||
+  String(value || '').slice(0, 10)
+
+const customerFromUserRecord = (user) => ({
+  ...user,
+  id: user.id,
+  name: user.name || 'Pride Customer',
+  phone: user.phone || user.mobile || '',
+  role: user.membershipRole || (user.role === 'customer' ? 'Customer' : user.role) || 'Customer',
+  status: user.status || 'Active',
+  joinedDate: user.joinedDate || dateValue(user.createdAt),
+  registrationDate: user.registrationDate || user.joinedDate || dateValue(user.createdAt),
+  ordersCount: Number(user.ordersCount || 0),
+  totalSpent: user.totalSpent || `₹${Number(user.totalSpentValue || 0).toLocaleString('en-IN')}`,
+  addresses: user.addresses || [],
+  wishlist: user.wishlistIds || user.wishlist || [],
+})
 
 function App() {
   const [activePortal, setActivePortal] = useState('user') // 'user' | 'admin'
   const [productsList, setProductsList] = useState([])
   const [productsLoading, setProductsLoading] = useState(true)
   const [productsError, setProductsError] = useState('')
-  const [ordersList, setOrdersList] = useState(initialInventory.orders)
-  const [inventoryHistory, setInventoryHistory] = useState(
-    initialInventory.history,
-  )
-  const [refundsList, setRefundsList] = useState(() =>
-    initializeRefundRecords(initialInventory.orders),
-  )
-  const [customersList, setCustomersList] = useState(initialCustomers)
-  const [returnsList, setReturnsList] = useState(() =>
-    initializeReturnRequests(initialInventory.orders),
-  )
-  const [couponsList, setCouponsList] = useState(initialCoupons)
-  const [categoriesList, setCategoriesList] = useState(initialCategories)
-  const [reviewsList, setReviewsList] = useState(initialReviews)
-  const [marketingSettings, setMarketingSettings] = useState(
-    () => loadSettings(SETTINGS_KEYS.marketing, initialMarketingSettings),
-  )
-  const [shippingSettings, setShippingSettings] = useState(
-    () => loadSettings(SETTINGS_KEYS.shipping, initialShippingSettings),
-  )
-  const [invoiceSettings, setInvoiceSettings] = useState(() =>
-    loadSettings(SETTINGS_KEYS.invoice, initialInvoiceSettings),
-  )
-  const [adminSettings, setAdminSettings] = useState(() =>
-    loadSettings(SETTINGS_KEYS.admin, initialAdminSettings),
-  )
+  const [ordersList, setOrdersList] = useState([])
+  const [inventoryHistory, setInventoryHistory] = useState([])
+  const [refundsList, setRefundsList] = useState([])
+  const [customersList, setCustomersList] = useState([])
+  const [returnsList, setReturnsList] = useState([])
+  const [couponsList, setCouponsList] = useState([])
+  const [categoriesList, setCategoriesList] = useState([])
+  const [publicReviews, setPublicReviews] = useState([])
+  const [adminReviews, setAdminReviews] = useState([])
+  const [adminAuthenticated, setAdminAuthenticated] = useState(false)
+  const [marketingSettings, setMarketingSettings] = useState(initialMarketingSettings)
+  const [shippingSettings, setShippingSettings] = useState(initialShippingSettings)
+  const [invoiceSettings, setInvoiceSettings] = useState(initialInvoiceSettings)
+  const [adminSettings, setAdminSettings] = useState(initialAdminSettings)
 
   useEffect(
     () =>
@@ -123,25 +123,88 @@ function App() {
     [],
   )
 
-  const persistSettings = (setter, key) => (valueOrUpdater) =>
+  useEffect(() => {
+    const reportError = (error) =>
+      setProductsError(error.message || 'Unable to load store data from Firestore.')
+    const unsubscribers = [
+      subscribeToCollection('coupons', setCouponsList, reportError),
+      subscribeToCollection('categories', setCategoriesList, reportError),
+      subscribeToPublishedReviews(setPublicReviews, reportError),
+      subscribeToSetting('marketing', (value) =>
+        setMarketingSettings(mergeSetting(initialMarketingSettings, value)), reportError),
+      subscribeToSetting('shipping', (value) =>
+        setShippingSettings(mergeSetting(initialShippingSettings, value)), reportError),
+      subscribeToSetting('invoice', (value) =>
+        setInvoiceSettings(mergeSetting(initialInvoiceSettings, value)), reportError),
+      subscribeToSetting('storefront', (value) =>
+        setAdminSettings((current) => ({
+          ...current,
+          store: { ...initialAdminSettings.store, ...(value?.store || {}) },
+          payment: { ...initialAdminSettings.payment, ...(value?.payment || {}) },
+        })), reportError),
+    ]
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
+  }, [])
+
+  useEffect(() => {
+    let restrictedUnsubscribers = []
+    const stopRestrictedListeners = () => {
+      restrictedUnsubscribers.forEach((unsubscribe) => unsubscribe())
+      restrictedUnsubscribers = []
+    }
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      stopRestrictedListeners()
+      setAdminAuthenticated(Boolean(user))
+      if (!user) {
+        setOrdersList([])
+        setInventoryHistory([])
+        setRefundsList([])
+        setCustomersList([])
+        setReturnsList([])
+        setAdminReviews([])
+        return
+      }
+      const ignoreUnauthorized = () => {}
+      restrictedUnsubscribers = [
+        subscribeToCollection('orders', setOrdersList, ignoreUnauthorized, { sort: true }),
+        subscribeToCollection('inventoryHistory', setInventoryHistory, ignoreUnauthorized, { sort: true }),
+        subscribeToCollection('refunds', setRefundsList, ignoreUnauthorized, { sort: true }),
+        subscribeToCollection('returns', setReturnsList, ignoreUnauthorized, { sort: true }),
+        subscribeToCollection('users', (users) => setCustomersList(users.map(customerFromUserRecord)), ignoreUnauthorized),
+        subscribeToCollection('reviews', setAdminReviews, ignoreUnauthorized, { sort: true }),
+        subscribeToSetting('admin', (value) =>
+          setAdminSettings(mergeSetting(initialAdminSettings, value)), ignoreUnauthorized),
+      ]
+    })
+    return () => {
+      unsubscribeAuth()
+      stopRestrictedListeners()
+    }
+  }, [])
+
+  const reviewsList = adminAuthenticated ? adminReviews : publicReviews
+
+  const persistSettings = (setter, settingName) => (valueOrUpdater) =>
     setter((current) => {
       const next = typeof valueOrUpdater === 'function'
         ? valueOrUpdater(current)
         : valueOrUpdater
-      localStorage.setItem(key, JSON.stringify(next))
+      void saveSetting(settingName, next).catch((error) =>
+        setProductsError(error.message || `Unable to save ${settingName} settings.`),
+      )
       return next
     })
   const updateMarketingSettings = persistSettings(
     setMarketingSettings,
-    SETTINGS_KEYS.marketing,
+    'marketing',
   )
   const updateShippingSettings = persistSettings(
     setShippingSettings,
-    SETTINGS_KEYS.shipping,
+    'shipping',
   )
   const updateInvoiceSettings = persistSettings(
     setInvoiceSettings,
-    SETTINGS_KEYS.invoice,
+    'invoice',
   )
   const updateAdminSettings = (valueOrUpdater) =>
     setAdminSettings((current) => {
@@ -152,28 +215,19 @@ function App() {
         ...next,
         email: { ...next.email, password: '' },
       }
-      localStorage.setItem(SETTINGS_KEYS.admin, JSON.stringify(persisted))
+      void saveSetting('admin', persisted).catch((error) =>
+        setProductsError(error.message || 'Unable to save admin settings.'),
+      )
+      void saveSetting('storefront', {
+        store: persisted.store,
+        payment: persisted.payment,
+      }).catch((error) =>
+        setProductsError(error.message || 'Unable to save storefront settings.'),
+      )
       return next
     })
 
-  const handleCustomerAuthenticated = (user) => {
-    setCustomersList((current) => {
-      const email = String(user.email || '').trim().toLowerCase()
-      const existing = current.find(
-        (customer) => String(customer.email).toLowerCase() === email,
-      )
-      if (!existing) return [...current, createCustomerFromUser(user)]
-      return current.map((customer) =>
-        customer.id === existing.id
-          ? {
-              ...customer,
-              name: user.name || customer.name,
-              phone: user.phone || user.mobile || customer.phone,
-            }
-          : customer,
-      )
-    })
-  }
+  const handleCustomerAuthenticated = () => {}
 
   // Handlers for Admin actions on Products
   const handleAddProduct = async (newProduct) => {
@@ -218,6 +272,9 @@ function App() {
           : [product, ...current],
       )
       setInventoryHistory((current) => [...result.history, ...current])
+      void saveRecords('inventoryHistory', result.history).catch((error) =>
+        setProductsError(error.message || 'Unable to save inventory history.'),
+      )
       return product
     } catch (error) {
       await removeProductImages(uploadedImages.paths)
@@ -286,6 +343,9 @@ function App() {
         )
         savedProduct = await saveProduct(productToSave)
         setInventoryHistory((current) => [...result.history, ...current])
+        void saveRecords('inventoryHistory', result.history).catch((error) =>
+          setProductsError(error.message || 'Unable to save inventory history.'),
+        )
       }
       setProductsList((current) =>
         current.map((product) =>
@@ -326,74 +386,57 @@ function App() {
       setProductsError(error.message || 'Unable to update Firestore inventory.'),
     )
     if (newStatus === 'Refunded') {
-      setRefundsList((current) =>
-        current.some((refund) => refund.orderId === orderId)
-          ? current
-          : [createRefundRecord(order), ...current],
-      )
+      const refund = createRefundRecord(order)
+      if (!refundsList.some((item) => item.orderId === orderId)) {
+        setRefundsList((current) => [refund, ...current])
+        void saveRecord('refunds', refund).catch((error) =>
+          setProductsError(error.message || 'Unable to save refund record.'),
+        )
+      }
     }
-    setInventoryHistory((current) => [
-      ...transition.history.reverse(),
-      ...current,
-    ])
-    setOrdersList((prev) =>
-      prev.map((item) =>
-        item.id === orderId
-          ? (() => {
-              const statusChanged = item.status !== newStatus
-              const updatedAt = new Date()
-              return {
-              ...item,
+    const history = [...transition.history].reverse()
+    setInventoryHistory((current) => [...history, ...current])
+    void saveRecords('inventoryHistory', history).catch((error) =>
+      setProductsError(error.message || 'Unable to save inventory history.'),
+    )
+    const statusChanged = order.status !== newStatus
+    const updatedAt = new Date()
+    const updatedOrder = {
+      ...order,
+      status: newStatus,
+      inventoryState: transition.inventoryState,
+      returnDisposition: options.returnDisposition || order.returnDisposition,
+      trackingId:
+        options.trackingId === undefined ? order.trackingId : options.trackingId,
+      courier: options.courier === undefined ? order.courier : options.courier,
+      paymentStatus:
+        newStatus === 'Refunded'
+          ? 'Refunded'
+          : options.paymentStatus || order.paymentStatus,
+      statusHistory: statusChanged
+        ? [
+            ...(order.statusHistory || []),
+            {
               status: newStatus,
-              inventoryState: transition.inventoryState,
-              returnDisposition:
-                options.returnDisposition || item.returnDisposition,
-              trackingId:
-                options.trackingId === undefined
-                  ? item.trackingId
-                  : options.trackingId,
-              courier:
-                options.courier === undefined ? item.courier : options.courier,
-              paymentStatus:
-                newStatus === 'Refunded'
-                  ? 'Refunded'
-                  : options.paymentStatus || item.paymentStatus,
-                statusHistory: statusChanged
-                  ? [
-                      ...(item.statusHistory || []),
-                      {
-                        status: newStatus,
-                        timestamp: updatedAt.toISOString(),
-                        date: updatedAt.toISOString().slice(0, 10),
-                        time: updatedAt.toLocaleTimeString('en-IN', {
-                          hour: 'numeric',
-                          minute: '2-digit',
-                        }),
-                      },
-                    ]
-                  : item.statusHistory,
-              }
-            })()
-          : item,
-      ),
+              timestamp: updatedAt.toISOString(),
+              date: updatedAt.toISOString().slice(0, 10),
+              time: updatedAt.toLocaleTimeString('en-IN', {
+                hour: 'numeric',
+                minute: '2-digit',
+              }),
+            },
+          ]
+        : order.statusHistory,
+    }
+    setOrdersList((current) =>
+      current.map((item) => (item.id === orderId ? updatedOrder : item)),
+    )
+    void saveRecord('orders', updatedOrder, { merge: true }).catch((error) =>
+      setProductsError(error.message || 'Unable to update the order.'),
     )
   }
 
-  const handleCreateReturnRequest = (orderId, details) => {
-    const order = ordersList.find((item) => item.id === orderId)
-    if (!order) return null
-    const request = createReturnRequest(order, details)
-    setReturnsList((current) =>
-      current.some(
-        (item) =>
-          item.orderId === orderId &&
-          !['Completed', 'Rejected'].includes(item.status),
-      )
-        ? current
-        : [request, ...current],
-    )
-    return request
-  }
+  const handleCreateReturnRequest = createCustomerReturn
 
   const handleUpdateReturn = (requestId, action, options = {}) => {
     const currentRequest = returnsList.find((item) => item.id === requestId)
@@ -406,6 +449,12 @@ function App() {
     )
     if (result.error) return
     setReturnsList(result.requests)
+    if (result.updatedRequest) {
+      void saveRecord('returns', result.updatedRequest, { merge: true }).catch(
+        (error) =>
+          setProductsError(error.message || 'Unable to update the return request.'),
+      )
+    }
     if (action === 'inspect') {
       handleUpdateOrderStatus(currentRequest.orderId, 'Returned', {
         returnDisposition:
@@ -417,166 +466,48 @@ function App() {
     }
   }
 
-  const handleCancelOrder = (orderId) => {
-    const order = ordersList.find((item) => item.id === orderId)
-    if (!order || !['Pending', 'Confirmed', 'Processing'].includes(order.status)) {
-      return false
-    }
-    const paymentStatus = /cash|cod/i.test(order.paymentMethod || '')
-      ? 'Cancelled'
-      : 'Refund Pending'
-    handleUpdateOrderStatus(orderId, 'Cancelled', { paymentStatus })
-    return true
-  }
+  const handleCancelOrder = cancelCustomerOrder
 
-  const handleSubmitOrderFeedback = (orderId, feedback) => {
-    const order = ordersList.find((item) => item.id === orderId)
-    setOrdersList((current) =>
-      current.map((order) =>
-        order.id === orderId ? { ...order, feedback } : order,
-      ),
-    )
-    if (order && !reviewsList.some((review) => review.orderId === orderId)) {
-      const productName = order.items?.[0]?.productName || 'Order purchase'
-      setReviewsList((current) => [
-        {
-          id: `review-${Date.now()}`,
-          orderId,
-          productName,
-          name: order.customer || 'Pride customer',
-          initials: String(order.customer || 'PC')
-            .split(/\s+/)
-            .map((part) => part[0])
-            .join('')
-            .slice(0, 2)
-            .toUpperCase(),
-          rating: Number(feedback.rating) || 0,
-          date: new Date().toLocaleDateString('en-IN', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-          }),
-          title: `Review for ${productName}`,
-          text: feedback.review,
-          status: 'Pending',
-          tone: 'bg-[#dcebdd] text-[#366643]',
-        },
-        ...current,
-      ])
-    }
-  }
+  const handleSubmitOrderFeedback = submitCustomerOrderFeedback
 
   // Handler for User checkout order placement
-  const handleNewOrder = (newOrder) => {
-    const reservation = reserveOrderStock(productsList, newOrder)
-    setProductsList(reservation.products)
-    void saveProducts(
-      getChangedProducts(productsList, reservation.products),
-    ).catch((error) =>
-      setProductsError(error.message || 'Unable to reserve Firestore inventory.'),
-    )
-    setInventoryHistory((current) => [
-      ...reservation.history.reverse(),
-      ...current,
-    ])
-    setOrdersList((prev) => [
-      {
-        ...newOrder,
-        inventoryState: 'reserved',
-        statusHistory: newOrder.statusHistory || [
-          {
-            status: newOrder.status || 'Pending',
-            timestamp: new Date().toISOString(),
-            date: newOrder.date,
-            time: newOrder.orderTime,
-          },
-        ],
-      },
-      ...prev,
-    ])
-    updateInvoiceSettings((current) => ({
-      ...current,
-      numbering: {
-        ...current.numbering,
-        nextNumber: Math.max(1, Number(current.numbering.nextNumber) || 1) + 1,
-      },
-    }))
-    setCustomersList((current) => {
-      const email = String(newOrder.email || '').trim().toLowerCase()
-      const existing = current.find(
-        (customer) => String(customer.email).toLowerCase() === email,
-      )
-      const orderTotal = parsePrice(newOrder.total)
-      if (!existing) {
-        return [
-          ...current,
-          {
-            ...createCustomerFromUser({
-              name: newOrder.customer,
-              email,
-              phone: newOrder.shippingAddress?.phone,
-            }),
-            ordersCount: 1,
-            totalSpent: formatCurrency(orderTotal),
-            addresses: newOrder.shippingAddress
-              ? [newOrder.shippingAddress]
-              : [],
-          },
-        ]
-      }
-      return current.map((customer) =>
-        customer.id === existing.id
-          ? {
-              ...customer,
-              phone: newOrder.shippingAddress?.phone || customer.phone,
-              ordersCount: Number(customer.ordersCount || 0) + 1,
-              totalSpent: formatCurrency(
-                parsePrice(customer.totalSpent) + orderTotal,
-              ),
-              addresses: newOrder.shippingAddress
-                ? [...(customer.addresses || []), newOrder.shippingAddress]
-                : customer.addresses,
-            }
-          : customer,
-      )
-    })
-    if (newOrder.couponCode) {
-      const userKey = String(newOrder.email || '').trim().toLowerCase()
-      setCouponsList((current) =>
-        current.map((coupon) =>
-          coupon.code === newOrder.couponCode
-            ? {
-                ...coupon,
-                usageCount: Number(coupon.usageCount || 0) + 1,
-                usageBy: userKey
-                  ? {
-                      ...(coupon.usageBy || {}),
-                      [userKey]: Number(coupon.usageBy?.[userKey] || 0) + 1,
-                    }
-                  : coupon.usageBy,
-              }
-            : coupon,
-        ),
-      )
-    }
-  }
+  const handleNewOrder = placeCustomerOrder
 
-  const handleAddCoupon = (coupon) =>
+  const handleAddCoupon = (coupon) => {
     setCouponsList((current) => [coupon, ...current])
-  const handleUpdateCoupon = (coupon) =>
+    void saveRecord('coupons', coupon).catch((error) =>
+      setProductsError(error.message || 'Unable to add the coupon.'),
+    )
+  }
+  const handleUpdateCoupon = (coupon) => {
     setCouponsList((current) =>
       current.map((item) => (item.id === coupon.id ? coupon : item)),
     )
-  const handleDeleteCoupon = (couponId) =>
+    void saveRecord('coupons', coupon, { merge: true }).catch((error) =>
+      setProductsError(error.message || 'Unable to update the coupon.'),
+    )
+  }
+  const handleDeleteCoupon = (couponId) => {
     setCouponsList((current) =>
       current.filter((coupon) => coupon.id !== couponId),
     )
+    void removeRecord('coupons', couponId).catch((error) =>
+      setProductsError(error.message || 'Unable to delete the coupon.'),
+    )
+  }
 
-  const handleAddCategory = (category) =>
+  const handleAddCategory = (category) => {
     setCategoriesList((current) => [...current, category])
+    void saveRecord('categories', category).catch((error) =>
+      setProductsError(error.message || 'Unable to add the category.'),
+    )
+  }
   const handleUpdateCategory = (category, previousName) => {
     setCategoriesList((current) =>
       current.map((item) => (item.id === category.id ? category : item)),
+    )
+    void saveRecord('categories', category, { merge: true }).catch((error) =>
+      setProductsError(error.message || 'Unable to update the category.'),
     )
     if (previousName && previousName !== category.name) {
       const renamedProducts = productsList.map((product) =>
@@ -601,38 +532,66 @@ function App() {
     setCategoriesList((current) =>
       current.filter((item) => item.id !== categoryId),
     )
+    void removeRecord('categories', categoryId).catch((error) =>
+      setProductsError(error.message || 'Unable to delete the category.'),
+    )
     return ''
   }
 
-  const handleUpdateReview = (review) =>
-    setReviewsList((current) =>
+  const handleUpdateReview = (review) => {
+    setAdminReviews((current) =>
       current.map((item) => (item.id === review.id ? review : item)),
     )
-  const handleDeleteReview = (reviewId) =>
-    setReviewsList((current) =>
+    void saveRecord('reviews', review, { merge: true }).catch((error) =>
+      setProductsError(error.message || 'Unable to update the review.'),
+    )
+  }
+  const handleDeleteReview = (reviewId) => {
+    setAdminReviews((current) =>
       current.filter((review) => review.id !== reviewId),
     )
-
-  const handleUpdatePaymentStatus = (orderId, paymentStatus) =>
-    setOrdersList((current) =>
-      current.map((order) =>
-        order.id === orderId
-          ? {
-              ...order,
-              paymentStatus,
-              paymentDate:
-                paymentStatus === 'Paid'
-                  ? new Date().toISOString()
-                  : order.paymentDate,
-            }
-          : order,
-      ),
+    void removeRecord('reviews', reviewId).catch((error) =>
+      setProductsError(error.message || 'Unable to delete the review.'),
     )
+  }
 
-  const handleUpdateCustomer = (customer) =>
+  const handleUpdatePaymentStatus = (orderId, paymentStatus) => {
+    const order = ordersList.find((item) => item.id === orderId)
+    if (!order) return
+    const updatedOrder = {
+      ...order,
+      paymentStatus,
+      paymentDate:
+        paymentStatus === 'Paid' ? new Date().toISOString() : order.paymentDate,
+    }
+    setOrdersList((current) =>
+      current.map((item) => (item.id === orderId ? updatedOrder : item)),
+    )
+    void saveRecord('orders', updatedOrder, { merge: true }).catch((error) =>
+      setProductsError(error.message || 'Unable to update payment status.'),
+    )
+  }
+
+  const handleUpdateCustomer = (customer) => {
     setCustomersList((current) =>
       current.map((item) => (item.id === customer.id ? customer : item)),
     )
+    void saveRecord(
+      'users',
+      {
+        id: customer.id,
+        status: customer.status,
+        membershipRole: customer.membershipRole || customer.role,
+      },
+      { merge: true },
+    ).catch((error) =>
+      setProductsError(error.message || 'Unable to update the customer.'),
+    )
+    void updateCustomerAccountStatus(customer.id, customer.status).catch(
+      (error) =>
+        setProductsError(error.message || 'Unable to update Firebase Authentication.'),
+    )
+  }
 
   const handleAdjustStock = async (productId, adjustment) => {
     const result = adjustProductStock(productsList, productId, adjustment)
@@ -641,6 +600,7 @@ function App() {
     await saveProduct(product)
     setProductsList(result.products)
     setInventoryHistory((current) => [...result.history, ...current])
+    await saveRecords('inventoryHistory', result.history)
     return ''
   }
 
@@ -649,11 +609,21 @@ function App() {
   ).filter((productId) =>
     productsList.some((product) => String(product.id) === String(productId)),
   )
+  const managedCategories = categoriesList.length
+    ? categoriesList
+    : [...new Set(productsList.map((product) => product.category).filter(Boolean))].map(
+        (name) => ({
+          id: `category-${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+          name,
+          description: '',
+          enabled: true,
+        }),
+      )
   const storefrontProducts = productsList
     .filter(
       (product) =>
         product.enabled !== false &&
-        categoriesList.find((category) => category.name === product.category)
+        managedCategories.find((category) => category.name === product.category)
           ?.enabled !== false,
     )
     .map((product) => ({
@@ -679,7 +649,7 @@ function App() {
           shippingSettings={shippingSettings}
           invoiceSettings={invoiceSettings}
           adminSettings={adminSettings}
-          categories={categoriesList}
+          categories={managedCategories}
           reviews={reviewsList.filter((review) => review.status === 'Published')}
           onNewOrder={handleNewOrder}
           onCreateReturnRequest={handleCreateReturnRequest}
@@ -698,7 +668,7 @@ function App() {
           customers={customersList}
           productsLoading={productsLoading}
           productsError={productsError}
-          categories={categoriesList}
+          categories={managedCategories}
           reviews={reviewsList}
           marketingSettings={marketingSettings}
           shippingSettings={shippingSettings}

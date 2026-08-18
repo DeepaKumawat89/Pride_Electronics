@@ -14,16 +14,14 @@ import {
   Sparkles,
   Zap,
 } from 'lucide-react'
-import { getAdminCredentials } from '../services/adminAuthService'
 
-const stats = [
-  [BarChart3, '₹2.4L', 'Revenue today'],
-  [ShoppingBag, '38', 'New orders'],
-  [Package, '142', 'SKUs tracked'],
-]
-
-export default function AdminLoginPage({ loading, onLogin, onSwitchToStore }) {
-  const demoAdmin = getAdminCredentials()
+export default function AdminLoginPage({ loading, onLogin, onSwitchToStore, products = [], orders = [] }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const stats = [
+    [BarChart3, orders.filter((order) => order.date === today).length, 'Orders today'],
+    [ShoppingBag, orders.length, 'Total orders'],
+    [Package, products.length, 'SKUs tracked'],
+  ]
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -114,22 +112,18 @@ export default function AdminLoginPage({ loading, onLogin, onSwitchToStore }) {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[8px] font-extrabold uppercase tracking-wider text-[#397a4a]">
-                    Demo credentials
+                    Firebase Authentication
                   </p>
                   <p className="mt-2 text-[10px] font-bold text-slate-600">
-                    {demoAdmin.email} · {demoAdmin.password}
+                    Authorized administrators only
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    setEmail(demoAdmin.email)
-                    setPassword(demoAdmin.password)
-                    setError('')
-                  }}
+                  disabled
                   className="rounded-full bg-[#397a4a] px-3 py-2 text-[9px] font-extrabold text-white"
                 >
-                  Auto fill
+                  Secured
                 </button>
               </div>
             </div>

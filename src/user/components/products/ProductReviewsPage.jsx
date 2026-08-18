@@ -1,8 +1,7 @@
 import { ArrowLeft, ChevronRight, MessageSquareText } from 'lucide-react'
 import ProductReviews, { RatingSummary } from './ProductReviews'
-import { customerReviews } from './productReviewData'
 
-export default function ProductReviewsPage({ product, reviews = customerReviews, onBack }) {
+export default function ProductReviewsPage({ product, reviews = [], onBack }) {
   return (
     <div className="min-h-[calc(100vh-8rem)] bg-[#f7f8f5]">
       <div className="mx-auto max-w-[1220px] px-4 py-5 sm:px-6 sm:py-8 lg:px-10 lg:py-10">
@@ -20,7 +19,7 @@ export default function ProductReviewsPage({ product, reviews = customerReviews,
               <div className="flex w-fit items-center gap-3 rounded-2xl bg-white/75 px-4 py-3 shadow-sm backdrop-blur"><span className="grid size-10 place-items-center rounded-xl bg-[#397a4a] text-white"><MessageSquareText size={18} /></span><div><p className="text-lg font-extrabold text-slate-950">{reviews.length}</p><p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Featured reviews</p></div></div>
             </div>
           </header>
-          <RatingSummary product={product} showTitle />
+          <RatingSummary product={product} reviews={reviews} showTitle />
         </div>
 
         <ProductReviews product={product} reviews={reviews} showAll reviewsOnly />

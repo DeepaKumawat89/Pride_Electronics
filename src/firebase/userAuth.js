@@ -12,7 +12,8 @@ import {
   verifyBeforeUpdateEmail,
 } from 'firebase/auth'
 import { httpsCallable } from 'firebase/functions'
-import { userAuth, userFunctions } from './firebase'
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
+import { userAuth, userFunctions, userStorage } from './firebase'
 
 const createUserProfile = httpsCallable(userFunctions, 'createUserProfile')
 const getUserProfileRecord = httpsCallable(userFunctions, 'getUserProfile')
@@ -243,6 +244,20 @@ export async function saveUserProfile(profile) {
   const name = String(profile.name || '').trim()
   const phone = normalizeUserPhone(profile.mobile || profile.phone)
   try {
+    let photo = profile.photo || firebaseUser.photoURL || ''
+    if (String(photo).startsWith('data:image/')) {
+      const response = await fetch(photo)
+      const blob = await response.blob()
+      if (blob.size > 8 * 1024 * 1024) {
+        throw new Error('Profile photos must be smaller than 8 MB.')
+      }
+      const photoReference = ref(
+        userStorage,
+        `users/${firebaseUser.uid}/profile/photo`,
+      )
+      await uploadBytes(photoReference, blob, { contentType: blob.type })
+      photo = await getDownloadURL(photoReference)
+    }
     const emailChanged =
       profile.email &&
       profile.email.trim().toLowerCase() !==
@@ -256,14 +271,15 @@ export async function saveUserProfile(profile) {
         profile.email.trim().toLowerCase(),
       )
     }
-    if (name !== firebaseUser.displayName) {
-      await updateProfile(firebaseUser, { displayName: name })
+    if (name !== firebaseUser.displayName || photo !== firebaseUser.photoURL) {
+      await updateProfile(firebaseUser, { displayName: name, photoURL: photo || null })
     }
     await updateUserProfileRecord({
       name,
       phone,
       dob: profile.dob || '',
       gender: profile.gender || '',
+      photo,
     })
     const savedUser = await loadUser(firebaseUser)
     return { ...savedUser, emailChangePending: Boolean(emailChanged) }

@@ -11,6 +11,37 @@ npm run dev
 
 Use `npm run build` for a production build and `npm run lint` to run the code checks.
 
+## Firebase data and deployment
+
+The storefront now reads products, categories, coupons, published reviews, and
+store settings from Firestore in real time. Authenticated customers read only
+their own profile, cart, wishlist, addresses, masked payment methods, orders,
+and returns. The admin portal reads and manages the complete operational data
+set after Firebase verifies an admin custom claim or `admins/{uid}` record.
+
+Deploy the backend rules and callable functions after selecting the configured
+Firebase project:
+
+```bash
+firebase deploy --only firestore,storage,functions
+```
+
+Before the first admin login, create that email/password account in Firebase
+Authentication and grant it admin access with Application Default Credentials
+or a service-account credential available to the Admin SDK:
+
+```bash
+cd functions
+npm run set-admin -- admin@example.com "Store Administrator"
+```
+
+Runtime collections are `products`, `categories`, `coupons`, `reviews`,
+`orders`, `returns`, `refunds`, `inventoryHistory`, `users`, and `admins`.
+Store configuration uses `settings/marketing`, `settings/shipping`,
+`settings/invoice`, `settings/storefront`, and `settings/admin`. Existing values can be entered and
+saved from the corresponding admin screens; subsequent updates are persisted
+to Firestore rather than browser storage.
+
 ## Storefront structure
 
 ```text

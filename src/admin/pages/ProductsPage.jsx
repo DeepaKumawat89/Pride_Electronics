@@ -21,19 +21,11 @@ import {
   PRODUCT_IMAGE_TYPES,
 } from '../../firebase/productImages'
 
-const fallbackCategoryOptions = [
-  'Audio',
-  'Wearables',
-  'Components & DIY',
-  'Peripherals',
-  'Smart Power',
-].map((category) => ({ value: category, label: category }))
-
 const blankProduct = {
   name: '',
   sku: '',
   brand: 'Pride',
-  category: 'Components & DIY',
+  category: '',
   price: '',
   originalPrice: '',
   stock: 0,
@@ -83,9 +75,10 @@ export default function ProductsPage({
   loading = false,
   loadError = '',
 }) {
-  const categoryOptions = managedCategories.length
-    ? managedCategories.map((category) => ({ value: category.name, label: category.name }))
-    : fallbackCategoryOptions
+  const categoryOptions = managedCategories.map((category) => ({
+    value: category.name,
+    label: category.name,
+  }))
   const [category, setCategory] = useState('All')
   const [viewMode, setViewMode] = useState('table')
   const [creatingProduct, setCreatingProduct] = useState(false)

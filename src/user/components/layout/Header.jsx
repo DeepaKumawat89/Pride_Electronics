@@ -13,16 +13,9 @@ import Brand from '../common/Brand'
 import ProfileMenu from '../profile/ProfileMenu'
 import ProductSearch from './ProductSearch'
 
-const categories = [
-  'Audio',
-  'Wearables',
-  'Peripherals',
-  'Components & DIY',
-  'Smart Power',
-]
-
 export default function Header({
   products,
+  categories = [],
   searchQuery,
   user,
   cartCount,
@@ -39,6 +32,9 @@ export default function Header({
   onProfileSelect,
   onLogout,
 }) {
+  const categoryNames = categories
+    .filter((category) => category.enabled !== false)
+    .map((category) => category.name)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [categoriesOpen, setCategoriesOpen] = useState(false)
   const headerRef = useRef(null)
@@ -132,7 +128,7 @@ export default function Header({
                   <p className="px-3 pb-2 pt-1 text-[9px] font-extrabold uppercase tracking-[0.15em] text-slate-400">
                     Shop by category
                   </p>
-                  {categories.map((category) => (
+                  {categoryNames.map((category) => (
                     <button
                       key={category}
                       type="button"
@@ -240,7 +236,7 @@ export default function Header({
               <p className="px-3 pb-1 text-[9px] font-extrabold uppercase tracking-[0.15em] text-slate-400">
                 Shop by category
               </p>
-              {categories.map((category) => (
+              {categoryNames.map((category) => (
                 <button
                   key={category}
                   type="button"

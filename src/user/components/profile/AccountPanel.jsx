@@ -1885,7 +1885,7 @@ function PaymentSection({ user, payments, onSave, onDelete, onSetDefault }) {
               Saved payment methods
             </h2>
             <p className="mt-1 text-[10px] text-slate-400">
-              Only masked card details are retained in this mock storefront.
+              Only masked card details are retained in your secure account.
             </p>
           </div>
           <button

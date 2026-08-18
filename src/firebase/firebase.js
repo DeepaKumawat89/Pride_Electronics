@@ -25,7 +25,10 @@ const userApp = getApps().some(
 export const auth = getAuth(app)
 export const userAuth = getAuth(userApp)
 export const userFunctions = getFunctions(userApp, 'asia-south1')
+export const adminFunctions = getFunctions(app, 'asia-south1')
 export const db = getFirestore(app)
+export const userDb = getFirestore(userApp)
 export const storage = getStorage(app)
+export const userStorage = getStorage(userApp)
 
 export default app

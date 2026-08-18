@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { parsePrice } from '../utils/currency'
 
 const resolveLiveProduct = (storedProduct, liveProducts) => {
@@ -148,6 +148,37 @@ export function useCart(initialProduct, liveProducts = null) {
 
   const clear = () => setStoredItems([])
 
+  const hydrate = useCallback((account = {}) => {
+    const productFor = (productId) =>
+      liveProducts?.find((product) => String(product.id) === String(productId)) || {
+        id: productId,
+      }
+    setStoredItems(
+      (account.cartItems || []).map((item) => ({
+        product: productFor(item.productId),
+        quantity: Math.max(1, Number(item.quantity) || 1),
+      })),
+    )
+    setStoredSavedItems(
+      (account.savedCartItems || []).map((item) => ({
+        product: productFor(item.productId || item),
+      })),
+    )
+  }, [liveProducts])
+
+  const persistence = useMemo(
+    () => ({
+      cartItems: storedItems.map((item) => ({
+        productId: item.product.id,
+        quantity: item.quantity,
+      })),
+      savedCartItems: storedSavedItems.map((item) => ({
+        productId: item.product.id,
+      })),
+    }),
+    [storedItems, storedSavedItems],
+  )
+
   const count = useMemo(
     () => items.reduce((sum, item) => sum + item.quantity, 0),
     [items],
@@ -185,5 +216,7 @@ export function useCart(initialProduct, liveProducts = null) {
     removeSaved,
     removeUnavailable,
     clear,
+    hydrate,
+    persistence,
   }
 }

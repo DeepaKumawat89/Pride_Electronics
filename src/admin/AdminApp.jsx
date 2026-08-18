@@ -127,6 +127,8 @@ export default function AdminApp({
         loading={loading}
         onLogin={handleLogin}
         onSwitchToStore={onSwitchToStore}
+        products={products}
+        orders={orders}
       />
     )
   }

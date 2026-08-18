@@ -1,5 +1,3 @@
-import { initialShippingSettings } from '../../data/shipping.js'
-
 const INDIAN_PIN_CODE = /^[1-8]\d{5}$/
 
 const addBusinessDays = (value, days) => {
@@ -35,7 +33,7 @@ export function normalizeAddress(address = {}) {
 export function getPinDeliveryAvailability(
   pincode,
   now = new Date(),
-  shippingSettings = initialShippingSettings,
+  shippingSettings = {},
 ) {
   const normalizedPincode = String(pincode || '').trim()
   if (!normalizedPincode) {

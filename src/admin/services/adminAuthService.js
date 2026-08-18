@@ -10,54 +10,23 @@ import {
   updatePassword,
   updateProfile,
 } from 'firebase/auth'
-import { auth } from '../../firebase/firebase'
-
-const ADMIN_SESSION_KEY = 'pride_admin_session'
-const ADMIN_ACCOUNT_KEY = 'pride_admin_account'
-
-export const demoAdmin = {
-  email: 'admin@pride.com',
-  password: 'admin123',
-  name: 'Pride Admin',
-  role: 'Store Administrator',
-}
-
-const getStoredAdminProfile = () => {
-  try {
-    const account = JSON.parse(localStorage.getItem(ADMIN_ACCOUNT_KEY) || '{}')
-    return {
-      name: account.name || demoAdmin.name,
-      role: account.role || demoAdmin.role,
-    }
-  } catch {
-    return { name: demoAdmin.name, role: demoAdmin.role }
-  }
-}
-
-const storeAdminSession = (session) => {
-  sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session))
-  localStorage.setItem(
-    ADMIN_ACCOUNT_KEY,
-    JSON.stringify({
-      name: session.name,
-      email: session.email,
-      role: session.role,
-    }),
-  )
-  return session
-}
+import { doc, getDoc, setDoc } from 'firebase/firestore'
+import { auth, db } from '../../firebase/firebase'
 
 const createAdminSession = async (user) => {
-  const profile = getStoredAdminProfile()
   const token = await user.getIdTokenResult()
-  return storeAdminSession({
+  const profileDocument = await getDoc(doc(db, 'admins', user.uid))
+  if (token.claims.admin !== true && !profileDocument.exists()) {
+    await signOut(auth)
+    throw new Error('This Firebase account is not authorized for admin access.')
+  }
+  const profile = profileDocument.data() || {}
+  return {
     uid: user.uid,
-    name: user.displayName || profile.name,
+    name: user.displayName || profile.name || 'Pride Admin',
     email: user.email || '',
-    role:
-      token.claims.role ||
-      (token.claims.admin ? 'Store Administrator' : profile.role),
-  })
+    role: profile.role || token.claims.role || 'Store Administrator',
+  }
 }
 
 const getAuthErrorMessage = (error) => {
@@ -78,11 +47,9 @@ const getAuthErrorMessage = (error) => {
     'auth/weak-password': 'The new password does not meet Firebase requirements.',
   }
   return new Error(
-    messages[error?.code] || 'Authentication failed. Please try again.',
+    messages[error?.code] || error?.message || 'Authentication failed. Please try again.',
   )
 }
-
-export const getAdminCredentials = () => demoAdmin
 
 export async function signInAdmin(email, password) {
   try {
@@ -101,14 +68,13 @@ export async function signInAdmin(email, password) {
 export function observeAdminSession(onChange) {
   return onAuthStateChanged(auth, async (user) => {
     if (!user) {
-      sessionStorage.removeItem(ADMIN_SESSION_KEY)
       onChange(null)
       return
     }
     try {
       onChange(await createAdminSession(user))
     } catch {
-      sessionStorage.removeItem(ADMIN_SESSION_KEY)
+      await signOut(auth)
       onChange(null)
     }
   })
@@ -126,6 +92,15 @@ export async function updateAdminProfile(profile) {
     if (profile.email.toLowerCase() !== String(user.email).toLowerCase()) {
       await updateEmail(user, profile.email.trim().toLowerCase())
     }
+    await setDoc(
+      doc(db, 'admins', user.uid),
+      {
+        name: profile.name.trim(),
+        email: profile.email.trim().toLowerCase(),
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true },
+    )
     return await createAdminSession(user)
   } catch (error) {
     throw getAuthErrorMessage(error)
@@ -147,6 +122,5 @@ export async function updateAdminPassword(currentPassword, nextPassword) {
 }
 
 export async function clearAdminSession() {
-  sessionStorage.removeItem(ADMIN_SESSION_KEY)
   await signOut(auth)
 }

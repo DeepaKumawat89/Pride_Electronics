@@ -3,7 +3,10 @@
   "private": true,
   "main": "index.js",
   "engines": {
-    "node": "20"
+    "node": "22"
+  },
+  "scripts": {
+    "set-admin": "node scripts/set-admin.js"
   },
   "dependencies": {
     "firebase-admin": "^14.2.0",

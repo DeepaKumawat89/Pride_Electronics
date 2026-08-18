@@ -468,7 +468,7 @@ export default function OrderDetailsView({
               {submittedReturn ? (
                 <p className="flex items-center gap-2 text-[10px] font-bold text-emerald-700"><CheckCircle2 size={15} /> Return request {returnRequest?.status || 'submitted'} for “{returnRequest?.reason || returnReason}”. Pickup details will be shared after review.</p>
               ) : (
-                <form onSubmit={(event) => { event.preventDefault(); if (returnReason) { onSubmitReturn?.(order.id, { reason: returnReason, images: returnImages }); setReturnSubmitted(true) } }} className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+                <form onSubmit={async (event) => { event.preventDefault(); if (returnReason) { const request = await onSubmitReturn?.(order.id, { reason: returnReason, images: returnImages }); if (request) setReturnSubmitted(true) } }} className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
                   <label className="min-w-0 flex-1 text-[9px] font-extrabold uppercase tracking-wider text-slate-500">Return reason
                     <select required value={returnReason} onChange={(event) => setReturnReason(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold normal-case tracking-normal text-slate-700 outline-none focus:border-[#75916f]">
                       <option value="">Select a reason</option>
