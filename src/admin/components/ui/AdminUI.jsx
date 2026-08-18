@@ -61,8 +61,23 @@ export function Modal({
   eyebrow,
   children,
   maxWidth = 'max-w-3xl',
+  inline = false,
 }) {
   if (!open) return null
+  if (inline) {
+    return (
+      <section className={`mx-auto w-full overflow-hidden rounded-[30px] bg-[#f7f8f5] ${maxWidth}`}>
+        <header className="flex items-center justify-between border-b border-slate-200 bg-[#f7f8f5] px-5 py-4 sm:px-7">
+          <div>
+            <p className="text-[9px] font-extrabold uppercase tracking-[0.17em] text-[#ff5c35]">{eyebrow}</p>
+            <h3 className="mt-1 text-xl font-extrabold text-slate-950">{title}</h3>
+          </div>
+          <button type="button" onClick={onClose} className="grid size-10 place-items-center rounded-full bg-white text-slate-500 shadow-sm transition hover:bg-slate-950 hover:text-white"><X size={17} /></button>
+        </header>
+        {children}
+      </section>
+    )
+  }
   return (
     <div
       className="fixed inset-0 z-[80] grid place-items-end bg-slate-950/55 p-0 backdrop-blur-sm sm:place-items-center sm:p-5"

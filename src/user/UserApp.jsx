@@ -124,69 +124,6 @@ const defaultPayments = [
   },
 ]
 
-function createSampleOrders(products) {
-  if (!products.length) return []
-  const samples = [
-    {
-      id: 'ORD-84729',
-      productIndex: 1,
-      qty: 1,
-      date: '2026-08-08',
-      orderTime: '10:42 AM',
-      deliveryDate: '2026-08-12',
-      paymentStatus: 'Paid',
-      status: 'Delivered',
-    },
-    {
-      id: 'ORD-73106',
-      productIndex: 7,
-      qty: 1,
-      date: '2026-07-27',
-      orderTime: '6:18 PM',
-      deliveryDate: '2026-08-03',
-      paymentStatus: 'Paid',
-      status: 'Shipped',
-    },
-    {
-      id: 'ORD-62541',
-      productIndex: 3,
-      qty: 2,
-      date: '2026-06-14',
-      orderTime: '2:05 PM',
-      deliveryDate: '2026-06-19',
-      paymentStatus: 'Paid',
-      status: 'Delivered',
-    },
-    {
-      id: 'ORD-51983',
-      productIndex: 9,
-      qty: 1,
-      date: '2026-04-22',
-      orderTime: '9:31 AM',
-      deliveryDate: 'Cancelled',
-      paymentStatus: 'Refunded',
-      status: 'Cancelled',
-    },
-  ]
-  return samples.map((sample) => {
-    const product = products[sample.productIndex] || products[0]
-    const total = parsePrice(product.price) * sample.qty
-    return {
-      ...sample,
-      total: formatCurrency(total),
-      itemsCount: sample.qty,
-      items: [
-        {
-          productName: product.name,
-          image: product.image,
-          qty: sample.qty,
-          price: product.price,
-        },
-      ],
-    }
-  })
-}
-
 function mergeUserOrders(localOrders, sharedOrders, user) {
   if (!sharedOrders.length) return localOrders
   const sharedById = new Map(
@@ -235,7 +172,7 @@ export default function UserApp({
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('All')
   const [sortBy, setSortBy] = useState('popular')
-  const [likedIds, setLikedIds] = useState([2, 8])
+  const [likedIds, setLikedIds] = useState([])
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [reviewsOpen, setReviewsOpen] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
@@ -249,7 +186,7 @@ export default function UserApp({
   const [accountSection, setAccountSection] = useState(null)
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [user, setUser] = useState(getSessionUser)
-  const [localOrders, setOrders] = useState(() => createSampleOrders(products))
+  const [localOrders, setOrders] = useState([])
   const [savedAddresses, setSavedAddresses] = useState(() =>
     getSessionItems(ADDRESS_SESSION_KEY, defaultAddresses).map(normalizeAddress),
   )

@@ -1,7 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import UserApp from './user/UserApp'
 import AdminApp from './admin/AdminApp'
-import { products as initialProducts } from './data/products'
 import { initialOrders, initialCustomers } from './data/adminData'
 import { initialCoupons } from './data/coupons'
 import { initialMarketingSettings } from './data/marketing'
@@ -28,8 +27,27 @@ import {
   transitionReturnRequest,
 } from './admin/utils/returns'
 import { formatCurrency, parsePrice } from './user/utils/currency'
+import {
+  createProduct,
+  createProductId,
+  removeProduct,
+  saveProduct,
+  saveProducts,
+  subscribeToProducts,
+} from './firebase/products'
+import {
+  removeProductImages,
+  uploadProductImages,
+} from './firebase/productImages'
 
-const initialInventory = initializeInventory(initialProducts, initialOrders)
+const initialInventory = initializeInventory([], initialOrders)
+const getChangedProducts = (currentProducts, nextProducts) =>
+  nextProducts.filter((nextProduct) => {
+    const currentProduct = currentProducts.find(
+      (product) => product.id === nextProduct.id,
+    )
+    return JSON.stringify(currentProduct) !== JSON.stringify(nextProduct)
+  })
 const SETTINGS_KEYS = {
   marketing: 'pride_marketing_settings',
   shipping: 'pride_shipping_settings',
@@ -57,7 +75,9 @@ const loadSettings = (key, fallback) => {
 
 function App() {
   const [activePortal, setActivePortal] = useState('user') // 'user' | 'admin'
-  const [productsList, setProductsList] = useState(initialInventory.products)
+  const [productsList, setProductsList] = useState([])
+  const [productsLoading, setProductsLoading] = useState(true)
+  const [productsError, setProductsError] = useState('')
   const [ordersList, setOrdersList] = useState(initialInventory.orders)
   const [inventoryHistory, setInventoryHistory] = useState(
     initialInventory.history,
@@ -83,6 +103,24 @@ function App() {
   )
   const [adminSettings, setAdminSettings] = useState(() =>
     loadSettings(SETTINGS_KEYS.admin, initialAdminSettings),
+  )
+
+  useEffect(
+    () =>
+      subscribeToProducts(
+        (products) => {
+          setProductsList(products)
+          setProductsError('')
+          setProductsLoading(false)
+        },
+        (error) => {
+          setProductsError(
+            error.message || 'Unable to load products from Firestore.',
+          )
+          setProductsLoading(false)
+        },
+      ),
+    [],
   )
 
   const persistSettings = (setter, key) => (valueOrUpdater) =>
@@ -138,59 +176,136 @@ function App() {
   }
 
   // Handlers for Admin actions on Products
-  const handleAddProduct = (newProduct) => {
-    const openingStock = Math.max(0, Number(newProduct.stock) || 0)
-    const product = { ...newProduct, stock: 0, reservedStock: 0 }
-    const result = adjustProductStock(
-      [product, ...productsList],
-      product.id,
-      {
-        type: 'add',
-        quantity: openingStock,
-        note: 'Opening stock for newly created or duplicated product',
-      },
-    )
-    setProductsList(result.products)
-    setInventoryHistory((current) => [...result.history, ...current])
+  const handleAddProduct = async (newProduct) => {
+    const { imageFiles = [], ...productFields } = newProduct
+    delete productFields.imageStoragePaths
+    const productId = createProductId()
+    let uploadedImages = { paths: [], urls: [] }
+
+    try {
+      if (imageFiles.length) {
+        uploadedImages = await uploadProductImages(productId, imageFiles)
+      }
+      const existingImages = Array.isArray(productFields.images)
+        ? productFields.images.filter(Boolean)
+        : [productFields.image].filter(Boolean)
+      const images = uploadedImages.urls.length
+        ? uploadedImages.urls
+        : existingImages
+      const openingStock = Math.max(0, Number(productFields.stock) || 0)
+      const product = await createProduct({
+        ...productFields,
+        id: productId,
+        image: images[0] || '',
+        images,
+        imageStoragePaths: uploadedImages.paths,
+        videos: [],
+        stock: openingStock,
+        reservedStock: 0,
+      })
+      const result = adjustProductStock(
+        [{ ...product, stock: 0 }],
+        product.id,
+        {
+          type: 'add',
+          quantity: openingStock,
+          note: 'Opening stock for newly created or duplicated product',
+        },
+      )
+      setProductsList((current) =>
+        current.some((item) => item.id === product.id)
+          ? current
+          : [product, ...current],
+      )
+      setInventoryHistory((current) => [...result.history, ...current])
+      return product
+    } catch (error) {
+      await removeProductImages(uploadedImages.paths)
+      throw error
+    }
   }
 
-  const handleUpdateProduct = (updatedProduct) => {
+  const handleUpdateProduct = async (updatedProduct) => {
+    const { imageFiles = [], ...productFields } = updatedProduct
     const currentProduct = productsList.find(
-      (product) => product.id === updatedProduct.id,
+      (product) => product.id === productFields.id,
     )
-    if (!currentProduct) return
+    if (!currentProduct) throw new Error('Product not found.')
+    let uploadedImages = { paths: [], urls: [] }
+    if (imageFiles.length) {
+      uploadedImages = await uploadProductImages(currentProduct.id, imageFiles)
+    }
+    const mediaFields = uploadedImages.urls.length
+      ? {
+          image: uploadedImages.urls[0],
+          images: uploadedImages.urls,
+          imageStoragePaths: uploadedImages.paths,
+        }
+      : {
+          image: productFields.image || currentProduct.image || '',
+          images: productFields.images || currentProduct.images || [],
+          imageStoragePaths:
+            productFields.imageStoragePaths ||
+            currentProduct.imageStoragePaths ||
+            [],
+        }
     const reservedStock = Number(currentProduct.reservedStock || 0)
     const requestedStock = Math.max(
       reservedStock,
-      Number(updatedProduct.stock) || 0,
+      Number(productFields.stock) || 0,
     )
     const updatedProducts = productsList.map((product) =>
-      product.id === updatedProduct.id
+      product.id === productFields.id
         ? {
-            ...updatedProduct,
+            ...productFields,
+            ...mediaFields,
+            videos: [],
             stock: currentProduct.stock,
             reservedStock,
           }
         : product,
     )
-    if (requestedStock === Number(currentProduct.stock)) {
-      setProductsList(updatedProducts)
-      return
+    try {
+      let savedProduct
+      if (requestedStock === Number(currentProduct.stock)) {
+        savedProduct = await saveProduct(
+          updatedProducts.find((product) => product.id === productFields.id),
+        )
+      } else {
+        const result = adjustProductStock(
+          updatedProducts,
+          productFields.id,
+          {
+            type: 'adjust',
+            quantity: requestedStock,
+            note: 'Stock updated from product editor',
+          },
+        )
+        const productToSave = result.products.find(
+          (product) => product.id === productFields.id,
+        )
+        savedProduct = await saveProduct(productToSave)
+        setInventoryHistory((current) => [...result.history, ...current])
+      }
+      setProductsList((current) =>
+        current.map((product) =>
+          product.id === savedProduct.id ? savedProduct : product,
+        ),
+      )
+      if (uploadedImages.paths.length) {
+        await removeProductImages(currentProduct.imageStoragePaths)
+      }
+      return savedProduct
+    } catch (error) {
+      await removeProductImages(uploadedImages.paths)
+      throw error
     }
-    const result = adjustProductStock(
-      updatedProducts,
-      updatedProduct.id,
-      {
-        type: 'adjust',
-        quantity: requestedStock,
-        note: 'Stock updated from product editor',
-      },
-    )
-    setProductsList(result.products)
-    setInventoryHistory((current) => [...result.history, ...current])
   }
 
-  const handleDeleteProduct = (productId) => {
+  const handleDeleteProduct = async (productId) => {
+    const product = productsList.find((item) => item.id === productId)
+    await removeProduct(productId)
+    await removeProductImages(product?.imageStoragePaths)
     setProductsList((prev) => prev.filter((p) => p.id !== productId))
   }
 
@@ -205,6 +320,11 @@ function App() {
       options.returnDisposition,
     )
     setProductsList(transition.products)
+    void saveProducts(
+      getChangedProducts(productsList, transition.products),
+    ).catch((error) =>
+      setProductsError(error.message || 'Unable to update Firestore inventory.'),
+    )
     if (newStatus === 'Refunded') {
       setRefundsList((current) =>
         current.some((refund) => refund.orderId === orderId)
@@ -350,6 +470,11 @@ function App() {
   const handleNewOrder = (newOrder) => {
     const reservation = reserveOrderStock(productsList, newOrder)
     setProductsList(reservation.products)
+    void saveProducts(
+      getChangedProducts(productsList, reservation.products),
+    ).catch((error) =>
+      setProductsError(error.message || 'Unable to reserve Firestore inventory.'),
+    )
     setInventoryHistory((current) => [
       ...reservation.history.reverse(),
       ...current,
@@ -454,12 +579,16 @@ function App() {
       current.map((item) => (item.id === category.id ? category : item)),
     )
     if (previousName && previousName !== category.name) {
-      setProductsList((current) =>
-        current.map((product) =>
+      const renamedProducts = productsList.map((product) =>
           product.category === previousName
             ? { ...product, category: category.name }
             : product,
-        ),
+      )
+      setProductsList(renamedProducts)
+      void saveProducts(
+        getChangedProducts(productsList, renamedProducts),
+      ).catch((error) =>
+        setProductsError(error.message || 'Unable to update product categories.'),
       )
     }
   }
@@ -505,14 +634,21 @@ function App() {
       current.map((item) => (item.id === customer.id ? customer : item)),
     )
 
-  const handleAdjustStock = (productId, adjustment) => {
+  const handleAdjustStock = async (productId, adjustment) => {
     const result = adjustProductStock(productsList, productId, adjustment)
     if (result.error) return result.error
+    const product = result.products.find((item) => item.id === productId)
+    await saveProduct(product)
     setProductsList(result.products)
     setInventoryHistory((current) => [...result.history, ...current])
     return ''
   }
 
+  const configuredFeaturedProductIds = (
+    marketingSettings.featuredProductIds || []
+  ).filter((productId) =>
+    productsList.some((product) => String(product.id) === String(productId)),
+  )
   const storefrontProducts = productsList
     .filter(
       (product) =>
@@ -523,8 +659,8 @@ function App() {
     .map((product) => ({
       ...product,
       stock: getAvailableStock(product),
-      featured: marketingSettings.featuredProductIds?.length
-        ? marketingSettings.featuredProductIds.some(
+      featured: configuredFeaturedProductIds.length
+        ? configuredFeaturedProductIds.some(
             (productId) => String(productId) === String(product.id),
           )
         : product.featured,
@@ -560,6 +696,8 @@ function App() {
           returns={returnsList}
           coupons={couponsList}
           customers={customersList}
+          productsLoading={productsLoading}
+          productsError={productsError}
           categories={categoriesList}
           reviews={reviewsList}
           marketingSettings={marketingSettings}

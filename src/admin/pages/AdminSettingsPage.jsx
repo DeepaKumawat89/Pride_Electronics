@@ -74,14 +74,14 @@ export default function AdminSettingsPage({
   const [saved, setSaved] = useState(false)
 
   const update = (section, patch) => setForm((current) => ({ ...current, [section]: { ...current[section], ...patch } }))
-  const save = () => {
+  const save = async () => {
     onUpdate(copySettings(form))
-    onUpdateAdmin(profile)
+    await onUpdateAdmin(profile)
     setSaved(true)
     window.setTimeout(() => setSaved(false), 1800)
   }
 
-  const changePassword = () => {
+  const changePassword = async () => {
     setPasswordMessage({ tone: '', text: '' })
     if (passwords.next !== passwords.confirm) {
       setPasswordMessage({ tone: 'error', text: 'New passwords do not match.' })
@@ -98,7 +98,7 @@ export default function AdminSettingsPage({
       return
     }
     try {
-      onChangePassword(passwords.current, passwords.next)
+      await onChangePassword(passwords.current, passwords.next)
       setPasswords({ current: '', next: '', confirm: '' })
       setPasswordMessage({ tone: 'success', text: 'Password updated successfully.' })
     } catch (error) {

@@ -23,7 +23,7 @@ export const initialMarketingSettings = {
       'Early access to drops, members-only prices, and free express delivery. No subscription needed.',
     actionLabel: 'Get started',
   },
-  featuredProductIds: [1, 2, 3, 4],
+  featuredProductIds: [],
   flashSale: {
     enabled: true,
     eyebrow: 'Everyday intelligence',
@@ -31,7 +31,7 @@ export const initialMarketingSettings = {
     description:
       'Stay connected, active, and effortlessly in control throughout your day.',
     actionLabel: 'Explore the edit',
-    productId: 2,
+    productId: '',
     startDate: '2026-08-01',
     endDate: '2026-12-31',
   },
@@ -42,7 +42,7 @@ export const initialMarketingSettings = {
     description:
       'High-performance components selected for ambitious setups and bold ideas.',
     actionLabel: 'Discover performance',
-    productId: 3,
+    productId: '',
   },
   categoryPromotions: [
     { name: 'Audio', label: 'Audio & sound', enabled: true },

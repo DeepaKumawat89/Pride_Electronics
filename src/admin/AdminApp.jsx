@@ -32,6 +32,8 @@ export default function AdminApp({
   customers = [],
   categories = [],
   reviews = [],
+  productsLoading = false,
+  productsError = '',
   marketingSettings = initialMarketingSettings,
   shippingSettings = initialShippingSettings,
   invoiceSettings = initialInvoiceSettings,
@@ -165,6 +167,8 @@ export default function AdminApp({
           onDeleteProduct={onDeleteProduct}
           searchQuery={searchQuery}
           categories={categories}
+          loading={productsLoading}
+          loadError={productsError}
         />
       )}
 

@@ -66,18 +66,22 @@ export default function InventoryPage({
     setError('')
   }
 
-  const submitAdjustment = (event) => {
+  const submitAdjustment = async (event) => {
     event.preventDefault()
-    const nextError = onAdjustStock(adjustment.product.id, {
-      type: adjustment.type,
-      quantity: Number(quantity),
-      note: note.trim(),
-    })
-    if (nextError) {
-      setError(nextError)
-      return
+    try {
+      const nextError = await onAdjustStock(adjustment.product.id, {
+        type: adjustment.type,
+        quantity: Number(quantity),
+        note: note.trim(),
+      })
+      if (nextError) {
+        setError(nextError)
+        return
+      }
+      closeAdjustment()
+    } catch (nextError) {
+      setError(nextError.message || 'Unable to save the stock adjustment.')
     }
-    closeAdjustment()
   }
 
   return (

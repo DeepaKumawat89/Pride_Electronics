@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
+  ArrowLeft,
   Check,
   Copy,
   Edit2,
@@ -13,6 +14,12 @@ import {
 } from 'lucide-react'
 import SelectMenu from '../../components/ui/SelectMenu'
 import { EmptyState, Modal, PageHeader } from '../components/ui/AdminUI'
+import { formatCurrency, parsePrice } from '../../user/utils/currency'
+import {
+  MAX_PRODUCT_IMAGES,
+  MAX_PRODUCT_IMAGE_SIZE,
+  PRODUCT_IMAGE_TYPES,
+} from '../../firebase/productImages'
 
 const fallbackCategoryOptions = [
   'Audio',
@@ -22,33 +29,29 @@ const fallbackCategoryOptions = [
   'Smart Power',
 ].map((category) => ({ value: category, label: category }))
 
-const emptyProduct = {
+const blankProduct = {
   name: '',
   sku: '',
   brand: 'Pride',
   category: 'Components & DIY',
-  price: '₹12,499',
-  originalPrice: '₹15,999',
-  stock: 20,
-  rating: 4.8,
-  reviewsCount: 15,
-  badge: 'NEW',
-  discount: '20% OFF',
+  price: '',
+  originalPrice: '',
+  stock: 0,
+  rating: 0,
+  reviewsCount: 0,
+  badge: '',
+  discount: '',
   taxRate: 18,
   lowStockThreshold: 10,
   enabled: true,
-  image:
-    'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1000&q=80',
-  description:
-    'High performance electronic hardware component built for precision engineering.',
-  specs: 'High Speed Processing, USB-C 3.2, Low Power Consumption',
-  additionalImages: '',
-  videos: '',
+  image: '',
+  description: '',
+  specs: '',
   modelNumber: '',
-  warranty: '2-year limited manufacturer warranty',
+  warranty: '',
   weight: '',
   dimensions: '',
-  deliveryInformation: 'Standard delivery available across serviceable PIN codes.',
+  deliveryInformation: '',
 }
 
 const parseList = (value) =>
@@ -77,15 +80,26 @@ export default function ProductsPage({
   onUpdateProduct,
   onDeleteProduct,
   searchQuery = '',
+  loading = false,
+  loadError = '',
 }) {
   const categoryOptions = managedCategories.length
     ? managedCategories.map((category) => ({ value: category.name, label: category.name }))
     : fallbackCategoryOptions
   const [category, setCategory] = useState('All')
   const [viewMode, setViewMode] = useState('table')
-  const [modalOpen, setModalOpen] = useState(false)
+  const [creatingProduct, setCreatingProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
-  const [form, setForm] = useState(emptyProduct)
+  const [form, setForm] = useState(blankProduct)
+  const [formErrors, setFormErrors] = useState({})
+  const [saveError, setSaveError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [selectedImages, setSelectedImages] = useState([])
+  const [imagePreviews, setImagePreviews] = useState([])
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleteError, setDeleteError] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const productFormOpen = creatingProduct || Boolean(editingProduct)
   const categories = [
     'All',
     ...new Set(products.map((product) => product.category)),
@@ -99,64 +113,203 @@ export default function ProductsPage({
           .includes(searchQuery.toLowerCase())),
   )
 
+  useEffect(
+    () => () => imagePreviews.forEach((preview) => URL.revokeObjectURL(preview)),
+    [imagePreviews],
+  )
+
+  const clearImageSelection = () => {
+    setSelectedImages([])
+    setImagePreviews([])
+  }
+
+  const selectImages = (event) => {
+    const files = Array.from(event.target.files || [])
+    if (files.length > MAX_PRODUCT_IMAGES) {
+      event.target.value = ''
+      clearImageSelection()
+      setFormErrors((current) => ({
+        ...current,
+        images: `Select between 1 and ${MAX_PRODUCT_IMAGES} images per product.`,
+      }))
+      return
+    }
+    setSelectedImages(files)
+    setImagePreviews(files.map((file) => URL.createObjectURL(file)))
+    setFormErrors((current) => {
+      const next = { ...current }
+      delete next.images
+      return next
+    })
+  }
+
   const openAdd = () => {
+    clearImageSelection()
     setEditingProduct(null)
     setForm({
-      ...emptyProduct,
-      category: categoryOptions[0]?.value || emptyProduct.category,
+      ...blankProduct,
+      category: categoryOptions[0]?.value || blankProduct.category,
     })
-    setModalOpen(true)
+    setFormErrors({})
+    setSaveError('')
+    setCreatingProduct(true)
   }
   const openEdit = (product) => {
+    clearImageSelection()
     setEditingProduct(product)
     setForm({
-      ...emptyProduct,
+      ...blankProduct,
       ...product,
-      specs: product.specs?.join(', ') || '',
-      additionalImages: (product.images || [])
-        .filter((image) => image !== product.image)
-        .join('\n'),
-      videos: (product.videos || []).join('\n'),
+      specs: Array.isArray(product.specs)
+        ? product.specs.join(', ')
+        : String(product.specs || ''),
     })
-    setModalOpen(true)
+    setFormErrors({})
+    setSaveError('')
   }
-  const closeModal = () => {
-    setModalOpen(false)
+  const closeProductForm = () => {
+    clearImageSelection()
+    setCreatingProduct(false)
     setEditingProduct(null)
+    setFormErrors({})
+    setSaveError('')
   }
-  const submit = (event) => {
+  const validateForm = () => {
+    const errors = {}
+    const sellingPrice = parsePrice(form.price)
+    const mrp = parsePrice(form.originalPrice)
+    if (form.name.trim().length < 3)
+      errors.name = 'Enter at least 3 characters.'
+    if (!form.brand.trim()) errors.brand = 'Brand is required.'
+    if (!form.category) errors.category = 'Select a category.'
+    if (form.description.trim().length < 20)
+      errors.description = 'Enter at least 20 characters.'
+    if (sellingPrice <= 0) errors.price = 'Enter a valid selling price.'
+    if (mrp <= 0) errors.originalPrice = 'Enter a valid MRP.'
+    if (sellingPrice > mrp) errors.price = 'Selling price cannot exceed MRP.'
+    if (!Number.isInteger(Number(form.stock)) || Number(form.stock) < 0)
+      errors.stock = 'Stock must be a non-negative whole number.'
+    if (
+      !Number.isInteger(Number(form.lowStockThreshold)) ||
+      Number(form.lowStockThreshold) < 0
+    )
+      errors.lowStockThreshold =
+        'Threshold must be a non-negative whole number.'
+    if (Number(form.rating) < 0 || Number(form.rating) > 5)
+      errors.rating = 'Rating must be between 0 and 5.'
+    if (
+      Number(form.reviewsCount) < 0 ||
+      !Number.isInteger(Number(form.reviewsCount))
+    )
+      errors.reviewsCount =
+        'Review count must be a non-negative whole number.'
+    if (Number(form.taxRate) < 0 || Number(form.taxRate) > 100)
+      errors.taxRate = 'Tax must be between 0 and 100.'
+    const hasExistingImages = Boolean(
+      editingProduct?.image || editingProduct?.images?.length,
+    )
+    if (!selectedImages.length && !hasExistingImages)
+      errors.images = 'Select at least one product image.'
+    if (selectedImages.length > MAX_PRODUCT_IMAGES)
+      errors.images = `Select between 1 and ${MAX_PRODUCT_IMAGES} images per product.`
+    const invalidImage = selectedImages.find(
+      (file) =>
+        !PRODUCT_IMAGE_TYPES.includes(file.type) ||
+        file.size > MAX_PRODUCT_IMAGE_SIZE,
+    )
+    if (invalidImage)
+      errors.images = PRODUCT_IMAGE_TYPES.includes(invalidImage.type)
+        ? `${invalidImage.name} must be smaller than 20 MB.`
+        : `${invalidImage.name} must be a JPG, PNG, or WebP image.`
+    if (
+      form.sku.trim() &&
+      products.some(
+        (product) =>
+          product.id !== editingProduct?.id &&
+          String(product.sku).toLowerCase() ===
+            form.sku.trim().toLowerCase(),
+      )
+    )
+      errors.sku = 'This SKU is already in use.'
+    return errors
+  }
+  const submit = async (event) => {
     event.preventDefault()
-    const productId = editingProduct?.id || Date.now()
+    const nextErrors = validateForm()
+    setFormErrors(nextErrors)
+    setSaveError('')
+    if (Object.keys(nextErrors).length) return
     const nextProduct = {
       ...editingProduct,
       ...form,
-      id: productId,
+      id: editingProduct?.id || '',
+      price: formatCurrency(parsePrice(form.price)),
+      originalPrice: formatCurrency(parsePrice(form.originalPrice)),
       stock: Number(form.stock),
       lowStockThreshold: Number(form.lowStockThreshold),
       taxRate: Number(form.taxRate),
       rating: Number(form.rating),
       reviewsCount: Number(form.reviewsCount),
-      sku: form.sku.trim() || `PE-${String(productId).slice(-6)}`,
+      sku: form.sku.trim() || `PE-${Date.now().toString().slice(-6)}`,
       specs: parseList(form.specs),
-      images: [form.image, ...parseList(form.additionalImages)].filter(
-        (image, index, allImages) => image && allImages.indexOf(image) === index,
-      ),
-      videos: parseList(form.videos),
+      imageFiles: selectedImages,
+      image: editingProduct?.image || '',
+      images: editingProduct?.images || [editingProduct?.image].filter(Boolean),
+      videos: [],
       featured: editingProduct?.featured ?? true,
       enabled: form.enabled !== false,
     }
-    if (editingProduct) onUpdateProduct(nextProduct)
-    else onAddProduct(nextProduct)
-    closeModal()
+    setSaving(true)
+    try {
+      if (editingProduct) {
+        await onUpdateProduct(nextProduct)
+        closeProductForm()
+      } else {
+        await onAddProduct(nextProduct)
+        closeProductForm()
+      }
+    } catch (error) {
+      setSaveError(error.message || 'Unable to save the product to Firestore.')
+    } finally {
+      setSaving(false)
+    }
   }
-  const duplicateProduct = (product) => {
-    onAddProduct(createDuplicateProduct(product))
+  const duplicateProduct = async (product) => {
+    setSaveError('')
+    try {
+      await onAddProduct(createDuplicateProduct(product))
+    } catch (error) {
+      setSaveError(error.message || 'Unable to duplicate the product.')
+    }
   }
-  const toggleProduct = (product) =>
-    onUpdateProduct({ ...product, enabled: product.enabled === false })
+  const toggleProduct = async (product) => {
+    setSaveError('')
+    try {
+      await onUpdateProduct({ ...product, enabled: product.enabled === false })
+    } catch (error) {
+      setSaveError(error.message || 'Unable to update the product.')
+    }
+  }
   const deleteProduct = (product) => {
-    if (window.confirm(`Delete ${product.name}? This action cannot be undone.`)) {
-      onDeleteProduct(product.id)
+    setDeleteError('')
+    setDeleteTarget(product)
+  }
+  const closeDeleteConfirmation = () => {
+    if (deleting) return
+    setDeleteTarget(null)
+    setDeleteError('')
+  }
+  const confirmDeleteProduct = async () => {
+    if (!deleteTarget || deleting) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await onDeleteProduct(deleteTarget.id)
+      setDeleteTarget(null)
+    } catch (error) {
+      setDeleteError(error.message || 'Unable to delete the product.')
+    } finally {
+      setDeleting(false)
     }
   }
   const field = (key) => ({
@@ -167,6 +320,12 @@ export default function ProductsPage({
 
   return (
     <div className="space-y-6">
+      {productFormOpen && (
+        <button type="button" onClick={closeProductForm} className="inline-flex h-10 items-center gap-2 rounded-full bg-white px-4 text-[10px] font-extrabold text-slate-600 shadow-sm transition hover:bg-slate-950 hover:text-white">
+          <ArrowLeft size={14} /> Back to Products
+        </button>
+      )}
+      {!productFormOpen && <>
       <PageHeader
         eyebrow="Catalog management"
         title="All Products"
@@ -222,7 +381,11 @@ export default function ProductsPage({
         })}
       </div>
 
-      {!filtered.length ? (
+      {(saveError || loadError) && <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-[10px] font-bold text-red-700">{saveError || loadError}</p>}
+
+      {loading ? (
+        <EmptyState title="Loading products" text="Fetching the latest catalog from Firestore." />
+      ) : !filtered.length ? (
         <EmptyState title="No matching products" />
       ) : viewMode === 'grid' ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -276,13 +439,15 @@ export default function ProductsPage({
           </div>
         </div>
       )}
+      </>}
 
       <Modal
-        open={modalOpen}
-        onClose={closeModal}
+        open={productFormOpen}
+        onClose={closeProductForm}
         eyebrow={editingProduct ? 'Update catalog item' : 'Create catalog item'}
         title={editingProduct ? 'Edit product' : 'Add new product'}
         maxWidth="max-w-4xl"
+        inline
       >
         <form
           onSubmit={submit}
@@ -293,11 +458,11 @@ export default function ProductsPage({
               Live preview
             </p>
             <div className="overflow-hidden rounded-[24px] bg-white p-2 shadow-sm">
-              <img
-                src={form.image}
-                alt="Product preview"
-                className="aspect-square size-full rounded-[19px] object-cover"
-              />
+              {imagePreviews[0] || form.image ? <img
+                  src={imagePreviews[0] || form.image}
+                  alt="Product preview"
+                  className="aspect-square size-full rounded-[19px] object-cover"
+                /> : <div className="grid aspect-square size-full place-items-center rounded-[19px] bg-slate-100 text-[9px] font-bold text-slate-400">Image preview</div>}
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               {String(form.specs)
@@ -316,6 +481,11 @@ export default function ProductsPage({
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
+            {(saveError || Object.keys(formErrors).length > 0) && (
+              <div role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-[9px] font-bold text-red-700 sm:col-span-2">
+                {saveError || `Please correct: ${Object.values(formErrors).join(' ')}`}
+              </div>
+            )}
             <FormSectionTitle title="Basic Information" />
             <FormField label="Product name" wide>
               <input required {...field('name')} className={inputClass} />
@@ -393,18 +563,19 @@ export default function ProductsPage({
             </FormField>
 
             <FormSectionTitle title="Media" />
-            <FormField label="Main image URL" wide>
-              <input required {...field('image')} className={inputClass} />
-            </FormField>
-            <FormField label="Additional image URLs" wide>
-              <textarea
-                {...field('additionalImages')}
-                placeholder="One URL per line"
-                className={`${inputClass} min-h-20 py-3`}
+            <FormField label="Product images" wide>
+              <input
+                required={!editingProduct?.image && !editingProduct?.images?.length}
+                type="file"
+                accept={PRODUCT_IMAGE_TYPES.join(',')}
+                multiple
+                onChange={selectImages}
+                className={`${inputClass} py-2 file:mr-3 file:rounded-full file:border-0 file:bg-[#e4f1e7] file:px-3 file:py-1.5 file:text-[9px] file:font-extrabold file:text-[#397a4a]`}
               />
-            </FormField>
-            <FormField label="Video URLs" wide>
-              <textarea {...field('videos')} placeholder="One URL per line" className={`${inputClass} min-h-20 py-3`} />
+              <span className="mt-1.5 block text-[8px] font-bold text-slate-400">
+                JPG, PNG or WebP · minimum 1 and maximum {MAX_PRODUCT_IMAGES} images per product · 20 MB each. Images are optimized automatically.
+                {selectedImages.length ? ` ${selectedImages.length} selected.` : ''}
+              </span>
             </FormField>
 
             <FormSectionTitle title="Specifications" />
@@ -433,13 +604,55 @@ export default function ProductsPage({
             </FormField>
             <button
               type="submit"
-              className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#397a4a] text-xs font-extrabold text-white transition hover:bg-[#2f663d] sm:col-span-2"
+              disabled={saving}
+              className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#397a4a] text-xs font-extrabold text-white transition hover:bg-[#2f663d] disabled:cursor-wait disabled:opacity-60 sm:col-span-2"
             >
               <Check size={16} />{' '}
-              {editingProduct ? 'Save product changes' : 'Publish product'}
+              {saving ? 'Saving to Firestore…' : editingProduct ? 'Save product changes' : 'Publish product'}
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(deleteTarget)}
+        onClose={closeDeleteConfirmation}
+        eyebrow="Confirm deletion"
+        title="Delete product?"
+        maxWidth="max-w-md"
+      >
+        <div className="p-5 sm:p-7">
+          <p className="text-sm font-bold leading-6 text-slate-700">
+            Are you sure you want to delete{' '}
+            <span className="text-slate-950">{deleteTarget?.name}</span>?
+          </p>
+          <p className="mt-2 text-[10px] font-semibold leading-5 text-slate-500">
+            This permanently removes the product and its uploaded images. This action cannot be undone.
+          </p>
+          {deleteError && (
+            <p role="alert" className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-[10px] font-bold text-red-700">
+              {deleteError}
+            </p>
+          )}
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={closeDeleteConfirmation}
+              className="h-11 rounded-full border border-slate-200 bg-white px-5 text-[10px] font-extrabold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={confirmDeleteProduct}
+              className="flex h-11 items-center justify-center gap-2 rounded-full bg-red-600 px-5 text-[10px] font-extrabold text-white transition hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"
+            >
+              <Trash2 size={14} /> {deleting ? 'Deleting…' : 'Delete product'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   )

@@ -1,15 +1,23 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   clearAdminSession,
-  getAdminSession,
+  observeAdminSession,
   signInAdmin,
   updateAdminPassword,
   updateAdminProfile,
 } from '../services/adminAuthService'
 
 export function useAdminAuth() {
-  const [admin, setAdmin] = useState(getAdminSession)
-  const [loading, setLoading] = useState(false)
+  const [admin, setAdmin] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const unsubscribe = observeAdminSession((session) => {
+      setAdmin(session)
+      setLoading(false)
+    })
+    return unsubscribe
+  }, [])
 
   const login = async (email, password) => {
     setLoading(true)
@@ -22,13 +30,13 @@ export function useAdminAuth() {
     }
   }
 
-  const logout = () => {
-    clearAdminSession()
+  const logout = async () => {
     setAdmin(null)
+    await clearAdminSession()
   }
 
-  const updateProfile = (profile) => {
-    const session = updateAdminProfile(profile)
+  const updateProfile = async (profile) => {
+    const session = await updateAdminProfile(profile)
     setAdmin(session)
     return session
   }
