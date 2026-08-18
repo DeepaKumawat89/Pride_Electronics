@@ -21,6 +21,7 @@ import {
   normalizeAddress,
 } from '../../utils/address'
 import { loadRazorpayCheckout, postRazorpayApi } from '../../utils/razorpay'
+import { initialShippingSettings } from '../../../data/shipping'
 
 const createPaymentReceipt = () => `pride_${Date.now()}`
 
@@ -55,7 +56,7 @@ const razorpayMethodFor = (payment) => {
   return 'upi'
 }
 
-export default function CheckoutPage({ items = [], initialCouponCode = '', coupons = [], savedAddresses = [], savedPayments = [], user, onSaveAddress, onBack, onPlaceOrder }) {
+export default function CheckoutPage({ items = [], initialCouponCode = '', coupons = [], savedAddresses = [], savedPayments = [], user, onSaveAddress, onBack, onPlaceOrder, shippingSettings = initialShippingSettings }) {
   const defaultAddress = savedAddresses.find((address) => address.isDefault) || savedAddresses[0]
   const defaultPayment = savedPayments.find((payment) => payment.isDefault) || savedPayments[0]
   const [addressId, setAddressId] = useState(defaultAddress?.id || '')
@@ -81,10 +82,17 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
     new Date(),
     coupons,
     user?.email,
+    shippingSettings,
   )
-  const formDeliveryAvailability = getPinDeliveryAvailability(addressForm.pincode)
+  const formDeliveryAvailability = getPinDeliveryAvailability(
+    addressForm.pincode,
+    new Date(),
+    shippingSettings,
+  )
   const selectedAddressAvailability = getPinDeliveryAvailability(
     selectedAddress?.pincode,
+    new Date(),
+    shippingSettings,
   )
   const deliveryOptions = [
     {
@@ -92,16 +100,17 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
       name: 'Standard delivery',
       estimate: selectedAddressAvailability.available
         ? `by ${selectedAddressAvailability.estimatedDateLabel}`
-        : '3–5 business days',
-      estimatedDays: selectedAddressAvailability.leadDays || 5,
+        : `${shippingSettings.standardMinDays}–${shippingSettings.standardMaxDays} business days`,
+      estimatedDays:
+        selectedAddressAvailability.leadDays || shippingSettings.standardMaxDays,
       charge: pricing.shipping,
     },
     {
       id: 'express',
       name: 'Express delivery',
-      estimate: '1–2 business days',
-      estimatedDays: 2,
-      charge: 199,
+      estimate: `${shippingSettings.expressMinDays}–${shippingSettings.expressMaxDays} business days`,
+      estimatedDays: shippingSettings.expressMaxDays,
+      charge: shippingSettings.expressCharge,
     },
   ]
   const selectedDelivery =
@@ -306,7 +315,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
                       <input type="radio" name="checkout-address" value={address.id} checked={selectedAddress?.id === address.id} onChange={() => { setAddressId(address.id); setPaymentError('') }} className="sr-only" />
                       <div className="flex items-start justify-between gap-3"><div><strong className="text-xs text-slate-900">{address.label}</strong><p className="mt-1 text-[9px] font-bold text-slate-400">{address.fullName} · {address.phone}</p></div><div className="flex items-center gap-2"><button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAddressForm(address) }} className="grid size-7 place-items-center rounded-full bg-white text-slate-400 shadow-sm transition hover:text-[#ff5c35]" aria-label={`Edit ${address.label} address`}><Pencil size={11} /></button><span className="rounded-full bg-[#e4f1e7] px-2 py-1 text-[8px] font-extrabold uppercase text-[#366643]">{address.type}</span></div></div>
                       <p className="mt-3 text-[10px] leading-5 text-slate-500">{address.line1}<br />{address.city}, {address.state} {address.pincode}</p>
-                      <p className={`mt-2 text-[8px] font-extrabold ${getPinDeliveryAvailability(address.pincode).available ? 'text-emerald-700' : 'text-red-600'}`}>{getPinDeliveryAvailability(address.pincode).message}</p>
+                      <p className={`mt-2 text-[8px] font-extrabold ${getPinDeliveryAvailability(address.pincode, new Date(), shippingSettings).available ? 'text-emerald-700' : 'text-red-600'}`}>{getPinDeliveryAvailability(address.pincode, new Date(), shippingSettings).message}</p>
                       {selectedAddress?.id === address.id && <p className="mt-3 flex items-center gap-1.5 text-[9px] font-extrabold text-[#397a4a]"><CheckCircle2 size={13} /> Selected for delivery</p>}
                     </label>
                   ))}

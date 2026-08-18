@@ -40,6 +40,7 @@ export default function ReturnsPage({
   returns = [],
   searchQuery = '',
   onUpdateReturn,
+  pickupSettings,
 }) {
   const [filter, setFilter] = useState('All')
   const [selectedId, setSelectedId] = useState(null)
@@ -118,6 +119,14 @@ export default function ReturnsPage({
               <Detail label="Inspection" value={selectedReturn.inspectionResult || 'Pending'} />
               <Detail label="Resolution" value={selectedReturn.resolution || 'Not decided'} />
               <Detail label="Refund status" value={selectedReturn.refundStatus} />
+              <Detail
+                label="Pickup service"
+                value={
+                  pickupSettings?.enabled
+                    ? `${pickupSettings.processingHours}h · ${pickupSettings.address}`
+                    : 'Disabled in shipping settings'
+                }
+              />
             </div>
             <section>
               <h4 className="flex items-center gap-2 text-xs font-extrabold text-slate-900"><Image size={15} className="text-[#397a4a]" /> Customer images</h4>
@@ -129,7 +138,7 @@ export default function ReturnsPage({
               <h4 className="text-xs font-extrabold text-slate-900">Return progress</h4>
               <div className="mt-3 divide-y divide-slate-100">{selectedReturn.history?.map((event, index) => <div key={`${event.timestamp}-${index}`} className="flex items-start justify-between gap-4 py-3"><div><strong className="text-[10px] text-slate-700">{event.status}</strong><p className="mt-1 text-[8px] text-slate-400">{event.note}</p></div><span className="shrink-0 text-[8px] text-slate-400">{formatDate(event.timestamp)}</span></div>)}</div>
             </section>
-            <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-5"><ReturnActions request={selectedReturn} onUpdate={update} /></div>
+            <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-5"><ReturnActions request={selectedReturn} onUpdate={update} pickupEnabled={pickupSettings?.enabled !== false} /></div>
           </div>
         )}
       </Modal>
@@ -137,10 +146,10 @@ export default function ReturnsPage({
   )
 }
 
-function ReturnActions({ request, onUpdate }) {
+function ReturnActions({ request, onUpdate, pickupEnabled }) {
   const button = 'inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full px-4 text-[9px] font-extrabold transition'
   if (request.status === 'Requested') return <><button type="button" onClick={() => onUpdate('approve')} className={`${button} bg-[#397a4a] text-white hover:bg-[#2f663d]`}><CheckCircle2 size={14} /> Approve</button><button type="button" onClick={() => onUpdate('reject')} className={`${button} bg-red-50 text-red-600 hover:bg-red-100`}><XCircle size={14} /> Reject</button></>
-  if (request.status === 'Approved') return <button type="button" onClick={() => onUpdate('schedule_pickup')} className={`${button} bg-[#17251c] text-white`}><Truck size={14} /> Schedule pickup</button>
+  if (request.status === 'Approved') return <button type="button" disabled={!pickupEnabled} onClick={() => onUpdate('schedule_pickup')} className={`${button} bg-[#17251c] text-white disabled:cursor-not-allowed disabled:opacity-40`}><Truck size={14} /> {pickupEnabled ? 'Schedule pickup' : 'Pickup disabled'}</button>
   if (request.status === 'Pickup Scheduled') return <button type="button" onClick={() => onUpdate('receive_product')} className={`${button} bg-[#397a4a] text-white`}><PackageCheck size={14} /> Product received</button>
   if (request.status === 'Product Received') return <><button type="button" onClick={() => onUpdate('inspect', { inspectionResult: 'Sellable' })} className={`${button} bg-[#397a4a] text-white`}><CheckCircle2 size={14} /> Pass inspection</button><button type="button" onClick={() => onUpdate('inspect', { inspectionResult: 'Damaged' })} className={`${button} bg-red-50 text-red-600`}><XCircle size={14} /> Mark damaged</button></>
   if (request.status === 'Inspected') return <><button type="button" onClick={() => onUpdate('request_refund')} className={`${button} bg-[#17251c] text-white`}><RotateCcw size={14} /> Refund</button><button type="button" onClick={() => onUpdate('create_replacement')} className={`${button} bg-[#397a4a] text-white`}><PackageCheck size={14} /> Replacement</button></>

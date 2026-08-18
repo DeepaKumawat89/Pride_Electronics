@@ -1,13 +1,14 @@
 import { Headphones, RefreshCcw, ShieldCheck, Truck } from 'lucide-react'
+import { initialShippingSettings } from '../../../data/shipping'
+import { formatCurrency } from '../../utils/currency'
 
-const benefits = [
-  [Truck, 'Fast, free delivery', 'On orders over ₹999'],
-  [RefreshCcw, 'Easy 7-day returns', 'Simple, no-fuss process'],
-  [ShieldCheck, 'Genuine guarantee', '100% original products'],
-  [Headphones, 'Expert support', 'Real help, seven days a week'],
-]
-
-export default function BenefitsStrip() {
+export default function BenefitsStrip({ shippingSettings = initialShippingSettings }) {
+  const benefits = [
+    [Truck, 'Fast, free delivery', `On orders over ${formatCurrency(shippingSettings.freeShippingThreshold)}`],
+    [RefreshCcw, 'Easy 7-day returns', 'Simple, no-fuss process'],
+    [ShieldCheck, 'Genuine guarantee', '100% original products'],
+    [Headphones, 'Expert support', 'Real help, seven days a week'],
+  ]
   return (
     <section className="border-y border-slate-200 bg-white">
       <div className="mx-auto grid max-w-[1440px] grid-cols-2 gap-px px-4 sm:px-6 lg:grid-cols-4 lg:px-10">

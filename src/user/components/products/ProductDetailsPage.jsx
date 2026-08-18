@@ -28,6 +28,7 @@ import {
 } from '../../utils/productDetails'
 import ProductCard from './ProductCard'
 import ProductReviews from './ProductReviews'
+import { initialShippingSettings } from '../../../data/shipping'
 
 function getSpecificationMeta(spec) {
   const value = spec.toLowerCase()
@@ -37,7 +38,7 @@ function getSpecificationMeta(spec) {
   return { title: 'Features & Compatibility', description: 'Design details, supported features, and everyday usability', icon: Settings2 }
 }
 
-export default function ProductDetailsPage({ product, relatedProducts = [], deliveryAddress, likedIds = [], onBack, onLike, onAdd, onBuyNow, onViewProduct, onViewAllReviews }) {
+export default function ProductDetailsPage({ product, relatedProducts = [], deliveryAddress, likedIds = [], onBack, onLike, onAdd, onBuyNow, onViewProduct, onViewAllReviews, shippingSettings = initialShippingSettings }) {
   const [activeImageIndex, setActiveImageIndex] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [expandedSpec, setExpandedSpec] = useState(null)
@@ -48,7 +49,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
   const liked = likedIds.includes(product.id)
   const detailInformation = getProductDetailInformation(product)
   const pinDeliveryAvailability = deliveryAddress
-    ? getPinDeliveryAvailability(deliveryAddress.pincode)
+    ? getPinDeliveryAvailability(deliveryAddress.pincode, new Date(), shippingSettings)
     : null
   const deliveryEstimate = deliveryAddress
     ? pinDeliveryAvailability?.estimatedDateLabel

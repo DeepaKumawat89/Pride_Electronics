@@ -1,4 +1,5 @@
 import { initialCoupons } from '../../data/coupons.js'
+import { initialShippingSettings } from '../../data/shipping.js'
 import { parsePrice } from './currency.js'
 
 export const FREE_SHIPPING_THRESHOLD = 999
@@ -79,6 +80,7 @@ export function calculateCartPricing(
   now = new Date(),
   coupons = initialCoupons,
   userKey = '',
+  shippingSettings = initialShippingSettings,
 ) {
   const mrpSubtotal = items.reduce(
     (sum, { product, quantity }) =>
@@ -108,9 +110,12 @@ export function calculateCartPricing(
     userKey,
   })
   const standardShipping =
-    sellingSubtotal >= FREE_SHIPPING_THRESHOLD || sellingSubtotal === 0
+    sellingSubtotal >=
+      Number(
+        shippingSettings.freeShippingThreshold ?? FREE_SHIPPING_THRESHOLD,
+      ) || sellingSubtotal === 0
       ? 0
-      : STANDARD_SHIPPING_CHARGE
+      : Number(shippingSettings.standardCharge ?? STANDARD_SHIPPING_CHARGE)
   const shipping = coupon.freeShipping ? 0 : standardShipping
   const taxableAmount = Math.max(0, sellingSubtotal - coupon.discount)
   const tax = Math.round((taxableAmount * 18) / 118)

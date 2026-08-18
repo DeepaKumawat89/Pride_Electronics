@@ -44,12 +44,14 @@ export default function OrdersPage({
   orders = [],
   onUpdateOrderStatus,
   searchQuery = '',
+  couriers = [],
 }) {
   const [statusFilter, setStatusFilter] = useState('All')
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [returnOrder, setReturnOrder] = useState(null)
   const [trackingOrder, setTrackingOrder] = useState(null)
   const [trackingId, setTrackingId] = useState('')
+  const [courier, setCourier] = useState('')
   const [trackingError, setTrackingError] = useState('')
   const [copiedId, setCopiedId] = useState(null)
   const filtered = orders.filter(
@@ -88,6 +90,8 @@ export default function OrdersPage({
           options?.trackingId === undefined
             ? current.trackingId
             : options.trackingId,
+        courier:
+          options?.courier === undefined ? current.courier : options.courier,
         paymentStatus:
           status === 'Refunded' ? 'Refunded' : current.paymentStatus,
       }))
@@ -96,6 +100,9 @@ export default function OrdersPage({
   const openTracking = (order) => {
     setTrackingOrder(order)
     setTrackingId(order.trackingId || '')
+    setCourier(
+      order.courier || couriers.find((item) => item.enabled)?.name || '',
+    )
     setTrackingError('')
   }
   const saveTracking = () => {
@@ -106,6 +113,7 @@ export default function OrdersPage({
     }
     updateOrderStatus(trackingOrder, trackingOrder.status, {
       trackingId: normalizedTrackingId,
+      courier,
     })
     setTrackingOrder(null)
   }
@@ -335,7 +343,7 @@ export default function OrdersPage({
               <InfoCard
                 label="Tracking"
                 primary={selectedOrder.trackingId || 'Not added yet'}
-                secondary={selectedOrder.deliveryOption || 'Standard delivery'}
+                secondary={selectedOrder.courier || selectedOrder.deliveryOption || 'Standard delivery'}
               />
             </div>
             <section className="mt-5 rounded-[22px] bg-white p-4 shadow-sm">
@@ -403,6 +411,20 @@ export default function OrdersPage({
               saveTracking()
             }}
           >
+            {!!couriers.filter((item) => item.enabled).length && (
+              <label className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-500">
+                Courier partner
+                <select
+                  value={courier}
+                  onChange={(event) => setCourier(event.target.value)}
+                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-xs font-semibold normal-case tracking-normal text-slate-800 outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#75916f]/10"
+                >
+                  {couriers.filter((item) => item.enabled).map((item) => (
+                    <option key={item.id} value={item.name}>{item.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-500">
               Tracking ID
               <input

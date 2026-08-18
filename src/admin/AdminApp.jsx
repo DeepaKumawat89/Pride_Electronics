@@ -10,6 +10,10 @@ import InventoryPage from './pages/InventoryPage'
 import PaymentsPage from './pages/PaymentsPage'
 import ReturnsPage from './pages/ReturnsPage'
 import CouponsPage from './pages/CouponsPage'
+import OffersPage from './pages/OffersPage'
+import ShippingPage from './pages/ShippingPage'
+import { initialMarketingSettings } from '../data/marketing'
+import { initialShippingSettings } from '../data/shipping'
 
 export default function AdminApp({
   products = [],
@@ -18,6 +22,8 @@ export default function AdminApp({
   returns = [],
   coupons = [],
   customers = [],
+  marketingSettings = initialMarketingSettings,
+  shippingSettings = initialShippingSettings,
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
@@ -28,6 +34,8 @@ export default function AdminApp({
   onAddCoupon,
   onUpdateCoupon,
   onDeleteCoupon,
+  onUpdateMarketingSettings,
+  onUpdateShippingSettings,
   onSwitchToStore,
 }) {
   const { admin, loading, login, logout } = useAdminAuth()
@@ -108,6 +116,7 @@ export default function AdminApp({
           orders={orders}
           onUpdateOrderStatus={onUpdateOrderStatus}
           searchQuery={searchQuery}
+          couriers={shippingSettings.couriers}
         />
       )}
 
@@ -133,6 +142,7 @@ export default function AdminApp({
           returns={returns}
           searchQuery={searchQuery}
           onUpdateReturn={onUpdateReturn}
+          pickupSettings={shippingSettings.pickup}
         />
       )}
 
@@ -153,6 +163,21 @@ export default function AdminApp({
           refunds={refunds}
           returns={returns}
           searchQuery={searchQuery}
+        />
+      )}
+
+      {activeTab === 'offers' && (
+        <OffersPage
+          settings={marketingSettings}
+          products={products}
+          onUpdate={onUpdateMarketingSettings}
+        />
+      )}
+
+      {activeTab === 'shipping' && (
+        <ShippingPage
+          settings={shippingSettings}
+          onUpdate={onUpdateShippingSettings}
         />
       )}
     </AdminLayout>

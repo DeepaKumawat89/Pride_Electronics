@@ -9,6 +9,8 @@ const titles = {
   coupons: ['Coupon management', 'Configure discounts and eligibility'],
   orders: ['Order fulfillment', 'Track and process customer orders'],
   users: ['Customer accounts', 'Understand your growing audience'],
+  offers: ['Offers & banners', 'Manage storefront promotions'],
+  shipping: ['Shipping management', 'Configure delivery and courier operations'],
 }
 
 export default function AdminHeader({

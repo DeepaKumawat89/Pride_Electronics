@@ -39,6 +39,7 @@ import {
 } from '../../utils/address'
 import { accountMenuItems } from './accountMenuItems'
 import OrderDetailsView from './OrderDetailsView'
+import { initialShippingSettings } from '../../../data/shipping'
 
 const genderOptions = [
   { value: '', label: 'Select gender' },
@@ -295,6 +296,7 @@ export default function AccountPanel({
   onSavePayment,
   onDeletePayment,
   onSetDefaultPayment,
+  shippingSettings = initialShippingSettings,
 }) {
   const [logoutOpen, setLogoutOpen] = useState(false)
   const [contentScrolled, setContentScrolled] = useState(false)
@@ -489,6 +491,7 @@ export default function AccountPanel({
                     onRemoveSaved={onRemoveSavedItem}
                     onDismissUnavailable={onDismissUnavailableCartItems}
                     onCheckout={onCheckout}
+                    shippingSettings={shippingSettings}
                   />
                 )}
                 {section === 'address' && (
@@ -498,6 +501,7 @@ export default function AccountPanel({
                     onSave={onSaveAddress}
                     onDelete={onDeleteAddress}
                     onSetDefault={onSetDefaultAddress}
+                    shippingSettings={shippingSettings}
                   />
                 )}
                 {section === 'payment' && (
@@ -1213,6 +1217,7 @@ function CartSection({
   onRemoveSaved,
   onDismissUnavailable,
   onCheckout,
+  shippingSettings,
 }) {
   const [coupon, setCoupon] = useState('')
   const [appliedCoupon, setAppliedCoupon] = useState('')
@@ -1225,8 +1230,9 @@ function CartSection({
         new Date(),
         coupons,
         userKey,
+        shippingSettings,
       ),
-    [appliedCoupon, coupons, items, userKey],
+    [appliedCoupon, coupons, items, shippingSettings, userKey],
   )
   const hasOutOfStockItems = items.some(
     ({ product }) => Number(product.stock) <= 0,
@@ -1273,7 +1279,7 @@ function CartSection({
             {items.length} {items.length === 1 ? 'product' : 'products'}
           </p>
           <p className="text-[10px] font-semibold text-slate-400">
-            Free delivery over ₹999
+            Free delivery over {formatCurrency(shippingSettings.freeShippingThreshold)}
           </p>
         </div>
         <div className="space-y-3">
@@ -1466,7 +1472,7 @@ function CartSummaryRow({ label, value, accent }) {
   )
 }
 
-function AddressSection({ addresses, user, onSave, onDelete, onSetDefault }) {
+function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shippingSettings }) {
   const emptyAddress = {
     id: '',
     type: 'Shipping',
@@ -1485,7 +1491,11 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault }) {
   const [formOpen, setFormOpen] = useState(false)
   const [form, setForm] = useState(emptyAddress)
   const [permission, setPermission] = useState(false)
-  const deliveryAvailability = getPinDeliveryAvailability(form.pincode)
+  const deliveryAvailability = getPinDeliveryAvailability(
+    form.pincode,
+    new Date(),
+    shippingSettings,
+  )
 
   const openForm = (address = emptyAddress) => {
     setForm(normalizeAddress(address))
@@ -1736,7 +1746,10 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault }) {
                         <br />
                         {address.phone}
                       </p>
-                      <AddressDeliveryStatus pincode={address.pincode} />
+                      <AddressDeliveryStatus
+                        pincode={address.pincode}
+                        shippingSettings={shippingSettings}
+                      />
                     </div>
                   </div>
                   <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
@@ -1782,8 +1795,12 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault }) {
   )
 }
 
-function AddressDeliveryStatus({ pincode }) {
-  const availability = getPinDeliveryAvailability(pincode)
+function AddressDeliveryStatus({ pincode, shippingSettings }) {
+  const availability = getPinDeliveryAvailability(
+    pincode,
+    new Date(),
+    shippingSettings,
+  )
   return (
     <p className={`mt-3 text-[9px] font-extrabold ${availability.available ? 'text-emerald-700' : 'text-red-600'}`}>
       {availability.message}

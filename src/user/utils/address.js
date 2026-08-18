@@ -1,3 +1,5 @@
+import { initialShippingSettings } from '../../data/shipping.js'
+
 const INDIAN_PIN_CODE = /^[1-8]\d{5}$/
 
 const addBusinessDays = (value, days) => {
@@ -30,7 +32,11 @@ export function normalizeAddress(address = {}) {
   }
 }
 
-export function getPinDeliveryAvailability(pincode, now = new Date()) {
+export function getPinDeliveryAvailability(
+  pincode,
+  now = new Date(),
+  shippingSettings = initialShippingSettings,
+) {
   const normalizedPincode = String(pincode || '').trim()
   if (!normalizedPincode) {
     return {
@@ -56,7 +62,33 @@ export function getPinDeliveryAvailability(pincode, now = new Date()) {
     }
   }
 
-  const leadDays = 3 + (Number(normalizedPincode.at(-1)) % 3)
+  const deliveryArea = (shippingSettings.deliveryAreas || []).find(
+    (area) =>
+      area.enabled !== false &&
+      (area.pinPrefixes || []).some((prefix) =>
+        normalizedPincode.startsWith(String(prefix)),
+      ),
+  )
+  if (!deliveryArea) {
+    return {
+      status: 'unavailable',
+      available: false,
+      pincode: normalizedPincode,
+      message: 'Delivery is not available for this PIN code.',
+      estimatedDate: '',
+      estimatedDateLabel: '',
+    }
+  }
+
+  const leadDays =
+    Number(deliveryArea.leadDays || shippingSettings.standardMinDays || 3) +
+    (Number(normalizedPincode.at(-1)) %
+      Math.max(
+        1,
+        Number(shippingSettings.standardMaxDays || 5) -
+          Number(shippingSettings.standardMinDays || 3) +
+          1,
+      ))
   const estimatedDate = addBusinessDays(now, leadDays)
   const estimatedDateLabel = estimatedDate.toLocaleDateString('en-IN', {
     weekday: 'short',
@@ -73,5 +105,6 @@ export function getPinDeliveryAvailability(pincode, now = new Date()) {
     estimatedDate: estimatedDate.toISOString().slice(0, 10),
     estimatedDateLabel,
     leadDays,
+    deliveryArea: deliveryArea.name,
   }
 }

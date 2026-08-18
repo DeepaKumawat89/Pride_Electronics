@@ -194,6 +194,8 @@ export default function UserApp({
   orders: sharedOrders = [],
   returns: returnRequests = [],
   coupons = [],
+  marketingSettings,
+  shippingSettings,
   onNewOrder,
   onCreateReturnRequest,
   onCustomerAuthenticated,
@@ -850,7 +852,7 @@ export default function UserApp({
 
   return (
     <div className="min-h-screen overflow-x-clip bg-[#f7f8f5] pb-16 lg:pb-0">
-      <AnnouncementBar />
+      <AnnouncementBar shippingSettings={shippingSettings} />
       <Header
         products={products}
         searchQuery={query}
@@ -888,6 +890,7 @@ export default function UserApp({
             onSaveAddress={handleSaveAddress}
             onBack={closeCheckout}
             onPlaceOrder={handlePlaceOrder}
+            shippingSettings={shippingSettings}
           />
         ) : selectedProduct && reviewsOpen ? (
           <ProductReviewsPage product={selectedProduct} onBack={closeReviews} />
@@ -907,18 +910,23 @@ export default function UserApp({
             onBuyNow={handleBuyNow}
             onViewProduct={navigateToProduct}
             onViewAllReviews={navigateToReviews}
+            shippingSettings={shippingSettings}
           />
         ) : (
           <>
             <HeroSection
+              banner={marketingSettings?.homeBanner}
               onShopNow={() =>
                 document
                   .getElementById('catalog')
                   ?.scrollIntoView({ behavior: 'smooth' })
               }
             />
-            <CategoryStrip onSelect={handleCategory} />
-            <BenefitsStrip />
+            <CategoryStrip
+              promotions={marketingSettings?.categoryPromotions}
+              onSelect={handleCategory}
+            />
+            <BenefitsStrip shippingSettings={shippingSettings} />
             <ProductCatalog
               products={filteredProducts}
               suggestedProducts={suggestedProducts}
@@ -932,8 +940,10 @@ export default function UserApp({
               onAdd={handleAdd}
               onBuyNow={handleBuyNow}
               onView={navigateToProduct}
+              offers={marketingSettings}
             />
             <PromoBanner
+              banner={marketingSettings?.promotionalBanner}
               onShopNow={() =>
                 user ? setAccountSection('profile') : setAuthOpen(true)
               }
@@ -991,6 +1001,7 @@ export default function UserApp({
           onCheckout={handleAccountCheckout}
           onCreateReturnRequest={onCreateReturnRequest}
           onLogout={handleLogout}
+          shippingSettings={shippingSettings}
         />
       )}
       {logoutConfirmOpen && (

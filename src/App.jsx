@@ -4,6 +4,8 @@ import AdminApp from './admin/AdminApp'
 import { products as initialProducts } from './data/products'
 import { initialOrders, initialCustomers } from './data/adminData'
 import { initialCoupons } from './data/coupons'
+import { initialMarketingSettings } from './data/marketing'
+import { initialShippingSettings } from './data/shipping'
 import {
   adjustProductStock,
   getAvailableStock,
@@ -40,6 +42,12 @@ function App() {
     initializeReturnRequests(initialInventory.orders),
   )
   const [couponsList, setCouponsList] = useState(initialCoupons)
+  const [marketingSettings, setMarketingSettings] = useState(
+    initialMarketingSettings,
+  )
+  const [shippingSettings, setShippingSettings] = useState(
+    initialShippingSettings,
+  )
 
   const handleCustomerAuthenticated = (user) => {
     setCustomersList((current) => {
@@ -155,6 +163,8 @@ function App() {
                 options.trackingId === undefined
                   ? item.trackingId
                   : options.trackingId,
+              courier:
+                options.courier === undefined ? item.courier : options.courier,
               paymentStatus:
                 newStatus === 'Refunded'
                   ? 'Refunded'
@@ -322,7 +332,15 @@ function App() {
 
   const storefrontProducts = productsList
     .filter((product) => product.enabled !== false)
-    .map((product) => ({ ...product, stock: getAvailableStock(product) }))
+    .map((product) => ({
+      ...product,
+      stock: getAvailableStock(product),
+      featured: marketingSettings.featuredProductIds?.length
+        ? marketingSettings.featuredProductIds.some(
+            (productId) => String(productId) === String(product.id),
+          )
+        : product.featured,
+    }))
 
   return (
     <div className="min-h-screen bg-[#f7f8f5] font-sans text-slate-950 antialiased">
@@ -333,6 +351,8 @@ function App() {
           orders={ordersList}
           returns={returnsList}
           coupons={couponsList}
+          marketingSettings={marketingSettings}
+          shippingSettings={shippingSettings}
           onNewOrder={handleNewOrder}
           onCreateReturnRequest={handleCreateReturnRequest}
           onCustomerAuthenticated={handleCustomerAuthenticated}
@@ -346,6 +366,8 @@ function App() {
           returns={returnsList}
           coupons={couponsList}
           customers={customersList}
+          marketingSettings={marketingSettings}
+          shippingSettings={shippingSettings}
           onAddProduct={handleAddProduct}
           onUpdateProduct={handleUpdateProduct}
           onDeleteProduct={handleDeleteProduct}
@@ -356,6 +378,8 @@ function App() {
           onAddCoupon={handleAddCoupon}
           onUpdateCoupon={handleUpdateCoupon}
           onDeleteCoupon={handleDeleteCoupon}
+          onUpdateMarketingSettings={setMarketingSettings}
+          onUpdateShippingSettings={setShippingSettings}
           onSwitchToStore={() => setActivePortal('user')}
         />
       )}

@@ -1,6 +1,6 @@
 import { Cable, Headphones, Monitor, Watch, Zap } from 'lucide-react'
 
-const categories = [
+const categoryDefinitions = [
   { name: 'Audio', label: 'Audio & sound', icon: Headphones, color: 'bg-[#f3e4dd]' },
   { name: 'Wearables', label: 'Smart wearables', icon: Watch, color: 'bg-[#e2ebf4]' },
   { name: 'Peripherals', label: 'Workspace gear', icon: Monitor, color: 'bg-[#efe9d7]' },
@@ -8,7 +8,13 @@ const categories = [
   { name: 'Smart Power', label: 'Power & charging', icon: Zap, color: 'bg-[#dfeee4]' },
 ]
 
-export default function CategoryStrip({ onSelect }) {
+export default function CategoryStrip({ onSelect, promotions = [] }) {
+  const categories = categoryDefinitions
+    .map((category) => ({
+      ...category,
+      ...(promotions.find((item) => item.name === category.name) || {}),
+    }))
+    .filter((category) => category.enabled !== false)
   return (
     <section className="mx-auto max-w-[1440px] px-4 py-14 sm:px-6 lg:px-10 lg:py-20">
       <div className="mb-7 flex items-end justify-between">

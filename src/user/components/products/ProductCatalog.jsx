@@ -45,6 +45,7 @@ export default function ProductCatalog({
   onAdd,
   onBuyNow,
   onView,
+  offers,
 }) {
   const [subcategory, setSubcategory] = useState('All')
   const [catalogFilters, setCatalogFilters] = useState(defaultCatalogFilters)
@@ -85,10 +86,21 @@ export default function ProductCatalog({
   )
   const showFeatureCards =
     activeCategory === 'All' && visibleProducts.length > 4
+  const today = new Date().toISOString().slice(0, 10)
+  const flashSaleActive =
+    offers?.flashSale?.enabled !== false &&
+    (!offers?.flashSale?.startDate || offers.flashSale.startDate <= today) &&
+    (!offers?.flashSale?.endDate || offers.flashSale.endDate >= today)
   const lifestyleProduct =
+    visibleProducts.find(
+      (product) => String(product.id) === String(offers?.flashSale?.productId),
+    ) ||
     visibleProducts.find((product) => product.category === 'Wearables') ||
     visibleProducts[0]
   const performanceProduct =
+    visibleProducts.find(
+      (product) => String(product.id) === String(offers?.deal?.productId),
+    ) ||
     visibleProducts.find(
       (product) => product.category === 'Components & DIY',
     ) ||
@@ -206,9 +218,9 @@ export default function ProductCatalog({
             </div>
           ))}
 
-          {showFeatureCards && (
+          {showFeatureCards && (flashSaleActive || offers?.deal?.enabled !== false) && (
             <div className="order-2 col-span-full grid gap-4 md:grid-cols-2 sm:gap-5">
-              <article className="group relative min-h-64 overflow-hidden rounded-[28px] bg-[#dcebdd] shadow-sm sm:min-h-72">
+              {flashSaleActive && <article className="group relative min-h-64 overflow-hidden rounded-[28px] bg-[#dcebdd] shadow-sm sm:min-h-72">
                 <img
                   src={lifestyleProduct.image}
                   alt=""
@@ -218,26 +230,25 @@ export default function ProductCatalog({
                 <div className="absolute -left-12 -top-16 size-48 rounded-full bg-white/45 blur-3xl" />
                 <div className="relative z-10 flex min-h-64 max-w-[72%] flex-col items-start justify-center p-5 sm:min-h-72 sm:max-w-[64%] sm:p-7">
                   <span className="flex items-center gap-1.5 rounded-full bg-white/75 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#397a4a] backdrop-blur">
-                    <Sparkles size={12} /> Everyday intelligence
+                    <Sparkles size={12} /> {offers?.flashSale?.eyebrow || 'Everyday intelligence'}
                   </span>
                   <h3 className="mt-4 text-2xl font-extrabold leading-tight tracking-[-0.04em] text-slate-950 sm:text-3xl">
-                    Smarter tech for every move.
+                    {offers?.flashSale?.title || 'Smarter tech for every move.'}
                   </h3>
                   <p className="mt-3 text-xs font-medium leading-5 text-slate-600">
-                    Stay connected, active, and effortlessly in control
-                    throughout your day.
+                    {offers?.flashSale?.description || 'Stay connected, active, and effortlessly in control throughout your day.'}
                   </p>
                   <button
                     type="button"
                     onClick={() => onView(lifestyleProduct)}
                     className="mt-5 flex h-10 items-center gap-2 rounded-full bg-slate-950 px-4 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35]"
                   >
-                    Explore the edit <ArrowRight size={13} />
+                    {offers?.flashSale?.actionLabel || 'Explore the edit'} <ArrowRight size={13} />
                   </button>
                 </div>
-              </article>
+              </article>}
 
-              <article className="group relative min-h-64 overflow-hidden rounded-[28px] bg-slate-950 shadow-sm sm:min-h-72">
+              {offers?.deal?.enabled !== false && <article className="group relative min-h-64 overflow-hidden rounded-[28px] bg-slate-950 shadow-sm sm:min-h-72">
                 <img
                   src={performanceProduct.image}
                   alt=""
@@ -247,24 +258,23 @@ export default function ProductCatalog({
                 <div className="absolute -bottom-20 left-10 size-52 rounded-full bg-[#9bcaa6]/20 blur-3xl" />
                 <div className="relative z-10 flex min-h-64 max-w-[72%] flex-col items-start justify-center p-5 text-white sm:min-h-72 sm:max-w-[64%] sm:p-7">
                   <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#b6dfbf] backdrop-blur">
-                    <Zap size={12} fill="currentColor" /> Performance lab
+                    <Zap size={12} fill="currentColor" /> {offers?.deal?.eyebrow || 'Performance lab'}
                   </span>
                   <h3 className="mt-4 text-2xl font-extrabold leading-tight tracking-[-0.04em] sm:text-3xl">
-                    Build without limits.
+                    {offers?.deal?.title || 'Build without limits.'}
                   </h3>
                   <p className="mt-3 text-xs font-medium leading-5 text-white/65">
-                    High-performance components selected for ambitious setups
-                    and bold ideas.
+                    {offers?.deal?.description || 'High-performance components selected for ambitious setups and bold ideas.'}
                   </p>
                   <button
                     type="button"
                     onClick={() => onView(performanceProduct)}
                     className="mt-5 flex h-10 items-center gap-2 rounded-full bg-white px-4 text-[10px] font-extrabold text-slate-950 transition hover:bg-[#9bcaa6]"
                   >
-                    Discover performance <ArrowRight size={13} />
+                    {offers?.deal?.actionLabel || 'Discover performance'} <ArrowRight size={13} />
                   </button>
                 </div>
-              </article>
+              </article>}
             </div>
           )}
         </div>

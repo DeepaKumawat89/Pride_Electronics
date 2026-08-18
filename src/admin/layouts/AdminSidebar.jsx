@@ -9,6 +9,8 @@ import {
   Store,
   Users,
   Warehouse,
+  Images,
+  Truck,
   X,
   Zap,
 } from 'lucide-react'
@@ -61,6 +63,18 @@ const navItems = [
     label: 'Customers',
     caption: 'Accounts & activity',
     icon: Users,
+  },
+  {
+    id: 'offers',
+    label: 'Offers & banners',
+    caption: 'Storefront promotions',
+    icon: Images,
+  },
+  {
+    id: 'shipping',
+    label: 'Shipping',
+    caption: 'Delivery & couriers',
+    icon: Truck,
   },
 ]
 
