@@ -193,6 +193,7 @@ export default function UserApp({
   products = [],
   orders: sharedOrders = [],
   returns: returnRequests = [],
+  coupons = [],
   onNewOrder,
   onCreateReturnRequest,
   onCustomerAuthenticated,
@@ -793,6 +794,7 @@ export default function UserApp({
       discount: checkoutDetails.discount || 0,
       deliveryCharges: checkoutDetails.shipping || 0,
       taxAmount: checkoutDetails.tax || 0,
+      couponCode: checkoutDetails.couponCode || '',
       itemsCount: cart.count,
       status: 'Pending',
       orderTime: new Date().toLocaleTimeString('en-IN', {
@@ -879,6 +881,7 @@ export default function UserApp({
             key={`${savedAddresses.find((address) => address.isDefault)?.id || 'no-address'}-${savedPayments.find((payment) => payment.isDefault)?.id || 'no-payment'}`}
             items={cart.items}
             initialCouponCode={checkoutCouponCode}
+            coupons={coupons}
             savedAddresses={savedAddresses}
             savedPayments={savedPayments}
             user={user}
@@ -960,6 +963,7 @@ export default function UserApp({
           )}
           orders={orders}
           returnRequests={returnRequests}
+          coupons={coupons}
           initialOrderId={orderToViewId}
           cartItems={cart.items}
           savedCartItems={cart.savedItems}

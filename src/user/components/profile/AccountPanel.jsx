@@ -80,27 +80,6 @@ const sectionMeta = {
   coupons: ['Coupons', 'Offers available for your next order', TicketPercent],
 }
 
-const couponList = [
-  {
-    code: 'PRIDE500',
-    title: '₹500 off your first order',
-    detail: 'Minimum purchase of ₹2,499',
-    tone: 'bg-[#fff1c9] text-[#765400]',
-  },
-  {
-    code: 'FREESHIP',
-    title: 'Free express delivery',
-    detail: 'Valid on all Pride+ member orders',
-    tone: 'bg-[#e4f1e7] text-[#366643]',
-  },
-  {
-    code: 'AUDIO15',
-    title: '15% off audio products',
-    detail: 'Maximum discount ₹1,500',
-    tone: 'bg-[#ffe9e2] text-[#b33b20]',
-  },
-]
-
 const fieldClass =
   'h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#9bcaa6]/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500'
 const orderFilterNow = Date.now()
@@ -288,6 +267,7 @@ export default function AccountPanel({
   wishlistProducts,
   orders,
   returnRequests,
+  coupons,
   initialOrderId,
   cartItems,
   savedCartItems,
@@ -498,6 +478,8 @@ export default function AccountPanel({
                 {section === 'cart' && (
                   <CartSection
                     items={cartItems}
+                    coupons={coupons}
+                    userKey={user.email}
                     savedItems={savedCartItems}
                     issues={cartIssues}
                     onChangeQuantity={onChangeQuantity}
@@ -527,7 +509,7 @@ export default function AccountPanel({
                     onSetDefault={onSetDefaultPayment}
                   />
                 )}
-                {section === 'coupons' && <CouponsSection />}
+                {section === 'coupons' && <CouponsSection coupons={coupons} />}
               </div>
             </div>
           </div>
@@ -1220,6 +1202,8 @@ function StatusBadge({ value, kind }) {
 
 function CartSection({
   items,
+  coupons,
+  userKey,
   savedItems = [],
   issues = {},
   onChangeQuantity,
@@ -1234,8 +1218,15 @@ function CartSection({
   const [appliedCoupon, setAppliedCoupon] = useState('')
   const [couponAttempted, setCouponAttempted] = useState(false)
   const pricing = useMemo(
-    () => calculateCartPricing(items, appliedCoupon),
-    [appliedCoupon, items],
+    () =>
+      calculateCartPricing(
+        items,
+        appliedCoupon,
+        new Date(),
+        coupons,
+        userKey,
+      ),
+    [appliedCoupon, coupons, items, userKey],
   )
   const hasOutOfStockItems = items.some(
     ({ product }) => Number(product.stock) <= 0,
@@ -2076,20 +2067,34 @@ function PaymentSection({ user, payments, onSave, onDelete, onSetDefault }) {
   )
 }
 
-function CouponsSection() {
+function CouponsSection({ coupons = [] }) {
+  const availableCoupons = coupons.filter(
+    (coupon) =>
+      coupon.enabled !== false &&
+      new Date(`${coupon.endDate}T23:59:59`) >= new Date(),
+  )
+  if (!availableCoupons.length) {
+    return (
+      <EmptyState
+        icon={TicketPercent}
+        title="No coupons available"
+        text="New promotions will appear here when they become available."
+      />
+    )
+  }
   return (
     <div className="mx-auto grid max-w-5xl gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {couponList.map((coupon) => (
+      {availableCoupons.map((coupon, index) => (
         <article
           key={coupon.code}
           className="group overflow-hidden rounded-[26px] border border-dashed border-slate-300 bg-[#fafbf8] transition hover:-translate-y-1 hover:shadow-xl"
         >
-          <div className={`${coupon.tone} relative overflow-hidden p-5`}>
+          <div className={`${index % 3 === 0 ? 'bg-[#fff1c9] text-[#765400]' : index % 3 === 1 ? 'bg-[#e4f1e7] text-[#366643]' : 'bg-[#ffe9e2] text-[#b33b20]'} relative overflow-hidden p-5`}>
             <div className="absolute -right-5 -top-5 size-24 rounded-full bg-white/20" />
             <TicketPercent size={22} />
-            <h3 className="mt-5 text-base font-extrabold">{coupon.title}</h3>
+            <h3 className="mt-5 text-base font-extrabold">{coupon.discountType === 'Percentage' ? `${coupon.amount}% off` : coupon.discountType === 'Free Shipping' ? 'Free shipping' : `${formatCurrency(coupon.amount)} off`}</h3>
             <p className="mt-1 text-[10px] font-semibold opacity-70">
-              {coupon.detail}
+              Min {formatCurrency(coupon.minimumOrder)}{coupon.maximumDiscount ? ` · Max ${formatCurrency(coupon.maximumDiscount)}` : ''} · Valid until {coupon.endDate}
             </p>
           </div>
           <div className="flex items-center justify-between p-4">

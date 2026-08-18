@@ -4,6 +4,7 @@ import {
   Package,
   CreditCard,
   RotateCcw,
+  TicketPercent,
   ShoppingBag,
   Store,
   Users,
@@ -48,6 +49,12 @@ const navItems = [
     label: 'Returns',
     caption: 'Review & resolution',
     icon: RotateCcw,
+  },
+  {
+    id: 'coupons',
+    label: 'Coupons',
+    caption: 'Discount rules',
+    icon: TicketPercent,
   },
   {
     id: 'users',

@@ -3,6 +3,7 @@ import UserApp from './user/UserApp'
 import AdminApp from './admin/AdminApp'
 import { products as initialProducts } from './data/products'
 import { initialOrders, initialCustomers } from './data/adminData'
+import { initialCoupons } from './data/coupons'
 import {
   adjustProductStock,
   getAvailableStock,
@@ -38,6 +39,7 @@ function App() {
   const [returnsList, setReturnsList] = useState(() =>
     initializeReturnRequests(initialInventory.orders),
   )
+  const [couponsList, setCouponsList] = useState(initialCoupons)
 
   const handleCustomerAuthenticated = (user) => {
     setCustomersList((current) => {
@@ -278,7 +280,37 @@ function App() {
           : customer,
       )
     })
+    if (newOrder.couponCode) {
+      const userKey = String(newOrder.email || '').trim().toLowerCase()
+      setCouponsList((current) =>
+        current.map((coupon) =>
+          coupon.code === newOrder.couponCode
+            ? {
+                ...coupon,
+                usageCount: Number(coupon.usageCount || 0) + 1,
+                usageBy: userKey
+                  ? {
+                      ...(coupon.usageBy || {}),
+                      [userKey]: Number(coupon.usageBy?.[userKey] || 0) + 1,
+                    }
+                  : coupon.usageBy,
+              }
+            : coupon,
+        ),
+      )
+    }
   }
+
+  const handleAddCoupon = (coupon) =>
+    setCouponsList((current) => [coupon, ...current])
+  const handleUpdateCoupon = (coupon) =>
+    setCouponsList((current) =>
+      current.map((item) => (item.id === coupon.id ? coupon : item)),
+    )
+  const handleDeleteCoupon = (couponId) =>
+    setCouponsList((current) =>
+      current.filter((coupon) => coupon.id !== couponId),
+    )
 
   const handleAdjustStock = (productId, adjustment) => {
     const result = adjustProductStock(productsList, productId, adjustment)
@@ -300,6 +332,7 @@ function App() {
           products={storefrontProducts}
           orders={ordersList}
           returns={returnsList}
+          coupons={couponsList}
           onNewOrder={handleNewOrder}
           onCreateReturnRequest={handleCreateReturnRequest}
           onCustomerAuthenticated={handleCustomerAuthenticated}
@@ -311,6 +344,7 @@ function App() {
           orders={ordersList}
           refunds={refundsList}
           returns={returnsList}
+          coupons={couponsList}
           customers={customersList}
           onAddProduct={handleAddProduct}
           onUpdateProduct={handleUpdateProduct}
@@ -319,6 +353,9 @@ function App() {
           onAdjustStock={handleAdjustStock}
           onUpdateOrderStatus={handleUpdateOrderStatus}
           onUpdateReturn={handleUpdateReturn}
+          onAddCoupon={handleAddCoupon}
+          onUpdateCoupon={handleUpdateCoupon}
+          onDeleteCoupon={handleDeleteCoupon}
           onSwitchToStore={() => setActivePortal('user')}
         />
       )}

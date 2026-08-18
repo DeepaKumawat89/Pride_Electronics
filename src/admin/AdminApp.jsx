@@ -9,12 +9,14 @@ import ProductsPage from './pages/ProductsPage'
 import InventoryPage from './pages/InventoryPage'
 import PaymentsPage from './pages/PaymentsPage'
 import ReturnsPage from './pages/ReturnsPage'
+import CouponsPage from './pages/CouponsPage'
 
 export default function AdminApp({
   products = [],
   orders = [],
   refunds = [],
   returns = [],
+  coupons = [],
   customers = [],
   onAddProduct,
   onUpdateProduct,
@@ -23,6 +25,9 @@ export default function AdminApp({
   onAdjustStock,
   onUpdateOrderStatus,
   onUpdateReturn,
+  onAddCoupon,
+  onUpdateCoupon,
+  onDeleteCoupon,
   onSwitchToStore,
 }) {
   const { admin, loading, login, logout } = useAdminAuth()
@@ -128,6 +133,16 @@ export default function AdminApp({
           returns={returns}
           searchQuery={searchQuery}
           onUpdateReturn={onUpdateReturn}
+        />
+      )}
+
+      {activeTab === 'coupons' && (
+        <CouponsPage
+          coupons={coupons}
+          onAddCoupon={onAddCoupon}
+          onUpdateCoupon={onUpdateCoupon}
+          onDeleteCoupon={onDeleteCoupon}
+          searchQuery={searchQuery}
         />
       )}
 

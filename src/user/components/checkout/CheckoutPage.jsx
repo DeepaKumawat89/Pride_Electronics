@@ -55,7 +55,7 @@ const razorpayMethodFor = (payment) => {
   return 'upi'
 }
 
-export default function CheckoutPage({ items = [], initialCouponCode = '', savedAddresses = [], savedPayments = [], user, onSaveAddress, onBack, onPlaceOrder }) {
+export default function CheckoutPage({ items = [], initialCouponCode = '', coupons = [], savedAddresses = [], savedPayments = [], user, onSaveAddress, onBack, onPlaceOrder }) {
   const defaultAddress = savedAddresses.find((address) => address.isDefault) || savedAddresses[0]
   const defaultPayment = savedPayments.find((payment) => payment.isDefault) || savedPayments[0]
   const [addressId, setAddressId] = useState(defaultAddress?.id || '')
@@ -75,7 +75,13 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', saved
   const selectedPayment = savedPayments.find((payment) => payment.id === paymentId) || defaultPayment
   const usingSavedAddress = !useManualAddress && Boolean(selectedAddress)
   const usingSavedPayment = !useManualPayment && Boolean(selectedPayment)
-  const pricing = calculateCartPricing(items, appliedCoupon)
+  const pricing = calculateCartPricing(
+    items,
+    appliedCoupon,
+    new Date(),
+    coupons,
+    user?.email,
+  )
   const formDeliveryAvailability = getPinDeliveryAvailability(addressForm.pincode)
   const selectedAddressAvailability = getPinDeliveryAvailability(
     selectedAddress?.pincode,
@@ -195,6 +201,8 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', saved
         shipping: selectedDelivery.charge,
         tax: pricing.tax,
         total: checkoutTotal,
+        couponCode:
+          pricing.coupon.status === 'applied' ? appliedCoupon : '',
         delivery: {
           ...selectedDelivery,
           estimatedDate:
