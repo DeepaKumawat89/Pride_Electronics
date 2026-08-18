@@ -28,8 +28,12 @@ import { createInvoiceNumber, initialInvoiceSettings } from '../data/invoice'
 import { initialAdminSettings } from '../data/adminSettings'
 import { initialCategories } from '../data/categories'
 import { customerReviews } from './components/products/productReviewData'
+import {
+  observeUserSession,
+  saveUserProfile,
+  signOutUser,
+} from '../firebase/userAuth'
 
-const AUTH_SESSION_KEY = 'pride_authenticated_user'
 const ADDRESS_SESSION_KEY = 'pride_saved_addresses'
 const PAYMENT_SESSION_KEY = 'pride_saved_payments'
 const PRODUCT_HASH_PREFIX = '#product-'
@@ -37,7 +41,6 @@ const REVIEWS_HASH_SUFFIX = '-reviews'
 const CHECKOUT_HASH = '#checkout'
 const ORDER_SUCCESS_HASH = '#order-success'
 const ORDER_SUCCESS_SESSION_KEY = 'pride_last_successful_order'
-const USER_SESSION_DURATION = 2 * 60 * 60 * 1000
 
 function formatVerifiedPaymentMethod(payment, fallback, gatewayLabel = 'Razorpay Test Mode') {
   if (!payment?.method) return fallback || 'Razorpay Test Mode'
@@ -59,33 +62,6 @@ function formatVerifiedPaymentStatus(status) {
   if (status === 'authorized') return 'Authorized'
   if (!status) return 'Paid'
   return status.charAt(0).toUpperCase() + status.slice(1)
-}
-
-function getSessionUser() {
-  try {
-    const session = JSON.parse(
-      sessionStorage.getItem(AUTH_SESSION_KEY) || 'null',
-    )
-    if (!session) return null
-    if (session.sessionExpiresAt && session.sessionExpiresAt <= Date.now()) {
-      sessionStorage.removeItem(AUTH_SESSION_KEY)
-      return null
-    }
-    if (!session.sessionExpiresAt) {
-      const upgradedSession = {
-        ...session,
-        sessionExpiresAt: Date.now() + USER_SESSION_DURATION,
-      }
-      sessionStorage.setItem(
-        AUTH_SESSION_KEY,
-        JSON.stringify(upgradedSession),
-      )
-      return upgradedSession
-    }
-    return session
-  } catch {
-    return null
-  }
 }
 
 function getSessionItems(key, fallback) {
@@ -185,7 +161,7 @@ export default function UserApp({
   const [pendingWishlistRequest, setPendingWishlistRequest] = useState(null)
   const [accountSection, setAccountSection] = useState(null)
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
-  const [user, setUser] = useState(getSessionUser)
+  const [user, setUser] = useState(null)
   const [localOrders, setOrders] = useState([])
   const [savedAddresses, setSavedAddresses] = useState(() =>
     getSessionItems(ADDRESS_SESSION_KEY, defaultAddresses).map(normalizeAddress),
@@ -195,6 +171,7 @@ export default function UserApp({
   )
   const [toast, setToast] = useState('')
   const toastTimer = useRef(null)
+  const onCustomerAuthenticatedRef = useRef(onCustomerAuthenticated)
   const cartReturnSection = useRef(null)
   const cartHistoryActive = useRef(false)
   const productReturnSection = useRef(null)
@@ -292,6 +269,29 @@ export default function UserApp({
     clearTimeout(toastTimer.current)
     toastTimer.current = setTimeout(() => setToast(''), 2600)
   }
+
+  useEffect(() => {
+    onCustomerAuthenticatedRef.current = onCustomerAuthenticated
+  }, [onCustomerAuthenticated])
+
+  useEffect(
+    () =>
+      observeUserSession(
+        (authenticatedUser) => {
+          setUser(authenticatedUser)
+          if (authenticatedUser) {
+            onCustomerAuthenticatedRef.current?.(authenticatedUser)
+          }
+        },
+        (error) => {
+          setUser(null)
+          setToast(error.message)
+          clearTimeout(toastTimer.current)
+          toastTimer.current = setTimeout(() => setToast(''), 4200)
+        },
+      ),
+    [],
+  )
 
   const filteredProducts = useMemo(() => {
     const matchingProducts = products
@@ -511,17 +511,16 @@ export default function UserApp({
   }
 
   const handleAuthSuccess = (authenticatedUser, mode) => {
-    const sessionUser = {
-      ...authenticatedUser,
-      sessionExpiresAt: Date.now() + USER_SESSION_DURATION,
-    }
-    sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(sessionUser))
-    setUser(sessionUser)
-    onCustomerAuthenticated?.(sessionUser)
+    setUser(authenticatedUser)
+    onCustomerAuthenticatedRef.current?.(authenticatedUser)
     notify(
       mode === 'signup'
-        ? `Welcome to Pride, ${authenticatedUser.name.split(' ')[0]}!`
-        : `Welcome back, ${authenticatedUser.name.split(' ')[0]}!`,
+        ? authenticatedUser.verificationEmailSent
+          ? `Welcome to Pride, ${authenticatedUser.name.split(' ')[0]}! Check your email to verify your account.`
+          : `Welcome to Pride, ${authenticatedUser.name.split(' ')[0]}!`
+        : authenticatedUser.verificationEmailSent
+          ? `Welcome back, ${authenticatedUser.name.split(' ')[0]}! Verify your email to enable mobile login.`
+          : `Welcome back, ${authenticatedUser.name.split(' ')[0]}!`,
     )
     if (pendingCheckout) {
       setPendingCheckout(false)
@@ -549,15 +548,22 @@ export default function UserApp({
     }
   }
 
-  const handleUpdateUser = (updatedUser) => {
-    setUser(updatedUser)
-    onCustomerAuthenticated?.(updatedUser)
+  const handleUpdateUser = async (updatedUser) => {
     try {
-      sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(updatedUser))
-    } catch {
+      const savedUser = await saveUserProfile(updatedUser)
+      const nextUser = {
+        ...savedUser,
+        photo: updatedUser.photo || savedUser.photo,
+      }
+      setUser(nextUser)
+      onCustomerAuthenticatedRef.current?.(nextUser)
       notify(
-        'Profile updated, but the photo is too large to persist after refresh',
+        savedUser.emailChangePending
+          ? 'Profile updated. Verify the new email address before it changes.'
+          : 'Profile updated successfully',
       )
+    } catch (error) {
+      notify(error.message || 'Unable to update your profile.')
     }
   }
 
@@ -648,7 +654,7 @@ export default function UserApp({
     notify('Default payment method updated')
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (window.location.hash === '#account-cart') {
       window.history.replaceState(
         null,
@@ -658,39 +664,14 @@ export default function UserApp({
       cartReturnSection.current = null
       cartHistoryActive.current = false
     }
-    sessionStorage.removeItem(AUTH_SESSION_KEY)
-    setUser(null)
-    setAccountSection(null)
-    notify('You have been logged out successfully')
-  }
-
-  useEffect(() => {
-    if (!user?.sessionExpiresAt) return undefined
-    const remaining = user.sessionExpiresAt - Date.now()
-    const expireSession = () => {
-      const wasCheckingOut = checkoutOpen
-      const previousSection = accountSection
-      sessionStorage.removeItem(AUTH_SESSION_KEY)
+    try {
+      await signOutUser()
+    } finally {
       setUser(null)
       setAccountSection(null)
-      setCheckoutOpen(false)
-      setPendingCheckout(wasCheckingOut)
-      setPendingCart(previousSection === 'cart')
-      setPendingWishlistRequest(
-        previousSection === 'wishlist' ? { productId: null } : null,
-      )
-      setAuthOpen(true)
-      setToast('Your session expired. Please login again to continue.')
-      clearTimeout(toastTimer.current)
-      toastTimer.current = setTimeout(() => setToast(''), 4200)
+      notify('You have been logged out successfully')
     }
-    if (remaining <= 0) {
-      expireSession()
-      return undefined
-    }
-    const timer = window.setTimeout(expireSession, remaining)
-    return () => window.clearTimeout(timer)
-  }, [accountSection, checkoutOpen, user])
+  }
 
   const handleProfileSelect = (section) => {
     setOrderToViewId(null)

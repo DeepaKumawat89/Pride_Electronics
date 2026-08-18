@@ -1,6 +1,7 @@
-import { initializeApp } from 'firebase/app'
+import { getApp, getApps, initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
+import { getFunctions } from 'firebase/functions'
 import { getStorage } from 'firebase/storage'
 
 const firebaseConfig = {
@@ -12,9 +13,18 @@ const firebaseConfig = {
   appId: '1:29343418210:web:e4954f777ba1df5cc80e3b',
 }
 
-const app = initializeApp(firebaseConfig)
+const app = getApps().some((firebaseApp) => firebaseApp.name === '[DEFAULT]')
+  ? getApp()
+  : initializeApp(firebaseConfig)
+const userApp = getApps().some(
+  (firebaseApp) => firebaseApp.name === 'pride-user-auth',
+)
+  ? getApp('pride-user-auth')
+  : initializeApp(firebaseConfig, 'pride-user-auth')
 
 export const auth = getAuth(app)
+export const userAuth = getAuth(userApp)
+export const userFunctions = getFunctions(userApp, 'asia-south1')
 export const db = getFirestore(app)
 export const storage = getStorage(app)
 
