@@ -16,6 +16,8 @@ import { initialMarketingSettings } from '../data/marketing'
 import { initialShippingSettings } from '../data/shipping'
 import { initialInvoiceSettings } from '../data/invoice'
 import TaxInvoicePage from './pages/TaxInvoicePage'
+import AdminSettingsPage from './pages/AdminSettingsPage'
+import { initialAdminSettings } from '../data/adminSettings'
 
 export default function AdminApp({
   products = [],
@@ -27,6 +29,7 @@ export default function AdminApp({
   marketingSettings = initialMarketingSettings,
   shippingSettings = initialShippingSettings,
   invoiceSettings = initialInvoiceSettings,
+  adminSettings = initialAdminSettings,
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
@@ -40,9 +43,10 @@ export default function AdminApp({
   onUpdateMarketingSettings,
   onUpdateShippingSettings,
   onUpdateInvoiceSettings,
+  onUpdateAdminSettings,
   onSwitchToStore,
 }) {
-  const { admin, loading, login, logout } = useAdminAuth()
+  const { admin, loading, login, logout, updateProfile, changePassword } = useAdminAuth()
   const [activeTab, setActiveTab] = useState('dashboard')
   const [searchQuery, setSearchQuery] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
@@ -57,6 +61,26 @@ export default function AdminApp({
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [isSidebarOpen])
+
+  useEffect(() => {
+    if (!admin) return undefined
+    const timeout = Math.max(
+      5,
+      Number(adminSettings.security.sessionTimeoutMinutes) || 60,
+    ) * 60000
+    let timer
+    const resetTimer = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(logout, timeout)
+    }
+    const events = ['pointerdown', 'keydown', 'scroll']
+    events.forEach((event) => window.addEventListener(event, resetTimer, { passive: true }))
+    resetTimer()
+    return () => {
+      window.clearTimeout(timer)
+      events.forEach((event) => window.removeEventListener(event, resetTimer))
+    }
+  }, [admin, adminSettings.security.sessionTimeoutMinutes, logout])
 
   const handleLogin = async (email, password) => {
     await login(email, password)
@@ -83,6 +107,9 @@ export default function AdminApp({
     )
   }
 
+  const activeRole = adminSettings.roles.find((role) => role.name === admin.role)
+  const permissions = activeRole?.permissions || ['dashboard']
+
   return (
     <AdminLayout
       activeTab={activeTab}
@@ -95,6 +122,9 @@ export default function AdminApp({
       onSelectTab={handleSelectTab}
       onSwitchToStore={onSwitchToStore}
       searchQuery={searchQuery}
+      notificationSettings={adminSettings.notifications}
+      permissions={permissions}
+      storeName={adminSettings.store.name}
     >
       {activeTab === 'dashboard' && (
         <DashboardPage
@@ -189,6 +219,19 @@ export default function AdminApp({
         <TaxInvoicePage
           settings={invoiceSettings}
           onUpdate={onUpdateInvoiceSettings}
+        />
+      )}
+
+      {activeTab === 'settings' && (
+        <AdminSettingsPage
+          settings={adminSettings}
+          admin={admin}
+          shippingSettings={shippingSettings}
+          invoiceSettings={invoiceSettings}
+          onUpdate={onUpdateAdminSettings}
+          onUpdateAdmin={updateProfile}
+          onChangePassword={changePassword}
+          onNavigate={handleSelectTab}
         />
       )}
     </AdminLayout>

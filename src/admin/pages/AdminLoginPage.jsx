@@ -14,7 +14,7 @@ import {
   Sparkles,
   Zap,
 } from 'lucide-react'
-import { demoAdmin } from '../services/adminAuthService'
+import { getAdminCredentials } from '../services/adminAuthService'
 
 const stats = [
   [BarChart3, '₹2.4L', 'Revenue today'],
@@ -23,6 +23,7 @@ const stats = [
 ]
 
 export default function AdminLoginPage({ loading, onLogin, onSwitchToStore }) {
+  const demoAdmin = getAdminCredentials()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)

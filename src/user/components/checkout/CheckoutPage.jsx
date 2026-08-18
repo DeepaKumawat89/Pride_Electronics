@@ -23,6 +23,7 @@ import {
 import { loadRazorpayCheckout, postRazorpayApi } from '../../utils/razorpay'
 import { initialShippingSettings } from '../../../data/shipping'
 import { initialInvoiceSettings } from '../../../data/invoice'
+import { initialAdminSettings } from '../../../data/adminSettings'
 
 const createPaymentReceipt = () => `pride_${Date.now()}`
 
@@ -57,9 +58,15 @@ const razorpayMethodFor = (payment) => {
   return 'upi'
 }
 
-export default function CheckoutPage({ items = [], initialCouponCode = '', coupons = [], savedAddresses = [], savedPayments = [], user, onSaveAddress, onBack, onPlaceOrder, shippingSettings = initialShippingSettings, taxSettings = initialInvoiceSettings.tax }) {
+export default function CheckoutPage({ items = [], initialCouponCode = '', coupons = [], savedAddresses = [], savedPayments = [], user, onSaveAddress, onBack, onPlaceOrder, shippingSettings = initialShippingSettings, taxSettings = initialInvoiceSettings.tax, paymentSettings = initialAdminSettings.payment, storeName = initialAdminSettings.store.name }) {
   const defaultAddress = savedAddresses.find((address) => address.isDefault) || savedAddresses[0]
   const defaultPayment = savedPayments.find((payment) => payment.isDefault) || savedPayments[0]
+  const onlinePaymentEnabled = paymentSettings.razorpayEnabled && [
+    paymentSettings.cardsEnabled,
+    paymentSettings.upiEnabled,
+    paymentSettings.netBankingEnabled,
+    paymentSettings.walletsEnabled,
+  ].some(Boolean)
   const [addressId, setAddressId] = useState(defaultAddress?.id || '')
   const [paymentId, setPaymentId] = useState(defaultPayment?.id || '')
   const [useManualAddress, setUseManualAddress] = useState(false)
@@ -72,11 +79,14 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
   const [paymentError, setPaymentError] = useState('')
   const [paying, setPaying] = useState(false)
   const [deliveryId, setDeliveryId] = useState('standard')
+  const [paymentMode, setPaymentMode] = useState(
+    onlinePaymentEnabled ? 'online' : paymentSettings.codEnabled ? 'cod' : '',
+  )
 
   const selectedAddress = savedAddresses.find((address) => address.id === addressId) || defaultAddress
   const selectedPayment = savedPayments.find((payment) => payment.id === paymentId) || defaultPayment
   const usingSavedAddress = !useManualAddress && Boolean(selectedAddress)
-  const usingSavedPayment = !useManualPayment && Boolean(selectedPayment)
+  const usingSavedPayment = paymentMode === 'online' && !useManualPayment && Boolean(selectedPayment)
   const pricing = calculateCartPricing(
     items,
     appliedCoupon,
@@ -194,7 +204,37 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
       setPaymentError('Your cart contains unavailable or invalid items. Return to the cart and review them before payment.')
       return
     }
+    if (!paymentMode) {
+      setPaymentError('No payment method is currently available. Please contact support.')
+      return
+    }
+    const checkoutDetails = {
+      address: usingSavedAddress ? selectedAddress : null,
+      payment: paymentMode === 'cod'
+        ? { type: 'Cash on Delivery' }
+        : usingSavedPayment ? selectedPayment : null,
+      discount: pricing.couponDiscount,
+      shipping: selectedDelivery.charge,
+      tax: pricing.tax,
+      total: checkoutTotal,
+      couponCode: pricing.coupon.status === 'applied' ? appliedCoupon : '',
+      delivery: {
+        ...selectedDelivery,
+        estimatedDate:
+          selectedDelivery.id === 'standard'
+            ? selectedAddressAvailability.estimatedDate
+            : createEstimatedDeliveryDate(
+                Math.max(1, selectedAddressAvailability.leadDays - 2),
+              ),
+      },
+    }
     setPaying(true)
+
+    if (paymentMode === 'cod') {
+      setPaying(false)
+      onPlaceOrder({ ...checkoutDetails, cod: true })
+      return
+    }
 
     try {
       const loaded = await loadRazorpayCheckout()
@@ -205,30 +245,17 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
         receipt: createPaymentReceipt(),
       })
 
-      const checkoutDetails = {
-        address: usingSavedAddress ? selectedAddress : null,
-        payment: usingSavedPayment ? selectedPayment : null,
-        discount: pricing.couponDiscount,
-        shipping: selectedDelivery.charge,
-        tax: pricing.tax,
-        total: checkoutTotal,
-        couponCode:
-          pricing.coupon.status === 'applied' ? appliedCoupon : '',
-        delivery: {
-          ...selectedDelivery,
-          estimatedDate:
-            selectedDelivery.id === 'standard'
-              ? selectedAddressAvailability.estimatedDate
-              : createEstimatedDeliveryDate(
-                  Math.max(1, selectedAddressAvailability.leadDays - 2),
-                ),
-        },
-      }
+      const allowedMethods = [
+        paymentSettings.upiEnabled && 'upi',
+        paymentSettings.cardsEnabled && 'card',
+        paymentSettings.netBankingEnabled && 'netbanking',
+        paymentSettings.walletsEnabled && 'wallet',
+      ].filter(Boolean)
       const razorpay = new window.Razorpay({
         key: keyId,
         amount: order.amount,
         currency: order.currency,
-        name: 'Pride Electronics',
+        name: storeName,
         description: `Test payment for ${items.length} ${items.length === 1 ? 'product' : 'products'}`,
         order_id: order.id,
         prefill: {
@@ -237,11 +264,11 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
           contact: user?.mobile || selectedAddress?.phone || '',
         },
         method: razorpayMethodFor(selectedPayment),
-        notes: { checkout: 'Pride Electronics Test Mode' },
+        notes: { checkout: `${storeName} ${paymentSettings.testMode ? 'Test Mode' : 'Checkout'}` },
         theme: { color: '#397a4a', backdrop_color: '#17251c' },
         config: {
           display: {
-            sequence: ['upi', 'card', 'netbanking', 'wallet'],
+            sequence: allowedMethods,
             preferences: { show_default_blocks: true },
           },
         },
@@ -357,10 +384,12 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
             <section className="rounded-[28px] bg-white p-5 shadow-sm sm:p-7">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-[#ffe9e2] text-[#d84220]"><WalletCards size={18} /></span><div><p className="text-[9px] font-extrabold uppercase tracking-[0.15em] text-[#ff5c35]">Step 03</p><h2 className="text-lg font-extrabold text-slate-950">Payment method</h2></div></div>
-                {!!savedPayments.length && <button type="button" onClick={() => setUseManualPayment((current) => !current)} className="rounded-full bg-[#f2f7f2] px-3 py-2 text-[9px] font-extrabold text-[#397a4a] transition hover:bg-[#397a4a] hover:text-white">{usingSavedPayment ? 'Use another method' : 'Choose saved method'}</button>}
+                {paymentMode === 'online' && !!savedPayments.length && <button type="button" onClick={() => setUseManualPayment((current) => !current)} className="rounded-full bg-[#f2f7f2] px-3 py-2 text-[9px] font-extrabold text-[#397a4a] transition hover:bg-[#397a4a] hover:text-white">{usingSavedPayment ? 'Use another method' : 'Choose saved method'}</button>}
               </div>
 
-              {usingSavedPayment ? (
+              {onlinePaymentEnabled && paymentSettings.codEnabled && <div className="mt-5 flex gap-2"><button type="button" onClick={() => setPaymentMode('online')} className={`rounded-full px-4 py-2 text-[9px] font-extrabold ${paymentMode === 'online' ? 'bg-[#253329] text-white' : 'border border-slate-200 text-slate-500'}`}>Online payment</button><button type="button" onClick={() => setPaymentMode('cod')} className={`rounded-full px-4 py-2 text-[9px] font-extrabold ${paymentMode === 'cod' ? 'bg-[#253329] text-white' : 'border border-slate-200 text-slate-500'}`}>Cash on delivery</button></div>}
+
+              {paymentMode === 'online' && (usingSavedPayment ? (
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   {savedPayments.map((payment) => (
                     <label key={payment.id} className={`cursor-pointer rounded-[22px] border-2 p-4 transition ${selectedPayment?.id === payment.id ? 'border-[#253329] bg-[#f6f8f5]' : 'border-slate-100 bg-[#fafbfa] hover:border-slate-300'}`}>
@@ -371,8 +400,9 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
                 </div>
               ) : (
                 <div className="mt-5 rounded-[22px] border-2 border-[#397a4a] bg-[#f5faf5] p-4"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-white text-[#397a4a] shadow-sm"><CreditCard size={17} /></span><div className="flex-1"><strong className="text-xs text-slate-900">Card, UPI or Netbanking</strong><p className="mt-1 text-[9px] leading-4 text-slate-500">Select your preferred method on the secure payment step.</p></div><CheckCircle2 size={17} className="text-[#397a4a]" /></div></div>
-              )}
-              <div className="mt-4 flex items-start gap-3 rounded-[20px] border border-[#dcebdd] bg-[#f4f8f4] p-4"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white text-[#397a4a] shadow-sm"><QrCode size={16} /></span><div><p className="text-[10px] font-extrabold text-slate-800">UPI opens first in Razorpay</p><p className="mt-1 text-[9px] leading-5 text-slate-500">Use UPI QR on desktop or a supported UPI app on mobile. Manual UPI ID entry is no longer offered under the current UPI flow.</p></div></div>
+              ))}
+              {paymentMode === 'cod' && <div className="mt-5 rounded-[22px] border-2 border-[#397a4a] bg-[#f5faf5] p-4"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-white text-[#397a4a] shadow-sm"><WalletCards size={17} /></span><div className="flex-1"><strong className="text-xs text-slate-900">Cash on Delivery</strong><p className="mt-1 text-[9px] leading-4 text-slate-500">Pay when your order is delivered.</p></div><CheckCircle2 size={17} className="text-[#397a4a]" /></div></div>}
+              {paymentMode === 'online' && <div className="mt-4 flex items-start gap-3 rounded-[20px] border border-[#dcebdd] bg-[#f4f8f4] p-4"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white text-[#397a4a] shadow-sm"><QrCode size={16} /></span><div><p className="text-[10px] font-extrabold text-slate-800">UPI opens first in Razorpay</p><p className="mt-1 text-[9px] leading-5 text-slate-500">Use UPI QR on desktop or a supported UPI app on mobile. Manual UPI ID entry is no longer offered under the current UPI flow.</p></div></div>}
               <p className="mt-4 flex items-center gap-2 text-[9px] font-semibold text-slate-400"><LockKeyhole size={12} className="text-[#397a4a]" /> Payment information is encrypted and securely processed.</p>
             </section>
           </div>
@@ -382,7 +412,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
 
             <div className="mt-5 space-y-3 rounded-[20px] bg-[#f7f8f5] p-4 text-[9px] leading-5 text-slate-500">
               <div><strong className="block text-[9px] uppercase tracking-wider text-slate-800">Deliver to</strong>{usingSavedAddress ? `${selectedAddress.fullName}, ${selectedAddress.line1}, ${selectedAddress.city} ${selectedAddress.pincode}` : 'Save or select a delivery address'}</div>
-              <div className="grid grid-cols-2 gap-3 border-t border-slate-200 pt-3"><span><strong className="block text-[9px] uppercase tracking-wider text-slate-800">Delivery</strong>{selectedDelivery.name}<br />{selectedDelivery.estimate}</span><span><strong className="block text-[9px] uppercase tracking-wider text-slate-800">Payment</strong>{usingSavedPayment ? selectedPayment.type : 'Choose securely in Razorpay'}</span></div>
+              <div className="grid grid-cols-2 gap-3 border-t border-slate-200 pt-3"><span><strong className="block text-[9px] uppercase tracking-wider text-slate-800">Delivery</strong>{selectedDelivery.name}<br />{selectedDelivery.estimate}</span><span><strong className="block text-[9px] uppercase tracking-wider text-slate-800">Payment</strong>{paymentMode === 'cod' ? 'Cash on Delivery' : usingSavedPayment ? selectedPayment.type : 'Choose securely in Razorpay'}</span></div>
             </div>
 
             <div className="mt-5 max-h-64 space-y-3 overflow-y-auto pr-1">
@@ -407,8 +437,8 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
             <div className="my-5 h-px bg-slate-100" />
             <div className="flex items-end justify-between gap-4"><span className="text-sm font-bold text-slate-800">Total amount</span><strong className="text-2xl font-extrabold tracking-tight text-slate-950">{formatCurrency(checkoutTotal)}</strong></div>
             {paymentError && <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-[10px] font-bold leading-5 text-red-700">{paymentError}</div>}
-            <button type="submit" disabled={!items.length || hasUnavailableItems || paying} className="mt-5 flex h-13 w-full items-center justify-center gap-2 rounded-full bg-[#397a4a] px-5 text-xs font-extrabold text-white shadow-lg shadow-[#397a4a]/20 transition hover:-translate-y-0.5 hover:bg-[#2f663d] disabled:cursor-not-allowed disabled:bg-slate-300"><LockKeyhole size={15} /> {paying ? 'Opening Razorpay…' : `Place Order · Pay ${formatCurrency(checkoutTotal)}`}</button>
-            <p className="mt-3 text-center text-[9px] font-bold text-[#397a4a]">Razorpay Test Mode · No real money will be deducted</p>
+            <button type="submit" disabled={!items.length || hasUnavailableItems || paying || !paymentMode} className="mt-5 flex h-13 w-full items-center justify-center gap-2 rounded-full bg-[#397a4a] px-5 text-xs font-extrabold text-white shadow-lg shadow-[#397a4a]/20 transition hover:-translate-y-0.5 hover:bg-[#2f663d] disabled:cursor-not-allowed disabled:bg-slate-300"><LockKeyhole size={15} /> {paying ? (paymentMode === 'cod' ? 'Placing order…' : 'Opening Razorpay…') : paymentMode === 'cod' ? `Place Order · ${formatCurrency(checkoutTotal)}` : `Place Order · Pay ${formatCurrency(checkoutTotal)}`}</button>
+            <p className="mt-3 text-center text-[9px] font-bold text-[#397a4a]">{paymentMode === 'cod' ? 'Payment will be collected on delivery' : paymentSettings.testMode ? 'Razorpay Test Mode · No real money will be deducted' : 'Secure payment powered by Razorpay'}</p>
             <div className="mt-4 grid grid-cols-2 gap-2 text-[8px] font-bold text-slate-500"><span className="flex items-center gap-1.5 rounded-xl bg-slate-50 px-2 py-2"><Truck size={12} className="text-[#397a4a]" /> Tracked delivery</span><span className="flex items-center gap-1.5 rounded-xl bg-slate-50 px-2 py-2"><PackageCheck size={12} className="text-[#397a4a]" /> Quality checked</span></div>
           </aside>
         </form>

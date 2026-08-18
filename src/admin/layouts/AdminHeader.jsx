@@ -1,4 +1,5 @@
 import { Bell, Menu, Search, X } from 'lucide-react'
+import { getInitials } from '../utils/adminFormatters'
 
 const titles = {
   dashboard: ['Dashboard', 'Monitor your store performance'],
@@ -12,6 +13,7 @@ const titles = {
   offers: ['Offers & banners', 'Manage storefront promotions'],
   shipping: ['Shipping management', 'Configure delivery and courier operations'],
   'tax-invoice': ['Tax & invoice', 'Configure GST, business details, and numbering'],
+  settings: ['Admin settings', 'Manage store, access, and communications'],
 }
 
 export default function AdminHeader({
@@ -20,6 +22,7 @@ export default function AdminHeader({
   searchQuery,
   onSearch,
   onOpenSidebar,
+  notificationSettings,
 }) {
   const [title, subtitle] = titles[activeTab] || titles.dashboard
   return (
@@ -63,11 +66,11 @@ export default function AdminHeader({
           aria-label="Notifications"
         >
           <Bell size={17} />
-          <span className="absolute right-1.5 top-1.5 size-2 rounded-full border-2 border-white bg-[#ff5c35]" />
+          {notificationSettings?.browserAlerts && <span className="absolute right-1.5 top-1.5 size-2 rounded-full border-2 border-white bg-[#ff5c35]" />}
         </button>
         <div className="hidden items-center gap-2.5 rounded-full bg-white py-1.5 pl-1.5 pr-3 shadow-sm md:flex">
           <span className="grid size-8 place-items-center rounded-full bg-[#397a4a] text-[9px] font-extrabold text-white">
-            PA
+            {getInitials(admin.name)}
           </span>
           <span>
             <strong className="block text-[10px] text-slate-800">

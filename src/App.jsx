@@ -7,6 +7,7 @@ import { initialCoupons } from './data/coupons'
 import { initialMarketingSettings } from './data/marketing'
 import { initialShippingSettings } from './data/shipping'
 import { initialInvoiceSettings } from './data/invoice'
+import { initialAdminSettings } from './data/adminSettings'
 import {
   adjustProductStock,
   getAvailableStock,
@@ -27,6 +28,30 @@ import {
 import { formatCurrency, parsePrice } from './user/utils/currency'
 
 const initialInventory = initializeInventory(initialProducts, initialOrders)
+const SETTINGS_KEYS = {
+  marketing: 'pride_marketing_settings',
+  shipping: 'pride_shipping_settings',
+  invoice: 'pride_invoice_settings',
+  admin: 'pride_admin_settings',
+}
+
+const loadSettings = (key, fallback) => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(key) || '{}')
+    return Object.fromEntries(
+      Object.entries(fallback).map(([section, defaultValue]) => [
+        section,
+        Array.isArray(defaultValue)
+          ? stored[section] || defaultValue
+          : typeof defaultValue === 'object'
+            ? { ...defaultValue, ...(stored[section] || {}) }
+            : stored[section] ?? defaultValue,
+      ]),
+    )
+  } catch {
+    return fallback
+  }
+}
 
 function App() {
   const [activePortal, setActivePortal] = useState('user') // 'user' | 'admin'
@@ -44,12 +69,50 @@ function App() {
   )
   const [couponsList, setCouponsList] = useState(initialCoupons)
   const [marketingSettings, setMarketingSettings] = useState(
-    initialMarketingSettings,
+    () => loadSettings(SETTINGS_KEYS.marketing, initialMarketingSettings),
   )
   const [shippingSettings, setShippingSettings] = useState(
-    initialShippingSettings,
+    () => loadSettings(SETTINGS_KEYS.shipping, initialShippingSettings),
   )
-  const [invoiceSettings, setInvoiceSettings] = useState(initialInvoiceSettings)
+  const [invoiceSettings, setInvoiceSettings] = useState(() =>
+    loadSettings(SETTINGS_KEYS.invoice, initialInvoiceSettings),
+  )
+  const [adminSettings, setAdminSettings] = useState(() =>
+    loadSettings(SETTINGS_KEYS.admin, initialAdminSettings),
+  )
+
+  const persistSettings = (setter, key) => (valueOrUpdater) =>
+    setter((current) => {
+      const next = typeof valueOrUpdater === 'function'
+        ? valueOrUpdater(current)
+        : valueOrUpdater
+      localStorage.setItem(key, JSON.stringify(next))
+      return next
+    })
+  const updateMarketingSettings = persistSettings(
+    setMarketingSettings,
+    SETTINGS_KEYS.marketing,
+  )
+  const updateShippingSettings = persistSettings(
+    setShippingSettings,
+    SETTINGS_KEYS.shipping,
+  )
+  const updateInvoiceSettings = persistSettings(
+    setInvoiceSettings,
+    SETTINGS_KEYS.invoice,
+  )
+  const updateAdminSettings = (valueOrUpdater) =>
+    setAdminSettings((current) => {
+      const next = typeof valueOrUpdater === 'function'
+        ? valueOrUpdater(current)
+        : valueOrUpdater
+      const persisted = {
+        ...next,
+        email: { ...next.email, password: '' },
+      }
+      localStorage.setItem(SETTINGS_KEYS.admin, JSON.stringify(persisted))
+      return next
+    })
 
   const handleCustomerAuthenticated = (user) => {
     setCustomersList((current) => {
@@ -253,7 +316,7 @@ function App() {
       },
       ...prev,
     ])
-    setInvoiceSettings((current) => ({
+    updateInvoiceSettings((current) => ({
       ...current,
       numbering: {
         ...current.numbering,
@@ -363,6 +426,7 @@ function App() {
           marketingSettings={marketingSettings}
           shippingSettings={shippingSettings}
           invoiceSettings={invoiceSettings}
+          adminSettings={adminSettings}
           onNewOrder={handleNewOrder}
           onCreateReturnRequest={handleCreateReturnRequest}
           onCustomerAuthenticated={handleCustomerAuthenticated}
@@ -379,6 +443,7 @@ function App() {
           marketingSettings={marketingSettings}
           shippingSettings={shippingSettings}
           invoiceSettings={invoiceSettings}
+          adminSettings={adminSettings}
           onAddProduct={handleAddProduct}
           onUpdateProduct={handleUpdateProduct}
           onDeleteProduct={handleDeleteProduct}
@@ -389,9 +454,10 @@ function App() {
           onAddCoupon={handleAddCoupon}
           onUpdateCoupon={handleUpdateCoupon}
           onDeleteCoupon={handleDeleteCoupon}
-          onUpdateMarketingSettings={setMarketingSettings}
-          onUpdateShippingSettings={setShippingSettings}
-          onUpdateInvoiceSettings={setInvoiceSettings}
+          onUpdateMarketingSettings={updateMarketingSettings}
+          onUpdateShippingSettings={updateShippingSettings}
+          onUpdateInvoiceSettings={updateInvoiceSettings}
+          onUpdateAdminSettings={updateAdminSettings}
           onSwitchToStore={() => setActivePortal('user')}
         />
       )}

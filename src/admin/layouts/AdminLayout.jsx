@@ -13,6 +13,9 @@ export default function AdminLayout({
   onSelectTab,
   onLogout,
   onSwitchToStore,
+  notificationSettings,
+  permissions,
+  storeName,
 }) {
   return (
     <div className="min-h-screen bg-[#f7f8f5] text-slate-950 lg:grid lg:grid-cols-[278px_minmax(0,1fr)]">
@@ -23,6 +26,8 @@ export default function AdminLayout({
         onSelectTab={onSelectTab}
         onLogout={onLogout}
         onSwitchToStore={onSwitchToStore}
+        permissions={permissions}
+        storeName={storeName}
       />
       <section className="min-w-0">
         <AdminHeader
@@ -31,6 +36,7 @@ export default function AdminLayout({
           searchQuery={searchQuery}
           onSearch={onSearch}
           onOpenSidebar={onOpenSidebar}
+          notificationSettings={notificationSettings}
         />
         <main className="mx-auto max-w-[1480px] p-4 sm:p-6 lg:p-8">
           {children}

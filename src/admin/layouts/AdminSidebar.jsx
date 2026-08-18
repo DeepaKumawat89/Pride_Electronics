@@ -12,6 +12,7 @@ import {
   Images,
   Truck,
   ReceiptText,
+  Settings,
   X,
   Zap,
 } from 'lucide-react'
@@ -83,6 +84,12 @@ const navItems = [
     caption: 'GST & business details',
     icon: ReceiptText,
   },
+  {
+    id: 'settings',
+    label: 'Settings',
+    caption: 'Store & access controls',
+    icon: Settings,
+  },
 ]
 
 export default function AdminSidebar({
@@ -92,6 +99,8 @@ export default function AdminSidebar({
   onSwitchToStore,
   isOpen,
   onClose,
+  permissions = ['*'],
+  storeName = 'Pride Electronics',
 }) {
   return (
     <>
@@ -110,7 +119,7 @@ export default function AdminSidebar({
             <Zap size={19} fill="currentColor" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-extrabold">Pride Electronics</p>
+            <p className="truncate text-sm font-extrabold">{storeName}</p>
             <p className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-[#9bcaa6]">
               Admin Console
             </p>
@@ -131,7 +140,7 @@ export default function AdminSidebar({
           <p className="px-3 pb-2 text-[8px] font-extrabold uppercase tracking-[0.2em] text-white/35">
             Management
           </p>
-          {navItems.map((item) => {
+          {navItems.filter((item) => permissions.includes('*') || permissions.includes(item.id)).map((item) => {
             const Icon = item.icon
             const active = activeTab === item.id
             return (

@@ -3,6 +3,8 @@ import {
   clearAdminSession,
   getAdminSession,
   signInAdmin,
+  updateAdminPassword,
+  updateAdminProfile,
 } from '../services/adminAuthService'
 
 export function useAdminAuth() {
@@ -25,5 +27,14 @@ export function useAdminAuth() {
     setAdmin(null)
   }
 
-  return { admin, loading, login, logout }
+  const updateProfile = (profile) => {
+    const session = updateAdminProfile(profile)
+    setAdmin(session)
+    return session
+  }
+
+  const changePassword = (currentPassword, nextPassword) =>
+    updateAdminPassword(currentPassword, nextPassword)
+
+  return { admin, loading, login, logout, updateProfile, changePassword }
 }

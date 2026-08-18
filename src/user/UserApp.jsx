@@ -25,6 +25,7 @@ import {
 import { sortCatalogProducts } from './utils/catalog'
 import { normalizeAddress } from './utils/address'
 import { createInvoiceNumber, initialInvoiceSettings } from '../data/invoice'
+import { initialAdminSettings } from '../data/adminSettings'
 
 const AUTH_SESSION_KEY = 'pride_authenticated_user'
 const ADDRESS_SESSION_KEY = 'pride_saved_addresses'
@@ -35,7 +36,7 @@ const CHECKOUT_HASH = '#checkout'
 const ORDER_SUCCESS_HASH = '#order-success'
 const ORDER_SUCCESS_SESSION_KEY = 'pride_last_successful_order'
 
-function formatVerifiedPaymentMethod(payment, fallback) {
+function formatVerifiedPaymentMethod(payment, fallback, gatewayLabel = 'Razorpay Test Mode') {
   if (!payment?.method) return fallback || 'Razorpay Test Mode'
   const labels = {
     card: 'Card',
@@ -47,7 +48,7 @@ function formatVerifiedPaymentMethod(payment, fallback) {
   }
   const provider = payment.bank || payment.wallet
   const method = labels[payment.method] || payment.method
-  return `${method}${provider ? ` (${provider})` : ''} via Razorpay Test Mode`
+  return `${method}${provider ? ` (${provider})` : ''} via ${gatewayLabel}`
 }
 
 function formatVerifiedPaymentStatus(status) {
@@ -198,6 +199,7 @@ export default function UserApp({
   marketingSettings,
   shippingSettings,
   invoiceSettings = initialInvoiceSettings,
+  adminSettings = initialAdminSettings,
   onNewOrder,
   onCreateReturnRequest,
   onCustomerAuthenticated,
@@ -782,11 +784,14 @@ export default function UserApp({
   const handlePlaceOrder = (checkoutDetails = {}) => {
     const verifiedPayment = checkoutDetails.verifiedPayment
     const verifiedAmount = Number(verifiedPayment?.amount)
+    const gatewayLabel = adminSettings.payment.testMode
+      ? 'Razorpay Test Mode'
+      : 'Razorpay'
     const selectedPaymentMethod = checkoutDetails.payment?.type
-      ? `${checkoutDetails.payment.type} via Razorpay Test Mode`
-      : 'Razorpay Test Mode'
+      ? `${checkoutDetails.payment.type} via ${gatewayLabel}`
+      : gatewayLabel
     const order = {
-      id: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: `${adminSettings.store.orderPrefix || 'ORD'}-${Math.floor(1000 + Math.random() * 9000)}`,
       customer: user?.name || 'Pride customer',
       email: user?.email || '',
       date: new Date().toISOString().slice(0, 10),
@@ -809,15 +814,23 @@ export default function UserApp({
       deliveryDate:
         checkoutDetails.delivery?.estimatedDate || 'Being scheduled',
       deliveryOption: checkoutDetails.delivery?.name || 'Standard delivery',
-      paymentStatus: formatVerifiedPaymentStatus(verifiedPayment?.status),
+      paymentStatus: checkoutDetails.cod
+        ? 'Pending'
+        : formatVerifiedPaymentStatus(verifiedPayment?.status),
       paymentDate: verifiedPayment?.createdAt
         ? new Date(verifiedPayment.createdAt * 1000).toISOString()
         : new Date().toISOString(),
       shippingAddress: checkoutDetails.address || null,
-      paymentMethod: formatVerifiedPaymentMethod(
-        verifiedPayment,
-        checkoutDetails.razorpay ? selectedPaymentMethod : 'Online payment',
-      ),
+      paymentMethod: checkoutDetails.cod
+        ? 'Cash on Delivery'
+        : formatVerifiedPaymentMethod(
+            verifiedPayment,
+            checkoutDetails.razorpay ? selectedPaymentMethod : 'Online payment',
+            gatewayLabel,
+          ),
+      paymentEnvironment: checkoutDetails.cod
+        ? 'Cash on Delivery'
+        : gatewayLabel,
       razorpayPaymentId:
         verifiedPayment?.id ||
         checkoutDetails.razorpay?.razorpay_payment_id ||
@@ -903,6 +916,8 @@ export default function UserApp({
             onPlaceOrder={handlePlaceOrder}
             shippingSettings={shippingSettings}
             taxSettings={invoiceSettings.tax}
+            paymentSettings={adminSettings.payment}
+            storeName={adminSettings.store.name}
           />
         ) : selectedProduct && reviewsOpen ? (
           <ProductReviewsPage product={selectedProduct} onBack={closeReviews} />
