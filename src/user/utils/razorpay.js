@@ -1,4 +1,16 @@
+import { httpsCallable } from 'firebase/functions'
+import { userFunctions } from '../../firebase/firebase'
+
 let razorpayScriptPromise
+
+const paymentGateway = httpsCallable(userFunctions, 'updateUserProfile', {
+  timeout: 20000,
+})
+
+const operationFor = {
+  orders: 'createRazorpayOrder',
+  verify: 'verifyRazorpayPayment',
+}
 
 export function loadRazorpayCheckout() {
   if (window.Razorpay) return Promise.resolve(true)
@@ -16,27 +28,21 @@ export function loadRazorpayCheckout() {
 }
 
 export async function postRazorpayApi(path, payload) {
-  let response
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 20000)
+  const operation = operationFor[path]
+  if (!operation) throw new Error('Unsupported Razorpay request.')
   try {
-    response = await fetch(`/api/razorpay/${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    })
+    const response = await paymentGateway({ operation, payload })
+    const data = response.data || {}
+    if (path === 'orders' && (!data.order || !Number.isFinite(data.order.amount))) {
+      throw new Error('Razorpay returned an invalid order. Please try again.')
+    }
+    return data
   } catch (error) {
     throw new Error(
-      error.name === 'AbortError'
+      error.code === 'functions/deadline-exceeded'
         ? 'The payment request timed out. Please try again.'
-        : 'Network error. Check your connection and try again.',
+        : error.message || 'Razorpay request failed. Please try again.',
       { cause: error },
     )
-  } finally {
-    window.clearTimeout(timeout)
   }
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(data.error || 'Razorpay request failed. Please try again.')
-  return data
 }

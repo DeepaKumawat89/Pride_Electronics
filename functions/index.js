@@ -1,6 +1,8 @@
+const { createHmac, timingSafeEqual } = require('node:crypto')
 const { initializeApp } = require('firebase-admin/app')
 const { getAuth } = require('firebase-admin/auth')
 const { FieldValue, getFirestore } = require('firebase-admin/firestore')
+const { defineSecret } = require('firebase-functions/params')
 const { HttpsError, onCall } = require('firebase-functions/v2/https')
 
 initializeApp()
@@ -12,6 +14,12 @@ const firebaseWebApiKey =
   'AIzaSyDF4djFtrqwozdqnPA0iOhhJ08PZvpCauc'
 const region = 'asia-south1'
 const callableOptions = { region, invoker: 'public' }
+const razorpayKeyId = defineSecret('RAZORPAY_KEY_ID')
+const razorpayKeySecret = defineSecret('RAZORPAY_KEY_SECRET')
+const paymentCallableOptions = {
+  ...callableOptions,
+  secrets: [razorpayKeyId, razorpayKeySecret],
+}
 const PHONE_PATTERN = /^[6-9]\d{9}$/
 
 const cleanObject = (value) => JSON.parse(JSON.stringify(value || {}))
@@ -19,6 +27,18 @@ const cleanObject = (value) => JSON.parse(JSON.stringify(value || {}))
 const parseMoney = (value) => {
   const parsed = Number(String(value || '').replace(/[^\d.-]/g, ''))
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+const razorpayAuthorization = () =>
+  `Basic ${Buffer.from(`${razorpayKeyId.value()}:${razorpayKeySecret.value()}`).toString('base64')}`
+
+const secureCompare = (received, expected) => {
+  const receivedBuffer = Buffer.from(String(received || ''), 'utf8')
+  const expectedBuffer = Buffer.from(expected, 'utf8')
+  return (
+    receivedBuffer.length === expectedBuffer.length &&
+    timingSafeEqual(receivedBuffer, expectedBuffer)
+  )
 }
 
 const normalizeOrderItems = (items) => {
@@ -173,7 +193,7 @@ exports.getUserProfile = onCall(callableOptions, async (request) => {
   }
 })
 
-exports.updateUserProfile = onCall(callableOptions, async (request) => {
+exports.updateUserProfile = onCall(paymentCallableOptions, async (request) => {
   const operation = String(request.data?.operation || '')
   const operationRequest = operation
     ? { ...request, data: request.data?.payload || {} }
@@ -187,6 +207,12 @@ exports.updateUserProfile = onCall(callableOptions, async (request) => {
   }
   if (operation === 'updateCustomerStatus') {
     return updateCustomerStatusHandler(operationRequest)
+  }
+  if (operation === 'createRazorpayOrder') {
+    return createRazorpayOrderHandler(operationRequest)
+  }
+  if (operation === 'verifyRazorpayPayment') {
+    return verifyRazorpayPaymentHandler(operationRequest)
   }
   if (operation) {
     throw new HttpsError('invalid-argument', 'Unsupported account operation.')
@@ -303,6 +329,141 @@ exports.signInUserWithPhone = onCall(callableOptions, async (request) => {
   return { email: authUser.email }
 })
 
+async function createRazorpayOrderHandler(request) {
+  const uid = requireUser(request)
+  const amount = Number(request.data?.amount)
+  if (!Number.isInteger(amount) || amount < 100 || amount > 100_000_000) {
+    throw new HttpsError('invalid-argument', 'Enter a valid payment amount.')
+  }
+  const keyId = razorpayKeyId.value()
+  if (!keyId.startsWith('rzp_test_')) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Only Razorpay Test Mode credentials are enabled.',
+    )
+  }
+  const receipt = String(request.data?.receipt || `pride_${Date.now()}`)
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .slice(0, 40)
+  let response
+  let order
+  try {
+    response = await fetch('https://api.razorpay.com/v1/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: razorpayAuthorization(),
+      },
+      body: JSON.stringify({
+        amount,
+        currency: 'INR',
+        receipt,
+        notes: { source: 'Pride Electronics Test Checkout', uid },
+      }),
+    })
+    order = await response.json()
+  } catch {
+    throw new HttpsError('unavailable', 'Unable to reach Razorpay. Please try again.')
+  }
+  if (!response.ok || !order?.id) {
+    throw new HttpsError(
+      'internal',
+      order?.error?.description || 'Unable to create Razorpay order.',
+    )
+  }
+  const createdAt = new Date().toISOString()
+  await db.doc(`paymentIntents/${order.id}`).set({
+    id: order.id,
+    userId: uid,
+    amount: Number(order.amount),
+    currency: String(order.currency || 'INR'),
+    receipt,
+    status: String(order.status || 'created'),
+    verified: false,
+    consumed: false,
+    createdAt,
+    updatedAt: createdAt,
+  })
+  return {
+    keyId,
+    order: {
+      id: order.id,
+      amount: Number(order.amount),
+      currency: String(order.currency || 'INR'),
+      status: String(order.status || 'created'),
+      receipt: String(order.receipt || receipt),
+    },
+  }
+}
+
+async function verifyRazorpayPaymentHandler(request) {
+  const uid = requireUser(request)
+  const orderId = String(request.data?.razorpay_order_id || '').trim()
+  const paymentId = String(request.data?.razorpay_payment_id || '').trim()
+  const signature = String(request.data?.razorpay_signature || '').trim()
+  if (!orderId || !paymentId || !signature) {
+    throw new HttpsError('invalid-argument', 'Incomplete Razorpay payment response.')
+  }
+  const intentReference = db.doc(`paymentIntents/${orderId}`)
+  const intentDocument = await intentReference.get()
+  if (!intentDocument.exists || intentDocument.data().userId !== uid) {
+    throw new HttpsError('permission-denied', 'This payment does not belong to your account.')
+  }
+  const intent = intentDocument.data()
+  if (intent.consumed) {
+    throw new HttpsError('already-exists', 'This payment has already been used for an order.')
+  }
+  const expectedSignature = createHmac('sha256', razorpayKeySecret.value())
+    .update(`${orderId}|${paymentId}`)
+    .digest('hex')
+  if (!secureCompare(signature, expectedSignature)) {
+    throw new HttpsError('permission-denied', 'Payment signature verification failed.')
+  }
+  let response
+  let payment
+  try {
+    response = await fetch(
+      `https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`,
+      { headers: { Authorization: razorpayAuthorization() } },
+    )
+    payment = await response.json()
+  } catch {
+    throw new HttpsError('unavailable', 'Unable to verify the payment with Razorpay.')
+  }
+  if (!response.ok) {
+    throw new HttpsError(
+      'internal',
+      payment?.error?.description || 'Unable to verify the Razorpay payment.',
+    )
+  }
+  if (
+    payment.order_id !== orderId ||
+    Number(payment.amount) !== Number(intent.amount) ||
+    String(payment.currency) !== String(intent.currency)
+  ) {
+    throw new HttpsError('data-loss', 'Razorpay returned mismatched payment details.')
+  }
+  const savedPayment = {
+    id: payment.id,
+    orderId: payment.order_id,
+    amount: Number(payment.amount),
+    currency: String(payment.currency),
+    status: String(payment.status),
+    method: String(payment.method || ''),
+    bank: String(payment.bank || ''),
+    wallet: String(payment.wallet || ''),
+    createdAt: payment.created_at || null,
+  }
+  await intentReference.update({
+    paymentId,
+    paymentStatus: savedPayment.status,
+    verified: true,
+    verifiedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  })
+  return { verified: true, payment: savedPayment }
+}
+
 async function placeOrderHandler(request) {
   const uid = requireUser(request)
   const authUser = await adminAuth.getUser(uid)
@@ -329,6 +490,27 @@ async function placeOrderHandler(request) {
     }
     const invoiceSettingsReference = db.doc('settings/invoice')
     const invoiceSettingsDocument = await transaction.get(invoiceSettingsReference)
+    const isCashOnDelivery = /cash|cod/i.test(submittedOrder.paymentMethod || '')
+    let paymentIntentReference = null
+    if (!isCashOnDelivery) {
+      const razorpayOrderId = String(submittedOrder.razorpayOrderId || '').trim()
+      const razorpayPaymentId = String(submittedOrder.razorpayPaymentId || '').trim()
+      if (!razorpayOrderId || !razorpayPaymentId) {
+        throw new HttpsError('failed-precondition', 'A verified payment is required.')
+      }
+      paymentIntentReference = db.doc(`paymentIntents/${razorpayOrderId}`)
+      const paymentIntentDocument = await transaction.get(paymentIntentReference)
+      const paymentIntent = paymentIntentDocument.data()
+      if (
+        !paymentIntentDocument.exists ||
+        paymentIntent.userId !== uid ||
+        paymentIntent.paymentId !== razorpayPaymentId ||
+        paymentIntent.verified !== true ||
+        paymentIntent.consumed === true
+      ) {
+        throw new HttpsError('failed-precondition', 'The payment could not be verified for this order.')
+      }
+    }
 
     productDocuments.forEach((productDocument, index) => {
       if (!productDocument.exists || productDocument.data().enabled === false) {
@@ -419,6 +601,15 @@ async function placeOrderHandler(request) {
         },
         { merge: true },
       )
+    }
+
+    if (paymentIntentReference) {
+      transaction.update(paymentIntentReference, {
+        consumed: true,
+        consumedByOrderId: orderReference.id,
+        consumedAt: now,
+        updatedAt: now,
+      })
     }
 
     const order = {
