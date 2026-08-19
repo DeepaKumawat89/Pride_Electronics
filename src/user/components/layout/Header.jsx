@@ -1,96 +1,50 @@
 import {
-  ChevronDown,
   Grid2X2,
   Heart,
   Home,
-  Menu,
   ShoppingBag,
   UserRound,
-  X,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
 import Brand from '../common/Brand'
 import ProfileMenu from '../profile/ProfileMenu'
 import ProductSearch from './ProductSearch'
 
 export default function Header({
   products,
-  categories = [],
   searchQuery,
   user,
   cartCount,
   wishlistCount,
   accountSection,
+  productsOpen,
+  contentPageOpen,
   onHome,
+  onProductsOpen,
   onCartOpen,
   onWishlistOpen,
   onSearch,
   onSearchSubmit,
   onProductSelect,
   onAuthOpen,
-  onCategoryChange,
   onProfileSelect,
   onLogout,
 }) {
-  const categoryNames = categories
-    .filter((category) => category.enabled !== false)
-    .map((category) => category.name)
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const [categoriesOpen, setCategoriesOpen] = useState(false)
-  const headerRef = useRef(null)
-
-  useEffect(() => {
-    const closeMenus = (event) => {
-      if (
-        !headerRef.current?.contains(event.target) &&
-        !event.target.closest?.('[data-header-control]')
-      ) {
-        setMobileOpen(false)
-        setCategoriesOpen(false)
-      }
-    }
-    const closeOnEscape = (event) => {
-      if (event.key === 'Escape') {
-        setMobileOpen(false)
-        setCategoriesOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', closeMenus)
-    document.addEventListener('keydown', closeOnEscape)
-    return () => {
-      document.removeEventListener('mousedown', closeMenus)
-      document.removeEventListener('keydown', closeOnEscape)
-    }
-  }, [])
-
-  const selectCategory = (category) => {
-    onCategoryChange(category)
-    setCategoriesOpen(false)
-    setMobileOpen(false)
-  }
-
   const goHome = () => {
-    setMobileOpen(false)
-    setCategoriesOpen(false)
     onHome()
   }
 
   const openCart = () => {
-    setMobileOpen(false)
-    setCategoriesOpen(false)
     onCartOpen()
   }
 
   const openAccount = () => {
     if (user) onProfileSelect('profile')
     else onAuthOpen()
-    setMobileOpen(false)
   }
 
   return (
     <>
       <header
-        ref={headerRef}
         className="sticky top-0 z-40 border-b border-slate-200/80 bg-[#f7f8f5]/95 backdrop-blur-xl"
       >
         <div className="mx-auto max-w-[1440px] px-3 sm:px-6 lg:px-10">
@@ -103,48 +57,6 @@ export default function Header({
             >
               <Brand />
             </button>
-
-            <div className="relative shrink-0">
-              <button
-                type="button"
-                onClick={() => setCategoriesOpen((current) => !current)}
-                className={`flex h-11 items-center gap-2 rounded-full border bg-white px-4 text-xs font-extrabold transition ${categoriesOpen ? 'border-[#ff5c35] text-[#ff5c35] ring-4 ring-[#ff5c35]/10' : 'border-slate-200 text-slate-700 hover:border-slate-300'}`}
-                aria-expanded={categoriesOpen}
-                aria-haspopup="menu"
-              >
-                <Grid2X2 size={16} />
-                Categories
-                <ChevronDown
-                  size={14}
-                  className={`transition ${categoriesOpen ? 'rotate-180' : ''}`}
-                />
-              </button>
-
-              {categoriesOpen && (
-                <div
-                  role="menu"
-                  className="absolute left-0 top-[calc(100%+12px)] z-50 w-64 rounded-[22px] border border-slate-200 bg-white p-2 shadow-[0_24px_70px_rgba(15,23,42,0.2)]"
-                >
-                  <p className="px-3 pb-2 pt-1 text-[9px] font-extrabold uppercase tracking-[0.15em] text-slate-400">
-                    Shop by category
-                  </p>
-                  {categoryNames.map((category) => (
-                    <button
-                      key={category}
-                      type="button"
-                      role="menuitem"
-                      onClick={() => selectCategory(category)}
-                      className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-xs font-bold text-slate-600 transition hover:bg-[#f2f7f2] hover:text-[#397a4a]"
-                    >
-                      <span className="grid size-8 place-items-center rounded-xl bg-slate-100 text-slate-500">
-                        <Grid2X2 size={14} />
-                      </span>
-                      {category}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
 
             <div className="min-w-56 max-w-2xl flex-1">
               <ProductSearch
@@ -174,7 +86,7 @@ export default function Header({
                   aria-label="Login or sign up"
                 >
                   <UserRound size={17} />
-                  Account
+                  Login
                 </button>
               )}
 
@@ -199,16 +111,6 @@ export default function Header({
           <div className="flex h-16 items-center gap-2 lg:hidden">
             <button
               type="button"
-              onClick={() => setMobileOpen((current) => !current)}
-              className="grid size-10 shrink-0 place-items-center rounded-full text-slate-700 transition hover:bg-white"
-              aria-label="Toggle categories menu"
-              aria-expanded={mobileOpen}
-            >
-              {mobileOpen ? <X size={21} /> : <Menu size={21} />}
-            </button>
-
-            <button
-              type="button"
               onClick={goHome}
               aria-label="Pride Electronics home"
               className="shrink-0"
@@ -230,33 +132,6 @@ export default function Header({
 
             <CartButton cartCount={cartCount} onClick={openCart} compact />
           </div>
-
-          {mobileOpen && (
-            <nav className="grid gap-1 border-t border-slate-200 py-3 lg:hidden">
-              <p className="px-3 pb-1 text-[9px] font-extrabold uppercase tracking-[0.15em] text-slate-400">
-                Shop by category
-              </p>
-              {categoryNames.map((category) => (
-                <button
-                  key={category}
-                  type="button"
-                  onClick={() => selectCategory(category)}
-                  className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 transition hover:bg-white"
-                >
-                  <Grid2X2 size={15} className="text-slate-400" />
-                  {category}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={openAccount}
-                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 transition hover:bg-white"
-              >
-                <UserRound size={15} className="text-slate-400" />
-                {user ? 'My Account' : 'Login / Sign Up'}
-              </button>
-            </nav>
-          )}
         </div>
       </header>
 
@@ -268,14 +143,14 @@ export default function Header({
         <MobileNavItem
           icon={Home}
           label="Home"
-          active={!accountSection && !mobileOpen}
+          active={!accountSection && !productsOpen && !contentPageOpen}
           onClick={goHome}
         />
         <MobileNavItem
           icon={Grid2X2}
-          label="Categories"
-          active={mobileOpen}
-          onClick={() => setMobileOpen((current) => !current)}
+          label="Products"
+          active={productsOpen && !accountSection}
+          onClick={onProductsOpen}
         />
         <MobileNavItem
           icon={ShoppingBag}

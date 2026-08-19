@@ -10,6 +10,12 @@ import PromoBanner from './components/home/PromoBanner'
 import ProductCatalog from './components/products/ProductCatalog'
 import ProductDetailsPage from './components/products/ProductDetailsPage'
 import ProductReviewsPage from './components/products/ProductReviewsPage'
+import ProductsPage from './components/products/ProductsPage'
+import ContactUs from './components/pages/ContactUs'
+import PrivacyPolicy from './components/pages/PrivacyPolicy'
+import RefundAndCancellationPolicy from './components/pages/RefundAndCancellationPolicy'
+import ShippingAndDeliveryPolicy from './components/pages/ShippingAndDeliveryPolicy'
+import TermsAndConditions from './components/pages/TermsAndConditions'
 import AuthModal from './components/auth/AuthModal'
 import CheckoutPage from './components/checkout/CheckoutPage'
 import OrderSuccessPage from './components/checkout/OrderSuccessPage'
@@ -40,10 +46,51 @@ import {
 import { getCustomerCouponUsage } from '../firebase/customerData'
 
 const PRODUCT_HASH_PREFIX = '#product-'
+const PRODUCTS_HASH_PREFIX = '#products'
 const REVIEWS_HASH_SUFFIX = '-reviews'
 const CHECKOUT_HASH = '#checkout'
 const ORDER_SUCCESS_HASH = '#order-success'
 const ORDER_SUCCESS_SESSION_KEY = 'pride_last_successful_order'
+const CONTENT_PAGE_HASHES = {
+  privacy: '#privacy-policy',
+  terms: '#terms-and-conditions',
+  refunds: '#refund-and-cancellation-policy',
+  shipping: '#shipping-and-delivery-policy',
+  contact: '#contact-us',
+}
+const CONTENT_PAGE_COMPONENTS = {
+  privacy: PrivacyPolicy,
+  terms: TermsAndConditions,
+  refunds: RefundAndCancellationPolicy,
+  shipping: ShippingAndDeliveryPolicy,
+  contact: ContactUs,
+}
+
+function getContentPageFromHash(hash) {
+  return Object.keys(CONTENT_PAGE_HASHES).find(
+    (page) => CONTENT_PAGE_HASHES[page] === hash,
+  )
+}
+
+function createProductsHash(category = 'All', query = '') {
+  const params = new URLSearchParams()
+  if (category && category !== 'All') params.set('category', category)
+  if (query.trim()) params.set('query', query.trim())
+  const search = params.toString()
+  return `${PRODUCTS_HASH_PREFIX}${search ? `?${search}` : ''}`
+}
+
+function parseProductsHash(hash) {
+  if (hash !== PRODUCTS_HASH_PREFIX && !hash.startsWith(`${PRODUCTS_HASH_PREFIX}?`)) {
+    return null
+  }
+  const queryString = hash.slice(PRODUCTS_HASH_PREFIX.length + 1)
+  const params = new URLSearchParams(queryString)
+  return {
+    category: params.get('category') || 'All',
+    query: params.get('query') || '',
+  }
+}
 
 function formatVerifiedPaymentMethod(payment, fallback, gatewayLabel = 'Razorpay Test Mode') {
   if (!payment?.method) return fallback || 'Razorpay Test Mode'
@@ -126,6 +173,8 @@ export default function UserApp({
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('All')
   const [sortBy, setSortBy] = useState('popular')
+  const [productsOpen, setProductsOpen] = useState(false)
+  const [contentPage, setContentPage] = useState(null)
   const [likedIds, setLikedIds] = useState([])
   const likedIdsRef = useRef(likedIds)
   const [selectedProduct, setSelectedProduct] = useState(null)
@@ -156,6 +205,9 @@ export default function UserApp({
   const cartHistoryActive = useRef(false)
   const productReturnSection = useRef(null)
   const productHistoryActive = useRef(false)
+  const productsHistoryActive = useRef(false)
+  const productsReturnCatalog = useRef(null)
+  const contentPageHistoryActive = useRef(false)
   const checkoutHistoryActive = useRef(false)
   const orderSuccessHistoryActive = useRef(false)
   const orders = useMemo(
@@ -213,6 +265,44 @@ export default function UserApp({
         setCheckoutOpen(false)
         checkoutHistoryActive.current = false
       }
+      const nextContentPage = getContentPageFromHash(window.location.hash)
+      if (nextContentPage) {
+        contentPageHistoryActive.current = true
+        productHistoryActive.current = false
+        productReturnSection.current = null
+        setContentPage(nextContentPage)
+        setProductsOpen(false)
+        setSelectedProduct(null)
+        setReviewsOpen(false)
+        setAccountSection(null)
+        window.scrollTo({ top: 0, behavior: 'auto' })
+        return
+      }
+      if (contentPageHistoryActive.current) {
+        setContentPage(null)
+        contentPageHistoryActive.current = false
+      }
+      const productsRoute = parseProductsHash(window.location.hash)
+      if (productsRoute) {
+        const availableCategoryNames = categories
+          .filter((item) => item.enabled !== false)
+          .map((item) => item.name)
+        productsHistoryActive.current = true
+        productHistoryActive.current = false
+        productReturnSection.current = null
+        setProductsOpen(true)
+        setCategory(
+          availableCategoryNames.includes(productsRoute.category)
+            ? productsRoute.category
+            : 'All',
+        )
+        setQuery(productsRoute.query)
+        setSelectedProduct(null)
+        setReviewsOpen(false)
+        setAccountSection(null)
+        window.scrollTo({ top: 0, behavior: 'auto' })
+        return
+      }
       if (window.location.hash.startsWith(PRODUCT_HASH_PREFIX)) {
         const productPath = window.location.hash.slice(
           PRODUCT_HASH_PREFIX.length,
@@ -242,6 +332,15 @@ export default function UserApp({
         productReturnSection.current = null
         productHistoryActive.current = false
       }
+      if (productsHistoryActive.current) {
+        setProductsOpen(false)
+        productsHistoryActive.current = false
+        if (productsReturnCatalog.current) {
+          setQuery(productsReturnCatalog.current.query)
+          setCategory(productsReturnCatalog.current.category)
+          productsReturnCatalog.current = null
+        }
+      }
       if (window.location.hash === '#account-cart') {
         cartHistoryActive.current = true
         setAccountSection('cart')
@@ -259,7 +358,7 @@ export default function UserApp({
     handleHistoryBack()
     window.addEventListener('popstate', handleHistoryBack)
     return () => window.removeEventListener('popstate', handleHistoryBack)
-  }, [products])
+  }, [categories, products])
 
   const notify = (message) => {
     setToast(message)
@@ -428,6 +527,9 @@ export default function UserApp({
     checkoutHistoryActive.current = false
     productHistoryActive.current = false
     productReturnSection.current = null
+    productsHistoryActive.current = false
+    productsReturnCatalog.current = null
+    contentPageHistoryActive.current = false
     cartHistoryActive.current = false
     cartReturnSection.current = null
     setOrderToViewId(null)
@@ -435,6 +537,8 @@ export default function UserApp({
     setCheckoutOpen(false)
     setSelectedProduct(null)
     setReviewsOpen(false)
+    setProductsOpen(false)
+    setContentPage(null)
     setAccountSection(null)
   }
 
@@ -445,8 +549,80 @@ export default function UserApp({
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const handleCategory = (nextCategory) => {
-    resetToStorefront()
+  const navigateToContentPage = (page) => {
+    const pageHash = CONTENT_PAGE_HASHES[page]
+    if (!pageHash) return
+    if (window.location.hash !== pageHash) {
+      window.history.pushState(
+        { prideContentPage: page, prideContentPageReturn: true },
+        '',
+        pageHash,
+      )
+    }
+    contentPageHistoryActive.current = true
+    setSuccessfulOrder(null)
+    setCheckoutOpen(false)
+    setSelectedProduct(null)
+    setReviewsOpen(false)
+    setProductsOpen(false)
+    setAccountSection(null)
+    setContentPage(page)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const closeContentPage = () => {
+    if (
+      getContentPageFromHash(window.location.hash) &&
+      window.history.state?.prideContentPageReturn
+    ) {
+      window.history.back()
+      return
+    }
+    navigateHome()
+  }
+
+  const navigateToProducts = (nextCategory = 'All', nextQuery = '') => {
+    const productsHash = createProductsHash(nextCategory, nextQuery)
+    if (!productsOpen) {
+      productsReturnCatalog.current = { query, category }
+    }
+    if (window.location.hash !== productsHash) {
+      window.history.pushState(
+        {
+          prideProducts: true,
+          prideProductsReturn: true,
+          category: nextCategory,
+        },
+        '',
+        productsHash,
+      )
+    }
+    productsHistoryActive.current = true
+    setSuccessfulOrder(null)
+    setCheckoutOpen(false)
+    setSelectedProduct(null)
+    setReviewsOpen(false)
+    setContentPage(null)
+    setAccountSection(null)
+    setQuery(nextQuery)
+    setCategory(nextCategory)
+    setProductsOpen(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const closeProducts = () => {
+    if (
+      parseProductsHash(window.location.hash) &&
+      window.history.state?.prideProductsReturn
+    ) {
+      window.history.back()
+      return
+    }
+    setProductsOpen(false)
+    navigateHome()
+  }
+
+  const handleHomeCategory = (nextCategory) => {
     setQuery('')
     setCategory(nextCategory)
     requestAnimationFrame(() =>
@@ -454,13 +630,56 @@ export default function UserApp({
     )
   }
 
-  const handleSearchSubmit = (nextQuery) => {
-    resetToStorefront()
-    setQuery(nextQuery)
-    setCategory('All')
+  const handleProductsCategory = (nextCategory) => {
+    setCategory(nextCategory)
+    const productsHash = createProductsHash(nextCategory, query)
+    window.history.replaceState(
+      {
+        ...window.history.state,
+        prideProducts: true,
+        category: nextCategory,
+      },
+      '',
+      productsHash,
+    )
     requestAnimationFrame(() =>
       document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' }),
     )
+  }
+
+  const handleProductsSearch = (nextQuery) => {
+    setQuery(nextQuery)
+    window.history.replaceState(
+      { ...window.history.state, prideProducts: true, category },
+      '',
+      createProductsHash(category, nextQuery),
+    )
+    requestAnimationFrame(() =>
+      document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' }),
+    )
+  }
+
+  const handleSearchSubmit = (nextQuery) => {
+    if (parseProductsHash(window.location.hash)) {
+      setCategory('All')
+      setQuery(nextQuery)
+      window.history.replaceState(
+        {
+          ...window.history.state,
+          prideProducts: true,
+          category: 'All',
+        },
+        '',
+        createProductsHash('All', nextQuery),
+      )
+      requestAnimationFrame(() =>
+        document
+          .getElementById('catalog')
+          ?.scrollIntoView({ behavior: 'smooth' }),
+      )
+      return
+    }
+    navigateToProducts('All', nextQuery)
   }
 
   const handleLike = (productId) => {
@@ -1028,25 +1247,30 @@ export default function UserApp({
     }
   }
 
+  const ContentPage = contentPage
+    ? CONTENT_PAGE_COMPONENTS[contentPage]
+    : null
+
   return (
     <div className="min-h-screen overflow-x-clip bg-[#f7f8f5] pb-16 lg:pb-0">
       <AnnouncementBar shippingSettings={shippingSettings} />
       <Header
         products={products}
-        categories={categories}
         searchQuery={query}
         user={user}
         cartCount={cart.count}
         wishlistCount={user ? likedIds.length : 0}
         accountSection={accountSection}
+        productsOpen={productsOpen}
+        contentPageOpen={Boolean(ContentPage)}
         onHome={navigateHome}
+        onProductsOpen={() => navigateToProducts('All')}
         onCartOpen={navigateToCart}
         onWishlistOpen={openWishlist}
         onSearch={setQuery}
         onSearchSubmit={handleSearchSubmit}
         onProductSelect={navigateToProduct}
         onAuthOpen={() => setAuthOpen(true)}
-        onCategoryChange={handleCategory}
         onProfileSelect={handleProfileSelect}
         onLogout={() => setLogoutConfirmOpen(true)}
       />
@@ -1096,6 +1320,28 @@ export default function UserApp({
             taxSettings={invoiceSettings.tax}
             reviews={selectedProductReviews}
           />
+        ) : ContentPage ? (
+          <ContentPage onBack={closeContentPage} />
+        ) : productsOpen ? (
+          <ProductsPage
+            products={products}
+            filteredProducts={filteredProducts}
+            suggestedProducts={suggestedProducts}
+            categories={categories}
+            query={query}
+            activeCategory={category}
+            sortBy={sortBy}
+            likedIds={user ? likedIds : []}
+            onBack={closeProducts}
+            onQueryChange={setQuery}
+            onSearchSubmit={handleProductsSearch}
+            onCategoryChange={handleProductsCategory}
+            onSortChange={setSortBy}
+            onProductSelect={navigateToProduct}
+            onLike={handleLike}
+            onAdd={handleAdd}
+            onBuyNow={handleBuyNow}
+          />
         ) : (
           <>
             <HeroSection
@@ -1109,13 +1355,13 @@ export default function UserApp({
             <CategoryStrip
               promotions={marketingSettings?.categoryPromotions}
               managedCategories={categories}
-              onSelect={handleCategory}
+              onSelect={(nextCategory) => navigateToProducts(nextCategory)}
             />
             <BenefitsStrip shippingSettings={shippingSettings} />
             <ProductCatalog
               products={filteredProducts}
               suggestedProducts={suggestedProducts}
-              onSuggestedCategoryChange={handleCategory}
+              onSuggestedCategoryChange={handleHomeCategory}
               activeCategory={category}
               onCategoryChange={setCategory}
               sortBy={sortBy}
@@ -1137,7 +1383,10 @@ export default function UserApp({
           </>
         )}
       </main>
-      <Footer onBeSellerClick={onBeSellerClick} />
+      <Footer
+        onBeSellerClick={onBeSellerClick}
+        onPageOpen={navigateToContentPage}
+      />
 
       <AuthModal
         open={authOpen}

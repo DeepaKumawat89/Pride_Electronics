@@ -47,6 +47,10 @@ export default function ProductCatalog({
   onView,
   offers,
   categoryNames = catalogCategories.slice(1),
+  eyebrow = 'Curated for you',
+  title = 'Trending right now',
+  description = 'Our most-loved tech, chosen by customers.',
+  showPromotions = true,
 }) {
   const availableCategories = ['All', ...categoryNames]
   const [subcategory, setSubcategory] = useState('All')
@@ -87,7 +91,7 @@ export default function ProductCatalog({
     [activeSubcategory, effectiveFilters, products],
   )
   const showFeatureCards =
-    activeCategory === 'All' && visibleProducts.length > 4
+    showPromotions && activeCategory === 'All' && visibleProducts.length > 4
   const today = new Date().toISOString().slice(0, 10)
   const flashSaleActive =
     offers?.flashSale?.enabled !== false &&
@@ -139,13 +143,13 @@ export default function ProductCatalog({
       <div className="flex flex-col gap-5 border-b border-slate-200 pb-6 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#ff5c35]">
-            Curated for you
+            {eyebrow}
           </p>
           <h2 className="mt-2 text-3xl font-extrabold tracking-[-0.045em] sm:text-4xl">
-            Trending right now
+            {title}
           </h2>
           <p className="mt-2 text-sm text-slate-500">
-            Our most-loved tech, chosen by customers.
+            {description}
           </p>
         </div>
         <div className="flex w-full items-center gap-2 sm:w-auto">

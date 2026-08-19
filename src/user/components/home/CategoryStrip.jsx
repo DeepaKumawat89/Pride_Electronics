@@ -40,6 +40,13 @@ export default function CategoryStrip({ onSelect, promotions = [], managedCatego
           </button>
         ))}
       </div>
+      <button
+        type="button"
+        onClick={() => onSelect('All')}
+        className="mt-4 h-11 w-full rounded-full border border-slate-200 bg-white text-xs font-extrabold text-slate-600 transition hover:border-[#ff5c35] hover:text-[#ff5c35] sm:hidden"
+      >
+        View all products
+      </button>
     </section>
   )
 }
