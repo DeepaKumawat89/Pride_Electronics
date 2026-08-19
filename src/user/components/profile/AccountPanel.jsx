@@ -41,6 +41,14 @@ import { accountMenuItems } from './accountMenuItems'
 import OrderDetailsView from './OrderDetailsView'
 import { initialShippingSettings } from '../../../data/shipping'
 import { initialInvoiceSettings } from '../../../data/invoice'
+import {
+  AddressAutocompleteInput,
+  CitySelectionInput,
+  CurrentLocationControl,
+  PincodeAutocompleteInput,
+  StateSelectionInput,
+} from '../address/AddressAssist'
+import { useAddressEntryAssist } from '../../hooks/useAddressEntryAssist'
 
 const genderOptions = [
   { value: '', label: 'Select gender' },
@@ -1502,11 +1510,16 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
     city: '',
     state: '',
     pincode: '',
+    coordinates: null,
+    latitude: null,
+    longitude: null,
     isDefault: false,
   }
   const [formOpen, setFormOpen] = useState(false)
   const [form, setForm] = useState(emptyAddress)
   const [permission, setPermission] = useState(false)
+  const [formError, setFormError] = useState('')
+  const addressAssist = useAddressEntryAssist(form, setForm, formOpen)
   const deliveryAvailability = getPinDeliveryAvailability(
     form.pincode,
     new Date(),
@@ -1514,20 +1527,32 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
   )
 
   const openForm = (address = emptyAddress) => {
+    addressAssist.reset()
     setForm(normalizeAddress(address))
     setPermission(false)
+    setFormError('')
     setFormOpen(true)
   }
 
   const closeForm = () => {
+    addressAssist.reset()
     setFormOpen(false)
     setForm(emptyAddress)
     setPermission(false)
+    setFormError('')
   }
 
   const submit = (event) => {
     event.preventDefault()
-    if (!permission || !deliveryAvailability.available) return
+    if (!String(form.state).trim() || !String(form.city).trim()) {
+      setFormError('Select a state and city before saving this address.')
+      return
+    }
+    if (
+      !permission ||
+      !deliveryAvailability.available ||
+      addressAssist.pincodeLookup.invalid
+    ) return
     onSave(normalizeAddress(form))
     closeForm()
   }
@@ -1625,6 +1650,10 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
                 className={fieldClass}
               />
             </Field>
+            <CurrentLocationControl
+              assist={addressAssist}
+              className="sm:col-span-2"
+            />
             <Field label="House / Flat">
               <input
                 required
@@ -1636,12 +1665,10 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
               />
             </Field>
             <Field label="Street">
-              <input
+              <AddressAutocompleteInput
                 required
+                assist={addressAssist}
                 value={form.street}
-                onChange={(event) =>
-                  setForm({ ...form, street: event.target.value })
-                }
                 className={fieldClass}
               />
             </Field>
@@ -1657,41 +1684,41 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
                 />
               </Field>
             </div>
-            <Field label="City">
-              <input
+            <Field label="State">
+              <StateSelectionInput
                 required
-                value={form.city}
-                onChange={(event) =>
-                  setForm({ ...form, city: event.target.value })
-                }
+                assist={addressAssist}
+                value={form.state}
                 className={fieldClass}
               />
             </Field>
-            <Field label="State">
-              <input
+            <Field label="City">
+              <CitySelectionInput
                 required
-                value={form.state}
-                onChange={(event) =>
-                  setForm({ ...form, state: event.target.value })
-                }
+                assist={addressAssist}
+                value={form.city}
                 className={fieldClass}
               />
             </Field>
             <Field label="PIN code">
-              <input
+              <PincodeAutocompleteInput
                 required
-                inputMode="numeric"
+                assist={addressAssist}
                 value={form.pincode}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    pincode: event.target.value.replace(/\D/g, '').slice(0, 6),
-                  })
-                }
                 className={fieldClass}
               />
             </Field>
             <div className="sm:col-span-2">
+              {formError && (!form.state || !form.city) && (
+                <p className="mb-3 text-[10px] font-bold text-red-600">
+                  {formError}
+                </p>
+              )}
+              {addressAssist.pincodeLookup.invalid && (
+                <p className="mb-3 text-[10px] font-bold text-red-600">
+                  {addressAssist.pincodeLookup.message}
+                </p>
+              )}
               <p className={`rounded-2xl px-4 py-3 text-[10px] font-bold ${deliveryAvailability.available ? 'bg-emerald-50 text-emerald-700' : deliveryAvailability.status === 'unchecked' || deliveryAvailability.status === 'incomplete' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
                 {deliveryAvailability.message}
               </p>
@@ -1719,7 +1746,7 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
               Cancel
             </button>
             <button
-              disabled={!permission || !deliveryAvailability.available}
+              disabled={!permission || !deliveryAvailability.available || addressAssist.pincodeLookup.invalid}
               className="rounded-full bg-[#253329] px-5 py-2.5 text-xs font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {form.id ? 'Update address' : 'Save address'}

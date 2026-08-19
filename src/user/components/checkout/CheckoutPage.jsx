@@ -24,6 +24,14 @@ import { loadRazorpayCheckout, postRazorpayApi } from '../../utils/razorpay'
 import { initialShippingSettings } from '../../../data/shipping'
 import { initialInvoiceSettings } from '../../../data/invoice'
 import { initialAdminSettings } from '../../../data/adminSettings'
+import {
+  AddressAutocompleteInput,
+  CitySelectionInput,
+  CurrentLocationControl,
+  PincodeAutocompleteInput,
+  StateSelectionInput,
+} from '../address/AddressAssist'
+import { useAddressEntryAssist } from '../../hooks/useAddressEntryAssist'
 
 const createPaymentReceipt = () => `pride_${Date.now()}`
 
@@ -48,6 +56,9 @@ const createCheckoutAddress = (user, address = {}) => {
     city: normalizedAddress.city || '',
     state: normalizedAddress.state || '',
     pincode: normalizedAddress.pincode || '',
+    coordinates: normalizedAddress.coordinates || null,
+    latitude: normalizedAddress.latitude ?? null,
+    longitude: normalizedAddress.longitude ?? null,
     isDefault: Boolean(normalizedAddress.isDefault),
   }
 }
@@ -81,6 +92,11 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
   const [deliveryId, setDeliveryId] = useState('standard')
   const [paymentMode, setPaymentMode] = useState(
     onlinePaymentEnabled ? 'online' : paymentSettings.codEnabled ? 'cod' : '',
+  )
+  const addressAssist = useAddressEntryAssist(
+    addressForm,
+    setAddressForm,
+    useManualAddress,
   )
 
   const selectedAddress = savedAddresses.find((address) => address.id === addressId) || defaultAddress
@@ -142,12 +158,14 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
   }
 
   const openAddressForm = (address) => {
+    addressAssist.reset()
     setAddressForm(createCheckoutAddress(user, address))
     setAddressError('')
     setUseManualAddress(true)
   }
 
   const closeAddressForm = () => {
+    addressAssist.reset()
     setAddressForm(createCheckoutAddress(user))
     setAddressError('')
     setUseManualAddress(false)
@@ -174,6 +192,10 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
     }
     if (!formDeliveryAvailability.available) {
       setAddressError(formDeliveryAvailability.message)
+      return
+    }
+    if (addressAssist.pincodeLookup.invalid) {
+      setAddressError(addressAssist.pincodeLookup.message)
       return
     }
     const savedAddress = onSaveAddress?.(normalizeAddress({
@@ -366,18 +388,23 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
                 </div>
               ) : (
                 <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <CurrentLocationControl
+                    assist={addressAssist}
+                    className="sm:col-span-2"
+                  />
                   <input value={addressForm.fullName} onChange={(event) => setAddressForm({ ...addressForm, fullName: event.target.value })} placeholder="Full name" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
                   <input value={addressForm.phone} onChange={(event) => setAddressForm({ ...addressForm, phone: event.target.value.replace(/\D/g, '').slice(0, 10) })} inputMode="tel" pattern="[6-9][0-9]{9}" placeholder="Phone number" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
                   <input value={addressForm.houseFlat} onChange={(event) => setAddressForm({ ...addressForm, houseFlat: event.target.value })} placeholder="House / Flat" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
-                  <input value={addressForm.street} onChange={(event) => setAddressForm({ ...addressForm, street: event.target.value })} placeholder="Street" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
+                  <AddressAutocompleteInput assist={addressAssist} value={addressForm.street} placeholder="Street" className="h-12 w-full rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
                   <input value={addressForm.area} onChange={(event) => setAddressForm({ ...addressForm, area: event.target.value })} placeholder="Area" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10 sm:col-span-2" />
-                  <input value={addressForm.city} onChange={(event) => setAddressForm({ ...addressForm, city: event.target.value })} placeholder="City" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
-                  <input value={addressForm.state} onChange={(event) => setAddressForm({ ...addressForm, state: event.target.value })} placeholder="State" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
-                  <input value={addressForm.pincode} onChange={(event) => setAddressForm({ ...addressForm, pincode: event.target.value.replace(/\D/g, '').slice(0, 6) })} inputMode="numeric" placeholder="PIN code" className="h-12 rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
+                  <StateSelectionInput assist={addressAssist} value={addressForm.state} className="h-12 w-full rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
+                  <CitySelectionInput assist={addressAssist} value={addressForm.city} className="h-12 w-full rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
+                  <PincodeAutocompleteInput assist={addressAssist} value={addressForm.pincode} placeholder="PIN code" className="h-12 w-full rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10" />
                   <div className="sm:col-span-2">
                     {addressError && <p className="mb-3 text-[9px] font-bold text-red-600">{addressError}</p>}
+                    {addressAssist.pincodeLookup.invalid && <p className="mb-3 text-[9px] font-bold text-red-600">{addressAssist.pincodeLookup.message}</p>}
                     <p className={`mb-3 rounded-2xl px-4 py-3 text-[9px] font-bold ${formDeliveryAvailability.available ? 'bg-emerald-50 text-emerald-700' : formDeliveryAvailability.status === 'unchecked' || formDeliveryAvailability.status === 'incomplete' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>{formDeliveryAvailability.message}</p>
-                    <div className="flex justify-end gap-2"><button type="button" onClick={closeAddressForm} className="rounded-full border border-slate-200 px-4 py-2.5 text-[9px] font-extrabold text-slate-500">Cancel</button><button type="button" disabled={!formDeliveryAvailability.available} onClick={saveCheckoutAddress} className="rounded-full bg-[#253329] px-4 py-2.5 text-[9px] font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-40">{addressForm.id ? 'Update address' : 'Save address'}</button></div>
+                    <div className="flex justify-end gap-2"><button type="button" onClick={closeAddressForm} className="rounded-full border border-slate-200 px-4 py-2.5 text-[9px] font-extrabold text-slate-500">Cancel</button><button type="button" disabled={!formDeliveryAvailability.available || addressAssist.pincodeLookup.invalid} onClick={saveCheckoutAddress} className="rounded-full bg-[#253329] px-4 py-2.5 text-[9px] font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-40">{addressForm.id ? 'Update address' : 'Save address'}</button></div>
                   </div>
                 </div>
               )}
