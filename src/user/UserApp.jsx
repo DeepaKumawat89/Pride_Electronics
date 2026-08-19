@@ -7,6 +7,7 @@ import HeroSection from './components/home/HeroSection'
 import CategoryStrip from './components/home/CategoryStrip'
 import BenefitsStrip from './components/home/BenefitsStrip'
 import PromoBanner from './components/home/PromoBanner'
+import HomeScrollReveal from './components/home/HomeScrollReveal'
 import ProductCatalog from './components/products/ProductCatalog'
 import ProductDetailsPage from './components/products/ProductDetailsPage'
 import ProductReviewsPage from './components/products/ProductReviewsPage'
@@ -1343,7 +1344,7 @@ export default function UserApp({
             onBuyNow={handleBuyNow}
           />
         ) : (
-          <>
+          <HomeScrollReveal>
             <HeroSection
               banner={marketingSettings?.homeBanner}
               onShopNow={() =>
@@ -1380,7 +1381,7 @@ export default function UserApp({
                 user ? setAccountSection('profile') : setAuthOpen(true)
               }
             />
-          </>
+          </HomeScrollReveal>
         )}
       </main>
       <Footer
