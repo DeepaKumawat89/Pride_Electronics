@@ -3,6 +3,7 @@ import {
   EmailAuthProvider,
   onAuthStateChanged,
   reauthenticateWithCredential,
+  sendPasswordResetEmail,
   setPersistence,
   signInWithEmailAndPassword,
   signOut,
@@ -14,18 +15,34 @@ import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { auth, db } from '../../firebase/firebase'
 
 const createAdminSession = async (user) => {
-  const token = await user.getIdTokenResult()
-  const profileDocument = await getDoc(doc(db, 'admins', user.uid))
-  if (token.claims.admin !== true && !profileDocument.exists()) {
+  const token = await user.getIdTokenResult(true)
+  if (token.claims.admin !== true) {
     await signOut(auth)
     throw new Error('This Firebase account is not authorized for admin access.')
   }
+  const profileDocument = await getDoc(doc(db, 'admins', user.uid))
   const profile = profileDocument.data() || {}
   return {
     uid: user.uid,
     name: user.displayName || profile.name || 'Pride Admin',
     email: user.email || '',
     role: profile.role || token.claims.role || 'Store Administrator',
+  }
+}
+
+export async function requestAdminPasswordReset(email) {
+  const normalizedEmail = String(email || '').trim().toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    throw new Error('Enter a valid email address.')
+  }
+  try {
+    await sendPasswordResetEmail(auth, normalizedEmail)
+    return 'If that administrator account exists, Firebase has sent a password reset link.'
+  } catch (error) {
+    if (error?.code === 'auth/user-not-found') {
+      return 'If that administrator account exists, Firebase has sent a password reset link.'
+    }
+    throw getAuthErrorMessage(error)
   }
 }
 

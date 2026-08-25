@@ -4,6 +4,7 @@ const { getAuth } = require('firebase-admin/auth')
 const { FieldValue, getFirestore } = require('firebase-admin/firestore')
 const { defineSecret } = require('firebase-functions/params')
 const { HttpsError, onCall } = require('firebase-functions/v2/https')
+const { requireAdmin, requireUser } = require('./authz')
 
 initializeApp()
 
@@ -104,23 +105,6 @@ const validateProfile = (data = {}) => {
   }
 }
 
-const requireUser = (request) => {
-  if (!request.auth?.uid) {
-    throw new HttpsError('unauthenticated', 'Authentication is required.')
-  }
-  return request.auth.uid
-}
-
-const requireAdmin = async (request) => {
-  const uid = requireUser(request)
-  if (request.auth.token.admin === true) return uid
-  const adminDocument = await db.doc(`admins/${uid}`).get()
-  if (!adminDocument.exists) {
-    throw new HttpsError('permission-denied', 'Administrator access is required.')
-  }
-  return uid
-}
-
 exports.createUserProfile = onCall(callableOptions, async (request) => {
   const uid = requireUser(request)
   const profile = validateProfile(request.data)
@@ -158,6 +142,56 @@ exports.createUserProfile = onCall(callableOptions, async (request) => {
       updatedAt: FieldValue.serverTimestamp(),
     })
   })
+  return { success: true }
+})
+
+exports.ensureGoogleUserProfile = onCall(callableOptions, async (request) => {
+  const uid = requireUser(request)
+  const authUser = await adminAuth.getUser(uid)
+  const usesGoogle = authUser.providerData.some(
+    (provider) => provider.providerId === 'google.com',
+  )
+  if (!usesGoogle || !authUser.email) {
+    throw new HttpsError(
+      'failed-precondition',
+      'A verified Google account is required.',
+    )
+  }
+
+  const name = String(authUser.displayName || 'Pride Customer')
+    .trim()
+    .slice(0, 80)
+  const email = authUser.email.trim().toLowerCase()
+  const photo = String(authUser.photoURL || '').slice(0, 2000)
+  const userReference = db.doc(`users/${uid}`)
+
+  await db.runTransaction(async (transaction) => {
+    const userDocument = await transaction.get(userReference)
+    if (!userDocument.exists) {
+      transaction.set(userReference, {
+        uid,
+        name: name || 'Pride Customer',
+        email,
+        emailVerified: authUser.emailVerified,
+        photo,
+        role: 'customer',
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      })
+      return
+    }
+
+    const currentProfile = userDocument.data()
+    const requiredUpdates = {
+      email,
+      emailVerified: authUser.emailVerified,
+      updatedAt: FieldValue.serverTimestamp(),
+    }
+    if (!currentProfile.name && name) requiredUpdates.name = name
+    if (!currentProfile.photo && photo) requiredUpdates.photo = photo
+    transaction.set(userReference, requiredUpdates, { merge: true })
+  })
+
   return { success: true }
 })
 

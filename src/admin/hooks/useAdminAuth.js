@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   clearAdminSession,
   observeAdminSession,
+  requestAdminPasswordReset,
   signInAdmin,
   updateAdminPassword,
   updateAdminProfile,
@@ -44,5 +45,15 @@ export function useAdminAuth() {
   const changePassword = (currentPassword, nextPassword) =>
     updateAdminPassword(currentPassword, nextPassword)
 
-  return { admin, loading, login, logout, updateProfile, changePassword }
+  const resetPassword = (email) => requestAdminPasswordReset(email)
+
+  return {
+    admin,
+    loading,
+    login,
+    logout,
+    resetPassword,
+    updateProfile,
+    changePassword,
+  }
 }

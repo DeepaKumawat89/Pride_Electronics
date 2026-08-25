@@ -1,14 +1,22 @@
 import {
   browserLocalPersistence,
+  confirmPasswordReset,
   createUserWithEmailAndPassword,
   deleteUser,
+  getAdditionalUserInfo,
+  GoogleAuthProvider,
+  linkWithCredential,
   onAuthStateChanged,
   reload,
   sendEmailVerification,
+  sendPasswordResetEmail,
   setPersistence,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
   updateProfile,
+  validatePassword,
+  verifyPasswordResetCode,
   verifyBeforeUpdateEmail,
 } from 'firebase/auth'
 import { httpsCallable } from 'firebase/functions'
@@ -16,6 +24,10 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import { userAuth, userFunctions, userStorage } from './firebase'
 
 const createUserProfile = httpsCallable(userFunctions, 'createUserProfile')
+const ensureGoogleUserProfileRecord = httpsCallable(
+  userFunctions,
+  'ensureGoogleUserProfile',
+)
 const getUserProfileRecord = httpsCallable(userFunctions, 'getUserProfile')
 const updateUserProfileRecord = httpsCallable(
   userFunctions,
@@ -28,6 +40,13 @@ const signInUserWithPhone = httpsCallable(
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const PHONE_PATTERN = /^[6-9]\d{9}$/
+const googleProvider = new GoogleAuthProvider()
+googleProvider.setCustomParameters({ prompt: 'select_account' })
+let registrationInProgress = null
+let signInInProgress = false
+let googleSignInInProgress = null
+let pendingGoogleLink = null
+let passwordResetRequestInProgress = false
 
 export const normalizeUserPhone = (value) =>
   String(value || '')
@@ -62,16 +81,47 @@ const getErrorMessage = (error) => {
   const messages = {
     'auth/email-already-in-use':
       'An account already exists with this email address.',
+    'auth/account-exists-with-different-credential':
+      'An account already uses this email. Sign in with your email and password to link Google safely.',
+    'auth/credential-already-in-use':
+      'This Google account is already connected to another account.',
     'auth/invalid-credential': 'Incorrect login details.',
+    'auth/invalid-login-credentials': 'Incorrect login details.',
     'auth/invalid-email': 'Enter a valid email address.',
+    'auth/missing-email': 'Enter your email address.',
+    'auth/missing-password': 'Enter your password.',
     'auth/user-disabled': 'This account has been disabled.',
     'auth/user-not-found': 'Incorrect login details.',
     'auth/wrong-password': 'Incorrect login details.',
-    'auth/weak-password': 'Use a stronger password with at least 8 characters.',
+    'auth/weak-password':
+      'The password does not meet the required security policy.',
+    'auth/password-does-not-meet-requirements':
+      'The password does not meet the required security policy.',
     'auth/too-many-requests':
       'Too many unsuccessful attempts. Please wait and try again.',
+    'auth/quota-exceeded':
+      'Authentication is temporarily busy. Please wait and try again.',
     'auth/network-request-failed':
       'Unable to reach Firebase. Check your connection and try again.',
+    'auth/timeout': 'The request timed out. Check your connection and try again.',
+    'auth/internal-error':
+      'Authentication is temporarily unavailable. Please try again.',
+    'auth/cancelled-popup-request':
+      'The previous Google sign-in request was cancelled.',
+    'auth/popup-blocked':
+      'Your browser blocked the Google sign-in popup. Allow popups and try again.',
+    'auth/popup-closed-by-user':
+      'Google sign-in was cancelled before it finished.',
+    'auth/unauthorized-domain':
+      'Google sign-in is not authorized on this domain. Please contact support.',
+    'auth/provider-already-linked':
+      'Google is already connected to this account.',
+    'auth/operation-not-allowed':
+      'Email and password authentication is not enabled. Please contact support.',
+    'auth/expired-action-code':
+      'This password reset link has expired. Request a new one and try again.',
+    'auth/invalid-action-code':
+      'This password reset link is invalid or has already been used.',
     'auth/requires-recent-login':
       'Please sign out, sign in again, and retry this security-sensitive change.',
     'functions/already-exists':
@@ -83,14 +133,48 @@ const getErrorMessage = (error) => {
     'functions/resource-exhausted':
       'Too many unsuccessful attempts. Please wait and try again.',
     'functions/unauthenticated': 'Incorrect login details.',
+    'functions/permission-denied':
+      'This account is unavailable. Please contact support.',
     'functions/unavailable':
       'Authentication is temporarily unavailable. Please try again.',
   }
+  const fallback =
+    typeof error?.code === 'string' &&
+    (error.code.startsWith('auth/') || error.code.startsWith('functions/'))
+      ? 'Authentication failed. Please try again.'
+      : error?.message || 'Authentication failed. Please try again.'
   return new Error(
-    messages[error?.code] ||
-      error?.message ||
-      'Authentication failed. Please try again.',
+    messages[error?.code] || fallback,
   )
+}
+
+const joinRequirements = (requirements) =>
+  requirements.length < 2
+    ? requirements[0] || 'the configured security requirements'
+    : `${requirements.slice(0, -1).join(', ')}, and ${requirements.at(-1)}`
+
+const passwordPolicyMessage = (status) => {
+  const requirements = []
+  const policy = status.passwordPolicy?.customStrengthOptions || {}
+  if (status.meetsMinPasswordLength === false) {
+    requirements.push(`at least ${policy.minPasswordLength || 6} characters`)
+  }
+  if (status.meetsMaxPasswordLength === false) {
+    requirements.push(`no more than ${policy.maxPasswordLength || 4096} characters`)
+  }
+  if (status.containsLowercaseLetter === false) {
+    requirements.push('a lowercase letter')
+  }
+  if (status.containsUppercaseLetter === false) {
+    requirements.push('an uppercase letter')
+  }
+  if (status.containsNumericCharacter === false) {
+    requirements.push('a number')
+  }
+  if (status.containsNonAlphanumericCharacter === false) {
+    requirements.push('a special character')
+  }
+  return `Use a password with ${joinRequirements(requirements)}.`
 }
 
 const wait = (milliseconds) =>
@@ -115,6 +199,7 @@ export async function signUpUser({ name, phone, email, password }) {
   const normalizedName = String(name || '').trim()
   const normalizedPhone = normalizeUserPhone(phone)
   const normalizedEmail = String(email || '').trim().toLowerCase()
+  const normalizedPassword = String(password || '')
   if (normalizedName.length < 2 || normalizedName.length > 80) {
     throw new Error('Enter your full name.')
   }
@@ -124,25 +209,27 @@ export async function signUpUser({ name, phone, email, password }) {
   if (!EMAIL_PATTERN.test(normalizedEmail)) {
     throw new Error('Enter a valid email address.')
   }
-  if (
-    password.length < 8 ||
-    password.length > 128 ||
-    !/[a-z]/.test(password) ||
-    !/[A-Z]/.test(password) ||
-    !/\d/.test(password)
-  ) {
-    throw new Error(
-      'Use at least 8 characters with uppercase, lowercase, and a number.',
-    )
+  if (!normalizedPassword) throw new Error('Enter a password.')
+  if (registrationInProgress || signInInProgress || googleSignInInProgress) {
+    throw new Error('Authentication is already in progress. Please wait.')
   }
+
+  let settleRegistration
+  registrationInProgress = new Promise((resolve) => {
+    settleRegistration = resolve
+  })
 
   let credential
   try {
     await setPersistence(userAuth, browserLocalPersistence)
+    const passwordStatus = await validatePassword(userAuth, normalizedPassword)
+    if (!passwordStatus.isValid) {
+      throw new Error(passwordPolicyMessage(passwordStatus))
+    }
     credential = await createUserWithEmailAndPassword(
       userAuth,
       normalizedEmail,
-      password,
+      normalizedPassword,
     )
     await updateProfile(credential.user, { displayName: normalizedName })
     await createUserProfile({ name: normalizedName, phone: normalizedPhone })
@@ -154,7 +241,11 @@ export async function signUpUser({ name, phone, email, password }) {
         await signOut(userAuth)
       }
     }
+    if (error instanceof Error && !error.code) throw error
     throw getErrorMessage(error)
+  } finally {
+    settleRegistration()
+    registrationInProgress = null
   }
 
   let verificationEmailSent = false
@@ -175,16 +266,33 @@ export async function signUpUser({ name, phone, email, password }) {
 
 export async function signInUser(identifier, password) {
   const normalizedIdentifier = String(identifier || '').trim().toLowerCase()
+  const normalizedPassword = String(password || '')
+  if (!normalizedIdentifier) {
+    throw new Error('Enter your email address or 10-digit mobile number.')
+  }
+  if (!normalizedPassword) {
+    throw new Error('Enter your password.')
+  }
+  if (normalizedPassword.length > 4096) {
+    throw new Error('Incorrect login details.')
+  }
+  if (signInInProgress || registrationInProgress || googleSignInInProgress) {
+    throw new Error('Authentication is already in progress. Please wait.')
+  }
+  signInInProgress = true
   let credential
   try {
     await setPersistence(userAuth, browserLocalPersistence)
     const phone = normalizeUserPhone(normalizedIdentifier)
     if (!normalizedIdentifier.includes('@') && PHONE_PATTERN.test(phone)) {
-      const result = await signInUserWithPhone({ phone, password })
+      const result = await signInUserWithPhone({
+        phone,
+        password: normalizedPassword,
+      })
       credential = await signInWithEmailAndPassword(
         userAuth,
         result.data.email,
-        password,
+        normalizedPassword,
       )
     } else {
       if (!EMAIL_PATTERN.test(normalizedIdentifier)) {
@@ -193,10 +301,33 @@ export async function signInUser(identifier, password) {
       credential = await signInWithEmailAndPassword(
         userAuth,
         normalizedIdentifier,
-        password,
+        normalizedPassword,
       )
     }
     await reload(credential.user)
+    if (pendingGoogleLink) {
+      const signedInEmail = String(credential.user.email || '').toLowerCase()
+      if (signedInEmail !== pendingGoogleLink.email) {
+        throw new Error(
+          `Sign in with ${pendingGoogleLink.email} to connect that Google account.`,
+        )
+      }
+      try {
+        await linkWithCredential(credential.user, pendingGoogleLink.credential)
+        pendingGoogleLink = null
+      } catch (linkError) {
+        if (linkError?.code === 'auth/provider-already-linked') {
+          pendingGoogleLink = null
+        } else {
+          if (linkError?.code === 'auth/credential-already-in-use') {
+            pendingGoogleLink = null
+          }
+          throw linkError
+        }
+      }
+      await ensureGoogleUserProfileRecord()
+      await reload(credential.user)
+    }
     let verificationEmailSent = false
     if (!credential.user.emailVerified) {
       try {
@@ -214,6 +345,121 @@ export async function signInUser(identifier, password) {
     if (credential?.user) await signOut(userAuth)
     if (error instanceof Error && !error.code) throw error
     throw getErrorMessage(error)
+  } finally {
+    signInInProgress = false
+  }
+}
+
+export async function signInUserWithGoogle() {
+  if (googleSignInInProgress || registrationInProgress || signInInProgress) {
+    throw new Error('Authentication is already in progress. Please wait.')
+  }
+
+  let settleGoogleSignIn
+  googleSignInInProgress = new Promise((resolve) => {
+    settleGoogleSignIn = resolve
+  })
+  let result
+  let isNewUser = false
+  try {
+    await setPersistence(userAuth, browserLocalPersistence)
+    result = await signInWithPopup(userAuth, googleProvider)
+    isNewUser = Boolean(getAdditionalUserInfo(result)?.isNewUser)
+    await ensureGoogleUserProfileRecord()
+    await reload(result.user)
+    return {
+      ...(await loadUser(result.user, 8)),
+      isNewUser,
+    }
+  } catch (error) {
+    if (error?.code === 'auth/account-exists-with-different-credential') {
+      const credential = GoogleAuthProvider.credentialFromError(error)
+      const email = String(error.customData?.email || '').trim().toLowerCase()
+      if (credential && EMAIL_PATTERN.test(email)) {
+        pendingGoogleLink = { credential, email }
+        const linkingError = new Error(
+          `An account already exists for ${email}. Sign in with its email and password below to securely link Google and keep the same account.`,
+        )
+        linkingError.code = 'account-linking-required'
+        linkingError.email = email
+        throw linkingError
+      }
+    }
+    if (result?.user) {
+      if (isNewUser) {
+        try {
+          await deleteUser(result.user)
+        } catch {
+          await signOut(userAuth)
+        }
+      } else {
+        await signOut(userAuth)
+      }
+    }
+    if (error instanceof Error && !error.code) throw error
+    throw getErrorMessage(error)
+  } finally {
+    settleGoogleSignIn()
+    googleSignInInProgress = null
+  }
+}
+
+export function clearPendingGoogleLink() {
+  pendingGoogleLink = null
+}
+
+export async function requestUserPasswordReset(email) {
+  const normalizedEmail = String(email || '').trim().toLowerCase()
+  if (!EMAIL_PATTERN.test(normalizedEmail)) {
+    throw new Error('Enter a valid email address.')
+  }
+  if (passwordResetRequestInProgress) {
+    throw new Error('A password reset request is already in progress. Please wait.')
+  }
+  passwordResetRequestInProgress = true
+  try {
+    await sendPasswordResetEmail(userAuth, normalizedEmail)
+    return {
+      message:
+        'If an account exists for that email, Firebase has sent a password reset link.',
+    }
+  } catch (error) {
+    // Avoid revealing whether a Firebase account exists for an email address.
+    if (error?.code === 'auth/user-not-found') {
+      return {
+        message:
+          'If an account exists for that email, Firebase has sent a password reset link.',
+      }
+    }
+    throw getErrorMessage(error)
+  } finally {
+    passwordResetRequestInProgress = false
+  }
+}
+
+export async function verifyUserPasswordResetCode(actionCode) {
+  if (!String(actionCode || '').trim()) {
+    throw new Error('This password reset link is invalid or incomplete.')
+  }
+  try {
+    return await verifyPasswordResetCode(userAuth, actionCode)
+  } catch (error) {
+    throw getErrorMessage(error)
+  }
+}
+
+export async function completeUserPasswordReset(actionCode, nextPassword) {
+  const password = String(nextPassword || '')
+  if (!password) throw new Error('Enter a new password.')
+  try {
+    const passwordStatus = await validatePassword(userAuth, password)
+    if (!passwordStatus.isValid) {
+      throw new Error(passwordPolicyMessage(passwordStatus))
+    }
+    await confirmPasswordReset(userAuth, actionCode, password)
+  } catch (error) {
+    if (error instanceof Error && !error.code) throw error
+    throw getErrorMessage(error)
   }
 }
 
@@ -226,8 +472,12 @@ export function observeUserSession(onUser, onError) {
         return
       }
       try {
+        const pendingProfileSetup =
+          registrationInProgress || googleSignInInProgress
+        if (pendingProfileSetup) await pendingProfileSetup
+        if (userAuth.currentUser?.uid !== firebaseUser.uid) return
         await reload(firebaseUser)
-        onUser(await loadUser(firebaseUser, 8))
+        onUser(await loadUser(firebaseUser, 40))
       } catch (error) {
         if (userAuth.currentUser?.uid !== firebaseUser.uid) return
         await signOut(userAuth)
@@ -289,4 +539,11 @@ export async function saveUserProfile(profile) {
   }
 }
 
-export const signOutUser = () => signOut(userAuth)
+export async function signOutUser() {
+  clearPendingGoogleLink()
+  try {
+    await signOut(userAuth)
+  } catch (error) {
+    throw getErrorMessage(error)
+  }
+}

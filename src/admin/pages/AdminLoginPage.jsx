@@ -6,6 +6,7 @@ import {
   BarChart3,
   Eye,
   EyeOff,
+  KeyRound,
   Lock,
   Mail,
   Package,
@@ -15,7 +16,14 @@ import {
   Zap,
 } from 'lucide-react'
 
-export default function AdminLoginPage({ loading, onLogin, onSwitchToStore, products = [], orders = [] }) {
+export default function AdminLoginPage({
+  loading,
+  onLogin,
+  onResetPassword,
+  onSwitchToStore,
+  products = [],
+  orders = [],
+}) {
   const today = new Date().toISOString().slice(0, 10)
   const stats = [
     [BarChart3, orders.filter((order) => order.date === today).length, 'Orders today'],
@@ -26,14 +34,34 @@ export default function AdminLoginPage({ loading, onLogin, onSwitchToStore, prod
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [resetting, setResetting] = useState(false)
 
   const submit = async (event) => {
     event.preventDefault()
     setError('')
+    setMessage('')
     try {
       await onLogin(email, password)
     } catch (nextError) {
       setError(nextError.message)
+    }
+  }
+
+  const forgotPassword = async () => {
+    setError('')
+    setMessage('')
+    if (!email.trim()) {
+      setError('Enter your administrator email address first.')
+      return
+    }
+    setResetting(true)
+    try {
+      setMessage(await onResetPassword(email))
+    } catch (nextError) {
+      setError(nextError.message)
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -133,6 +161,12 @@ export default function AdminLoginPage({ loading, onLogin, onSwitchToStore, prod
                 {error}
               </div>
             )}
+            {message && (
+              <div role="status" className="mt-4 flex items-start gap-2 rounded-2xl bg-emerald-50 p-3 text-[10px] font-bold leading-5 text-emerald-700">
+                <KeyRound size={15} className="mt-0.5 shrink-0" />
+                {message}
+              </div>
+            )}
             <form onSubmit={submit} className="mt-6 space-y-4">
               <label className="block">
                 <span className="mb-2 block text-[10px] font-extrabold text-slate-600">
@@ -179,9 +213,19 @@ export default function AdminLoginPage({ loading, onLogin, onSwitchToStore, prod
                   </button>
                 </span>
               </label>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  disabled={loading || resetting}
+                  onClick={forgotPassword}
+                  className="text-[10px] font-extrabold text-[#397a4a] transition hover:text-[#ff5c35] disabled:cursor-wait disabled:opacity-50"
+                >
+                  {resetting ? 'Sending reset link…' : 'Forgot password?'}
+                </button>
+              </div>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || resetting}
                 className="flex h-13 w-full items-center justify-center gap-2 rounded-full bg-[#17251c] text-xs font-extrabold text-white shadow-lg transition hover:bg-[#397a4a] disabled:cursor-wait disabled:opacity-60"
               >
                 {loading ? (

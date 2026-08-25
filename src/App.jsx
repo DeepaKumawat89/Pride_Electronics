@@ -86,7 +86,9 @@ const customerFromUserRecord = (user) => ({
 })
 
 function App() {
-  const [activePortal, setActivePortal] = useState('user') // 'user' | 'admin'
+  const [activePortal, setActivePortal] = useState(() =>
+    window.location.pathname.startsWith('/admin') ? 'admin' : 'user',
+  ) // 'user' | 'admin'
   const [productsList, setProductsList] = useState([])
   const [productsLoading, setProductsLoading] = useState(true)
   const [productsError, setProductsError] = useState('')
@@ -104,6 +106,15 @@ function App() {
   const [shippingSettings, setShippingSettings] = useState(initialShippingSettings)
   const [invoiceSettings, setInvoiceSettings] = useState(initialInvoiceSettings)
   const [adminSettings, setAdminSettings] = useState(initialAdminSettings)
+
+  useEffect(() => {
+    const syncPortalWithLocation = () =>
+      setActivePortal(
+        window.location.pathname.startsWith('/admin') ? 'admin' : 'user',
+      )
+    window.addEventListener('popstate', syncPortalWithLocation)
+    return () => window.removeEventListener('popstate', syncPortalWithLocation)
+  }, [])
 
   useEffect(
     () =>
@@ -148,20 +159,35 @@ function App() {
 
   useEffect(() => {
     let restrictedUnsubscribers = []
+    let authRevision = 0
     const stopRestrictedListeners = () => {
       restrictedUnsubscribers.forEach((unsubscribe) => unsubscribe())
       restrictedUnsubscribers = []
     }
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+    const clearRestrictedData = () => {
+      setOrdersList([])
+      setInventoryHistory([])
+      setRefundsList([])
+      setCustomersList([])
+      setReturnsList([])
+      setAdminReviews([])
+    }
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      const revision = ++authRevision
       stopRestrictedListeners()
-      setAdminAuthenticated(Boolean(user))
       if (!user) {
-        setOrdersList([])
-        setInventoryHistory([])
-        setRefundsList([])
-        setCustomersList([])
-        setReturnsList([])
-        setAdminReviews([])
+        setAdminAuthenticated(false)
+        clearRestrictedData()
+        return
+      }
+      const authorized = await user
+        .getIdTokenResult()
+        .then((token) => token.claims.admin === true)
+        .catch(() => false)
+      if (revision !== authRevision) return
+      setAdminAuthenticated(authorized)
+      if (!authorized) {
+        clearRestrictedData()
         return
       }
       const ignoreUnauthorized = () => {}
@@ -181,6 +207,15 @@ function App() {
       stopRestrictedListeners()
     }
   }, [])
+
+  const switchPortal = (portal) => {
+    const path = portal === 'admin' ? '/admin' : '/'
+    if (window.location.pathname !== path || window.location.hash) {
+      window.history.pushState({ pridePortal: portal }, '', path)
+    }
+    setActivePortal(portal)
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }
 
   const reviewsList = adminAuthenticated ? adminReviews : publicReviews
 
@@ -656,7 +691,7 @@ function App() {
           onCancelOrder={handleCancelOrder}
           onSubmitOrderFeedback={handleSubmitOrderFeedback}
           onCustomerAuthenticated={handleCustomerAuthenticated}
-          onBeSellerClick={() => setActivePortal('admin')}
+          onBeSellerClick={() => switchPortal('admin')}
         />
       ) : (
         <AdminApp
@@ -695,7 +730,7 @@ function App() {
           onUpdateShippingSettings={updateShippingSettings}
           onUpdateInvoiceSettings={updateInvoiceSettings}
           onUpdateAdminSettings={updateAdminSettings}
-          onSwitchToStore={() => setActivePortal('user')}
+          onSwitchToStore={() => switchPortal('user')}
         />
       )}
     </div>

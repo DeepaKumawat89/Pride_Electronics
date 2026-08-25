@@ -1,6 +1,28 @@
 {
+  "auth": {
+    "providers": {
+      "emailPassword": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "Pride Electronics",
+        "supportEmail": "deepakkumawat31434@gmail.com"
+      }
+    }
+  },
   "functions": {
     "source": "functions"
+  },
+  "emulators": {
+    "auth": {
+      "host": "127.0.0.1",
+      "port": 9099
+    },
+    "firestore": {
+      "host": "127.0.0.1",
+      "port": 8080
+    },
+    "ui": {
+      "enabled": false
+    }
   },
   "firestore": {
     "rules": "firestore.rules",

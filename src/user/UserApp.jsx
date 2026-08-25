@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, X } from 'lucide-react'
 import AnnouncementBar from './components/layout/AnnouncementBar'
 import Header from './components/layout/Header'
@@ -18,6 +18,7 @@ import RefundAndCancellationPolicy from './components/pages/RefundAndCancellatio
 import ShippingAndDeliveryPolicy from './components/pages/ShippingAndDeliveryPolicy'
 import TermsAndConditions from './components/pages/TermsAndConditions'
 import AuthModal from './components/auth/AuthModal'
+import PasswordResetModal from './components/auth/PasswordResetModal'
 import CheckoutPage from './components/checkout/CheckoutPage'
 import OrderSuccessPage from './components/checkout/OrderSuccessPage'
 import AccountPanel, {
@@ -31,6 +32,11 @@ import {
 } from './utils/productSearch'
 import { sortCatalogProducts } from './utils/catalog'
 import { normalizeAddress } from './utils/address'
+import {
+  CHECKOUT_PATH,
+  getProtectedPathForSection,
+  getProtectedRoute,
+} from './utils/protectedRoutes'
 import { createInvoiceNumber, initialInvoiceSettings } from '../data/invoice'
 import { initialAdminSettings } from '../data/adminSettings'
 import {
@@ -52,6 +58,7 @@ const REVIEWS_HASH_SUFFIX = '-reviews'
 const CHECKOUT_HASH = '#checkout'
 const ORDER_SUCCESS_HASH = '#order-success'
 const ORDER_SUCCESS_SESSION_KEY = 'pride_last_successful_order'
+const INTENDED_ROUTE_SESSION_KEY = 'pride_intended_protected_route'
 const CONTENT_PAGE_HASHES = {
   privacy: '#privacy-policy',
   terms: '#terms-and-conditions',
@@ -181,6 +188,7 @@ export default function UserApp({
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [reviewsOpen, setReviewsOpen] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
+  const [authInitialMode, setAuthInitialMode] = useState('login')
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [checkoutCouponCode, setCheckoutCouponCode] = useState('')
   const [successfulOrder, setSuccessfulOrder] = useState(null)
@@ -191,6 +199,7 @@ export default function UserApp({
   const [accountSection, setAccountSection] = useState(null)
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [user, setUser] = useState(null)
+  const [authStatus, setAuthStatus] = useState('loading')
   const [localOrders, setOrders] = useState([])
   const [savedAddresses, setSavedAddresses] = useState([])
   const [savedPayments, setSavedPayments] = useState([])
@@ -211,6 +220,36 @@ export default function UserApp({
   const contentPageHistoryActive = useRef(false)
   const checkoutHistoryActive = useRef(false)
   const orderSuccessHistoryActive = useRef(false)
+  const activeUserUid = useRef(null)
+
+  const rememberIntendedRoute = (path) => {
+    const route = getProtectedRoute(path)
+    if (route) sessionStorage.setItem(INTENDED_ROUTE_SESSION_KEY, route.path)
+  }
+
+  const clearAuthenticatedState = useCallback(() => {
+    accountHydrated.current = false
+    accountSnapshot.current = ''
+    clearTimeout(accountSaveTimer.current)
+    activeUserUid.current = null
+    sessionStorage.removeItem(ORDER_SUCCESS_SESSION_KEY)
+    setOrders([])
+    setUserReturns([])
+    setLikedIds([])
+    setSavedAddresses([])
+    setSavedPayments([])
+    setCouponUsage({})
+    setSuccessfulOrder(null)
+    setOrderToViewId(null)
+    setCheckoutOpen(false)
+    setAccountSection(null)
+    setLogoutConfirmOpen(false)
+    setPendingCheckout(false)
+    setPendingCart(false)
+    setPendingWishlistRequest(null)
+    hydrateCart({})
+    setUser(null)
+  }, [hydrateCart])
   const orders = useMemo(
     () => mergeUserOrders(localOrders, sharedOrders, user),
     [localOrders, sharedOrders, user],
@@ -235,6 +274,70 @@ export default function UserApp({
 
   useEffect(() => {
     const handleHistoryBack = () => {
+      const protectedRoute = getProtectedRoute(window.location.pathname)
+      if (protectedRoute && authStatus === 'loading') return
+      if (protectedRoute && authStatus === 'unauthenticated') {
+        rememberIntendedRoute(protectedRoute.path)
+        window.history.replaceState(
+          { prideProtectedRedirect: protectedRoute.path },
+          '',
+          '/',
+        )
+        checkoutHistoryActive.current = false
+        cartHistoryActive.current = false
+        setCheckoutOpen(false)
+        setSuccessfulOrder(null)
+        setAccountSection(null)
+        setAuthOpen(true)
+        return
+      }
+      if (protectedRoute && authStatus === 'authenticated') {
+        setSuccessfulOrder(null)
+        setSelectedProduct(null)
+        setReviewsOpen(false)
+        setProductsOpen(false)
+        setContentPage(null)
+        if (protectedRoute.page === 'checkout') {
+          checkoutHistoryActive.current = true
+          setCheckoutOpen(true)
+          setAccountSection(null)
+        } else {
+          checkoutHistoryActive.current = false
+          setCheckoutOpen(false)
+          setOrderToViewId(null)
+          setAccountSection(protectedRoute.section)
+        }
+        window.scrollTo({ top: 0, behavior: 'auto' })
+        return
+      }
+      const protectedHash = [
+        CHECKOUT_HASH,
+        ORDER_SUCCESS_HASH,
+        '#account-cart',
+      ].includes(window.location.hash)
+      if (protectedHash && authStatus === 'loading') return
+      if (protectedHash && authStatus === 'unauthenticated') {
+        const intendedPath =
+          window.location.hash === CHECKOUT_HASH
+            ? CHECKOUT_PATH
+            : window.location.hash === ORDER_SUCCESS_HASH
+              ? '/orders'
+              : '/cart'
+        rememberIntendedRoute(intendedPath)
+        window.history.replaceState(
+          { prideProtectedRedirect: intendedPath },
+          '',
+          '/',
+        )
+        checkoutHistoryActive.current = false
+        orderSuccessHistoryActive.current = false
+        cartHistoryActive.current = false
+        setCheckoutOpen(false)
+        setSuccessfulOrder(null)
+        setAccountSection(null)
+        setAuthOpen(true)
+        return
+      }
       if (window.location.hash === ORDER_SUCCESS_HASH) {
         const savedOrder = getSessionItems(ORDER_SUCCESS_SESSION_KEY, null)
         if (savedOrder) {
@@ -359,7 +462,7 @@ export default function UserApp({
     handleHistoryBack()
     window.addEventListener('popstate', handleHistoryBack)
     return () => window.removeEventListener('popstate', handleHistoryBack)
-  }, [categories, products])
+  }, [authStatus, categories, products])
 
   const notify = (message) => {
     setToast(message)
@@ -375,19 +478,31 @@ export default function UserApp({
     () =>
       observeUserSession(
         (authenticatedUser) => {
-          setUser(authenticatedUser)
+          const previousUid = activeUserUid.current
           if (authenticatedUser) {
+            if (previousUid && previousUid !== authenticatedUser.uid) {
+              clearAuthenticatedState()
+            }
+            activeUserUid.current = authenticatedUser.uid
+            setUser(authenticatedUser)
+            setAuthStatus('authenticated')
             onCustomerAuthenticatedRef.current?.(authenticatedUser)
+          } else {
+            if (previousUid) clearAuthenticatedState()
+            else setUser(null)
+            activeUserUid.current = null
+            setAuthStatus('unauthenticated')
           }
         },
         (error) => {
-          setUser(null)
+          clearAuthenticatedState()
+          setAuthStatus('unauthenticated')
           setToast(error.message)
           clearTimeout(toastTimer.current)
           toastTimer.current = setTimeout(() => setToast(''), 4200)
         },
       ),
-    [],
+    [clearAuthenticatedState],
   )
 
   useEffect(() => {
@@ -517,11 +632,11 @@ export default function UserApp({
   }, [products, query])
 
   const resetToStorefront = () => {
-    if (window.location.hash) {
+    if (window.location.hash || getProtectedRoute(window.location.pathname)) {
       window.history.replaceState(
         null,
         '',
-        `${window.location.pathname}${window.location.search}`,
+        '/',
       )
     }
     orderSuccessHistoryActive.current = false
@@ -557,7 +672,7 @@ export default function UserApp({
       window.history.pushState(
         { prideContentPage: page, prideContentPageReturn: true },
         '',
-        pageHash,
+        `/${pageHash}`,
       )
     }
     contentPageHistoryActive.current = true
@@ -595,7 +710,7 @@ export default function UserApp({
           category: nextCategory,
         },
         '',
-        productsHash,
+        `/${productsHash}`,
       )
     }
     productsHistoryActive.current = true
@@ -641,7 +756,7 @@ export default function UserApp({
         category: nextCategory,
       },
       '',
-      productsHash,
+      `/${productsHash}`,
     )
     requestAnimationFrame(() =>
       document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' }),
@@ -653,7 +768,7 @@ export default function UserApp({
     window.history.replaceState(
       { ...window.history.state, prideProducts: true, category },
       '',
-      createProductsHash(category, nextQuery),
+      `/${createProductsHash(category, nextQuery)}`,
     )
     requestAnimationFrame(() =>
       document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' }),
@@ -671,7 +786,7 @@ export default function UserApp({
           category: 'All',
         },
         '',
-        createProductsHash('All', nextQuery),
+        `/${createProductsHash('All', nextQuery)}`,
       )
       requestAnimationFrame(() =>
         document
@@ -686,6 +801,7 @@ export default function UserApp({
   const handleLike = (productId) => {
     if (!user) {
       setPendingWishlistRequest({ productId })
+      rememberIntendedRoute('/wishlist')
       setAuthOpen(true)
       notify('Please login or sign up to save products to your wishlist')
       return
@@ -743,7 +859,7 @@ export default function UserApp({
     productHistoryActive.current = true
     const productHash = `${PRODUCT_HASH_PREFIX}${encodeURIComponent(product.id)}`
     if (window.location.hash !== productHash)
-      window.history.pushState({ prideProduct: product.id }, '', productHash)
+      window.history.pushState({ prideProduct: product.id }, '', `/${productHash}`)
     setSelectedProduct(product)
     setReviewsOpen(false)
     setAccountSection(null)
@@ -765,7 +881,7 @@ export default function UserApp({
       window.history.pushState(
         { prideProductReviews: selectedProduct.id },
         '',
-        reviewsHash,
+        `/${reviewsHash}`,
       )
     setReviewsOpen(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -779,19 +895,70 @@ export default function UserApp({
     setReviewsOpen(false)
   }
 
-  const navigateToCheckout = () => {
-    if (window.location.hash !== CHECKOUT_HASH)
-      window.history.pushState({ prideCheckout: true }, '', CHECKOUT_HASH)
+  const navigateToProtectedPath = (
+    path,
+    { replace = false, authenticated = false } = {},
+  ) => {
+    const route = getProtectedRoute(path)
+    if (!route) return false
+    if (!authenticated && (authStatus !== 'authenticated' || !user)) {
+      rememberIntendedRoute(route.path)
+      if (window.location.pathname !== '/') {
+        window.history.replaceState(
+          { prideProtectedRedirect: route.path },
+          '',
+          '/',
+        )
+      }
+      setAuthOpen(true)
+      return false
+    }
+
+    sessionStorage.removeItem(INTENDED_ROUTE_SESSION_KEY)
+    const historyMethod = replace ? 'replaceState' : 'pushState'
+    if (window.location.pathname !== route.path || window.location.hash) {
+      window.history[historyMethod](
+        { prideProtectedRoute: route.path, prideProtectedReturn: !replace },
+        '',
+        route.path,
+      )
+    }
+    setSuccessfulOrder(null)
+    setSelectedProduct(null)
+    setReviewsOpen(false)
+    setProductsOpen(false)
+    setContentPage(null)
+    if (route.page === 'checkout') {
+      checkoutHistoryActive.current = true
+      setCheckoutOpen(true)
+      setAccountSection(null)
+    } else {
+      checkoutHistoryActive.current = false
+      setCheckoutOpen(false)
+      setOrderToViewId(null)
+      setAccountSection(route.section)
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    return true
+  }
+
+  const navigateToCheckout = (options) => {
+    if (!navigateToProtectedPath(CHECKOUT_PATH, options)) return
     checkoutHistoryActive.current = true
     setCheckoutOpen(true)
     setAccountSection(null)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const closeCheckout = () => {
-    if (window.location.hash === CHECKOUT_HASH) {
+    if (
+      window.location.pathname === CHECKOUT_PATH &&
+      window.history.state?.prideProtectedReturn
+    ) {
       window.history.back()
       return
+    }
+    if (window.location.pathname === CHECKOUT_PATH) {
+      window.history.replaceState(null, '', '/')
     }
     setCheckoutOpen(false)
   }
@@ -805,11 +972,7 @@ export default function UserApp({
   }
 
   const viewSuccessfulOrder = () => {
-    window.history.replaceState(
-      null,
-      '',
-      `${window.location.pathname}${window.location.search}`,
-    )
+    navigateToProtectedPath('/orders', { replace: true })
     orderSuccessHistoryActive.current = false
     checkoutHistoryActive.current = false
     productHistoryActive.current = false
@@ -836,6 +999,7 @@ export default function UserApp({
 
   const handleAuthSuccess = (authenticatedUser, mode) => {
     setUser(authenticatedUser)
+    setAuthStatus('authenticated')
     onCustomerAuthenticatedRef.current?.(authenticatedUser)
     notify(
       mode === 'signup'
@@ -846,18 +1010,32 @@ export default function UserApp({
           ? `Welcome back, ${authenticatedUser.name.split(' ')[0]}! Verify your email to enable mobile login.`
           : `Welcome back, ${authenticatedUser.name.split(' ')[0]}!`,
     )
+    const intendedRoute = getProtectedRoute(
+      sessionStorage.getItem(INTENDED_ROUTE_SESSION_KEY),
+    )
+    if (intendedRoute) {
+      if (pendingWishlistRequest?.productId != null) {
+        setLikedIds((current) =>
+          current.includes(pendingWishlistRequest.productId)
+            ? current
+            : [...current, pendingWishlistRequest.productId],
+        )
+      }
+      setPendingCheckout(false)
+      setPendingCart(false)
+      setPendingWishlistRequest(null)
+      navigateToProtectedPath(intendedRoute.path, { authenticated: true })
+      return
+    }
     if (pendingCheckout) {
       setPendingCheckout(false)
-      navigateToCheckout()
+      navigateToCheckout({ authenticated: true })
     }
     if (pendingCart) {
       setPendingCart(false)
       cartReturnSection.current = null
       cartHistoryActive.current = true
-      if (window.location.hash !== '#account-cart') {
-        window.history.pushState({ prideAccount: 'cart' }, '', '#account-cart')
-      }
-      setAccountSection('cart')
+      navigateToProtectedPath('/cart', { authenticated: true })
     }
     if (pendingWishlistRequest) {
       if (pendingWishlistRequest.productId != null) {
@@ -868,7 +1046,7 @@ export default function UserApp({
         )
       }
       setPendingWishlistRequest(null)
-      setAccountSection('wishlist')
+      navigateToProtectedPath('/wishlist', { authenticated: true })
     }
   }
 
@@ -977,89 +1155,70 @@ export default function UserApp({
   }
 
   const handleLogout = async () => {
-    if (window.location.hash === '#account-cart') {
+    if (
+      getProtectedRoute(window.location.pathname) ||
+      window.location.hash === '#account-cart'
+    ) {
       window.history.replaceState(
         null,
         '',
-        `${window.location.pathname}${window.location.search}`,
+        '/',
       )
       cartReturnSection.current = null
       cartHistoryActive.current = false
     }
     try {
       await signOutUser()
-    } finally {
-      accountHydrated.current = false
-      accountSnapshot.current = ''
-      clearTimeout(accountSaveTimer.current)
-      setOrders([])
-      setUserReturns([])
-      setLikedIds([])
-      setSavedAddresses([])
-      setSavedPayments([])
-      setCouponUsage({})
-      hydrateCart({})
-      setUser(null)
-      setAccountSection(null)
+      if ([CHECKOUT_HASH, ORDER_SUCCESS_HASH].includes(window.location.hash)) {
+        window.history.replaceState(
+          null,
+          '',
+          `${window.location.pathname}${window.location.search}`,
+        )
+      }
+      clearAuthenticatedState()
+      setAuthStatus('unauthenticated')
       notify('You have been logged out successfully')
+    } catch (error) {
+      notify(error.message || 'Unable to log out. Please try again.')
     }
   }
 
   const handleProfileSelect = (section) => {
     setOrderToViewId(null)
-    if (section === 'cart') {
-      navigateToCart()
-      return
-    }
-    setAccountSection(section)
+    const path = getProtectedPathForSection(section)
+    if (path) navigateToProtectedPath(path)
   }
 
   const openWishlist = () => {
-    if (user) {
-      setAccountSection('wishlist')
-      return
-    }
-    setPendingWishlistRequest({ productId: null })
-    setAuthOpen(true)
+    if (!user) setPendingWishlistRequest({ productId: null })
+    navigateToProtectedPath('/wishlist')
   }
 
   const navigateToCart = () => {
     if (!user) {
       setPendingCart(true)
-      setAuthOpen(true)
-      return
     }
-    if (window.location.hash !== '#account-cart') {
-      cartReturnSection.current = accountSection
-      cartHistoryActive.current = true
-      window.history.pushState({ prideAccount: 'cart' }, '', '#account-cart')
-    }
-    setAccountSection('cart')
+    navigateToProtectedPath('/cart')
   }
 
   const handleAccountSectionChange = (nextSection) => {
     setOrderToViewId(null)
-    if (nextSection === 'cart') {
-      navigateToCart()
-      return
-    }
-    if (window.location.hash === '#account-cart') {
-      window.history.replaceState(
-        null,
-        '',
-        `${window.location.pathname}${window.location.search}`,
-      )
-      cartReturnSection.current = null
-      cartHistoryActive.current = false
-    }
-    setAccountSection(nextSection)
+    const path = getProtectedPathForSection(nextSection)
+    if (path) navigateToProtectedPath(path, { replace: true })
   }
 
   const closeAccountPanel = () => {
     setOrderToViewId(null)
-    if (window.location.hash === '#account-cart') {
+    if (
+      getProtectedRoute(window.location.pathname) &&
+      window.history.state?.prideProtectedReturn
+    ) {
       window.history.back()
       return
+    }
+    if (getProtectedRoute(window.location.pathname)) {
+      window.history.replaceState(null, '', '/')
     }
     setAccountSection(null)
   }
@@ -1187,7 +1346,7 @@ export default function UserApp({
     window.history.replaceState(
       { prideOrderSuccess: savedOrder.id },
       '',
-      ORDER_SUCCESS_HASH,
+      `/${ORDER_SUCCESS_HASH}`,
     )
     setSuccessfulOrder(savedOrder)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -1251,6 +1410,18 @@ export default function UserApp({
   const ContentPage = contentPage
     ? CONTENT_PAGE_COMPONENTS[contentPage]
     : null
+  const passwordActionParams = new URLSearchParams(window.location.search)
+  const passwordResetActionRequested =
+    passwordActionParams.get('mode') === 'resetPassword'
+  const passwordResetActionCode = passwordActionParams.get('oobCode') || ''
+  const protectedAuthPending =
+    authStatus === 'loading' &&
+    Boolean(
+      getProtectedRoute(window.location.pathname) ||
+        [CHECKOUT_HASH, ORDER_SUCCESS_HASH, '#account-cart'].includes(
+          window.location.hash,
+        ),
+    )
 
   return (
     <div className="min-h-screen overflow-x-clip bg-[#f7f8f5] pb-16 lg:pb-0">
@@ -1259,6 +1430,7 @@ export default function UserApp({
         products={products}
         searchQuery={query}
         user={user}
+        authStatus={authStatus}
         cartCount={cart.count}
         wishlistCount={user ? likedIds.length : 0}
         accountSection={accountSection}
@@ -1276,13 +1448,26 @@ export default function UserApp({
         onLogout={() => setLogoutConfirmOpen(true)}
       />
       <main>
-        {successfulOrder ? (
+        {protectedAuthPending ? (
+          <section
+            className="grid min-h-[55vh] place-items-center px-6 text-center"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div>
+              <span className="mx-auto block size-9 animate-spin rounded-full border-4 border-[#75916f]/25 border-t-[#536a50]" />
+              <p className="mt-4 text-sm font-bold text-[#425443]">
+                Checking your account…
+              </p>
+            </div>
+          </section>
+        ) : successfulOrder && authStatus === 'authenticated' && user ? (
           <OrderSuccessPage
             order={successfulOrder}
             onContinueShopping={closeOrderSuccess}
             onViewOrders={viewSuccessfulOrder}
           />
-        ) : checkoutOpen ? (
+        ) : checkoutOpen && authStatus === 'authenticated' && user ? (
           <CheckoutPage
             key={`${savedAddresses.find((address) => address.isDefault)?.id || 'no-address'}-${savedPayments.find((payment) => payment.isDefault)?.id || 'no-payment'}`}
             items={cart.items}
@@ -1378,7 +1563,7 @@ export default function UserApp({
             <PromoBanner
               banner={marketingSettings?.promotionalBanner}
               onShopNow={() =>
-                user ? setAccountSection('profile') : setAuthOpen(true)
+                navigateToProtectedPath('/account')
               }
             />
           </HomeScrollReveal>
@@ -1390,16 +1575,36 @@ export default function UserApp({
       />
 
       <AuthModal
-        open={authOpen}
+        key={authInitialMode}
+        initialMode={authInitialMode}
+        open={authOpen && !passwordResetActionRequested}
         onClose={() => {
           setAuthOpen(false)
+          setAuthInitialMode('login')
+          sessionStorage.removeItem(INTENDED_ROUTE_SESSION_KEY)
           setPendingCheckout(false)
           setPendingCart(false)
           setPendingWishlistRequest(null)
         }}
         onSuccess={handleAuthSuccess}
       />
-      {user && (
+      {passwordResetActionRequested && (
+        <PasswordResetModal
+          key={passwordResetActionCode || 'invalid-reset-code'}
+          actionCode={passwordResetActionCode}
+          onComplete={() => {
+            window.history.replaceState(null, '', '/')
+            setAuthInitialMode('login')
+            setAuthOpen(true)
+          }}
+          onRequestNewLink={() => {
+            window.history.replaceState(null, '', '/')
+            setAuthInitialMode('forgot')
+            setAuthOpen(true)
+          }}
+        />
+      )}
+      {authStatus === 'authenticated' && user && (
         <AccountPanel
           key={orderToViewId || 'account-panel'}
           section={accountSection}

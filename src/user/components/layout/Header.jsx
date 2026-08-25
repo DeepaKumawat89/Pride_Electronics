@@ -13,6 +13,7 @@ export default function Header({
   products,
   searchQuery,
   user,
+  authStatus,
   cartCount,
   wishlistCount,
   accountSection,
@@ -38,6 +39,7 @@ export default function Header({
   }
 
   const openAccount = () => {
+    if (authStatus === 'loading') return
     if (user) onProfileSelect('profile')
     else onAuthOpen()
   }
@@ -70,7 +72,17 @@ export default function Header({
             </div>
 
             <div className="ml-auto flex shrink-0 items-center gap-2">
-              {user ? (
+              {authStatus === 'loading' ? (
+                <button
+                  type="button"
+                  disabled
+                  className="flex h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-xs font-extrabold text-slate-400"
+                  aria-label="Checking authentication"
+                >
+                  <span className="size-4 animate-spin rounded-full border-2 border-slate-300 border-t-[#ff5c35]" />
+                  Checking…
+                </button>
+              ) : user ? (
                 <ProfileMenu
                   user={user}
                   wishlistCount={wishlistCount}
@@ -92,8 +104,9 @@ export default function Header({
 
               <button
                 type="button"
+                disabled={authStatus === 'loading'}
                 onClick={onWishlistOpen}
-                className="relative grid size-11 place-items-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-[#ff5c35] hover:text-[#ff5c35]"
+                className="relative grid size-11 place-items-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-[#ff5c35] hover:text-[#ff5c35] disabled:cursor-wait disabled:opacity-50"
                 aria-label="Wishlist"
               >
                 <Heart size={19} />
@@ -104,7 +117,7 @@ export default function Header({
                 )}
               </button>
 
-              <CartButton cartCount={cartCount} onClick={openCart} />
+              <CartButton cartCount={cartCount} onClick={openCart} disabled={authStatus === 'loading'} />
             </div>
           </div>
 
@@ -130,7 +143,7 @@ export default function Header({
               />
             </div>
 
-            <CartButton cartCount={cartCount} onClick={openCart} compact />
+            <CartButton cartCount={cartCount} onClick={openCart} compact disabled={authStatus === 'loading'} />
           </div>
         </div>
       </header>
@@ -158,24 +171,27 @@ export default function Header({
           count={cartCount}
           active={accountSection === 'cart'}
           onClick={openCart}
+          disabled={authStatus === 'loading'}
         />
         <MobileNavItem
           icon={UserRound}
           label="Account"
           active={Boolean(accountSection && accountSection !== 'cart')}
           onClick={openAccount}
+          disabled={authStatus === 'loading'}
         />
       </nav>
     </>
   )
 }
 
-function CartButton({ cartCount, onClick, compact = false }) {
+function CartButton({ cartCount, onClick, compact = false, disabled = false }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
-      className={`relative grid shrink-0 place-items-center rounded-full bg-slate-950 text-white transition hover:bg-[#ff5c35] ${compact ? 'size-10' : 'size-11'}`}
+      className={`relative grid shrink-0 place-items-center rounded-full bg-slate-950 text-white transition hover:bg-[#ff5c35] disabled:cursor-wait disabled:opacity-50 ${compact ? 'size-10' : 'size-11'}`}
       aria-label="Open cart"
     >
       <ShoppingBag size={18} />
@@ -188,12 +204,13 @@ function CartButton({ cartCount, onClick, compact = false }) {
   )
 }
 
-function MobileNavItem({ icon: Icon, label, onClick, active = false, count = 0 }) {
+function MobileNavItem({ icon: Icon, label, onClick, active = false, count = 0, disabled = false }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
-      className={`group flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-[9px] font-extrabold transition ${active ? 'text-[#ff5c35]' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950'}`}
+      className={`group flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-[9px] font-extrabold transition disabled:cursor-wait disabled:opacity-50 ${active ? 'text-[#ff5c35]' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950'}`}
     >
       <span className="relative">
         <Icon size={19} strokeWidth={active ? 2.5 : 2} />

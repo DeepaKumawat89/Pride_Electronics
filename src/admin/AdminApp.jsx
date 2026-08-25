@@ -61,7 +61,15 @@ export default function AdminApp({
   onUpdateAdminSettings,
   onSwitchToStore,
 }) {
-  const { admin, loading, login, logout, updateProfile, changePassword } = useAdminAuth()
+  const {
+    admin,
+    loading,
+    login,
+    logout,
+    resetPassword,
+    updateProfile,
+    changePassword,
+  } = useAdminAuth()
   const [activeTab, setActiveTab] = useState('dashboard')
   const [searchQuery, setSearchQuery] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
@@ -126,6 +134,7 @@ export default function AdminApp({
       <AdminLoginPage
         loading={loading}
         onLogin={handleLogin}
+        onResetPassword={resetPassword}
         onSwitchToStore={onSwitchToStore}
         products={products}
         orders={orders}
