@@ -13,12 +13,26 @@ import {
 } from 'firebase/auth'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { auth, db } from '../../firebase/firebase'
+import {
+  createUserFacingAuthError,
+  toUserFacingAuthError,
+} from '../../firebase/authErrors'
+
+const bestEffortAdminSignOut = async () => {
+  try {
+    await signOut(auth)
+  } catch {
+    // Keep authorization failures deterministic even if cleanup fails.
+  }
+}
 
 const createAdminSession = async (user) => {
   const token = await user.getIdTokenResult(true)
   if (token.claims.admin !== true) {
-    await signOut(auth)
-    throw new Error('This Firebase account is not authorized for admin access.')
+    await bestEffortAdminSignOut()
+    throw createUserFacingAuthError(
+      'This Firebase account is not authorized for admin access.',
+    )
   }
   const profileDocument = await getDoc(doc(db, 'admins', user.uid))
   const profile = profileDocument.data() || {}
@@ -33,7 +47,7 @@ const createAdminSession = async (user) => {
 export async function requestAdminPasswordReset(email) {
   const normalizedEmail = String(email || '').trim().toLowerCase()
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-    throw new Error('Enter a valid email address.')
+    throw createUserFacingAuthError('Enter a valid email address.')
   }
   try {
     await sendPasswordResetEmail(auth, normalizedEmail)
@@ -47,7 +61,7 @@ export async function requestAdminPasswordReset(email) {
 }
 
 const getAuthErrorMessage = (error) => {
-  const messages = {
+  const adminMessages = {
     'auth/invalid-credential': 'Incorrect email or password.',
     'auth/user-not-found': 'Incorrect email or password.',
     'auth/wrong-password': 'Incorrect email or password.',
@@ -63,9 +77,7 @@ const getAuthErrorMessage = (error) => {
       'That email address is already used by another Firebase account.',
     'auth/weak-password': 'The new password does not meet Firebase requirements.',
   }
-  return new Error(
-    messages[error?.code] || error?.message || 'Authentication failed. Please try again.',
-  )
+  return toUserFacingAuthError(error, adminMessages)
 }
 
 export async function signInAdmin(email, password) {
@@ -91,7 +103,7 @@ export function observeAdminSession(onChange) {
     try {
       onChange(await createAdminSession(user))
     } catch {
-      await signOut(auth)
+      await bestEffortAdminSignOut()
       onChange(null)
     }
   })
@@ -100,7 +112,9 @@ export function observeAdminSession(onChange) {
 export async function updateAdminProfile(profile) {
   const user = auth.currentUser
   if (!user) {
-    throw new Error('Your admin session has expired. Please sign in again.')
+    throw createUserFacingAuthError(
+      'Your admin session has expired. Please sign in again.',
+    )
   }
   try {
     if (profile.name !== user.displayName) {
@@ -127,7 +141,9 @@ export async function updateAdminProfile(profile) {
 export async function updateAdminPassword(currentPassword, nextPassword) {
   const user = auth.currentUser
   if (!user?.email) {
-    throw new Error('Your admin session has expired. Please sign in again.')
+    throw createUserFacingAuthError(
+      'Your admin session has expired. Please sign in again.',
+    )
   }
   try {
     const credential = EmailAuthProvider.credential(user.email, currentPassword)
@@ -139,5 +155,9 @@ export async function updateAdminPassword(currentPassword, nextPassword) {
 }
 
 export async function clearAdminSession() {
-  await signOut(auth)
+  try {
+    await signOut(auth)
+  } catch (error) {
+    throw getAuthErrorMessage(error)
+  }
 }

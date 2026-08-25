@@ -246,9 +246,12 @@ function App() {
       const next = typeof valueOrUpdater === 'function'
         ? valueOrUpdater(current)
         : valueOrUpdater
+      const safeEmailSettings = Object.fromEntries(
+        Object.entries(next.email || {}).filter(([key]) => key !== 'password'),
+      )
       const persisted = {
         ...next,
-        email: { ...next.email, password: '' },
+        email: safeEmailSettings,
       }
       void saveSetting('admin', persisted).catch((error) =>
         setProductsError(error.message || 'Unable to save admin settings.'),

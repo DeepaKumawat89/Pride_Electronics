@@ -22,6 +22,10 @@ import {
 import { httpsCallable } from 'firebase/functions'
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import { userAuth, userFunctions, userStorage } from './firebase'
+import {
+  createUserFacingAuthError,
+  toUserFacingAuthError,
+} from './authErrors'
 
 const createUserProfile = httpsCallable(userFunctions, 'createUserProfile')
 const ensureGoogleUserProfileRecord = httpsCallable(
@@ -47,6 +51,14 @@ let signInInProgress = false
 let googleSignInInProgress = null
 let pendingGoogleLink = null
 let passwordResetRequestInProgress = false
+
+const bestEffortSignOut = async () => {
+  try {
+    await signOut(userAuth)
+  } catch {
+    // Preserve the original, user-friendly authentication failure.
+  }
+}
 
 export const normalizeUserPhone = (value) =>
   String(value || '')
@@ -77,76 +89,7 @@ const mapUser = (firebaseUser, profile = {}) => ({
   role: 'customer',
 })
 
-const getErrorMessage = (error) => {
-  const messages = {
-    'auth/email-already-in-use':
-      'An account already exists with this email address.',
-    'auth/account-exists-with-different-credential':
-      'An account already uses this email. Sign in with your email and password to link Google safely.',
-    'auth/credential-already-in-use':
-      'This Google account is already connected to another account.',
-    'auth/invalid-credential': 'Incorrect login details.',
-    'auth/invalid-login-credentials': 'Incorrect login details.',
-    'auth/invalid-email': 'Enter a valid email address.',
-    'auth/missing-email': 'Enter your email address.',
-    'auth/missing-password': 'Enter your password.',
-    'auth/user-disabled': 'This account has been disabled.',
-    'auth/user-not-found': 'Incorrect login details.',
-    'auth/wrong-password': 'Incorrect login details.',
-    'auth/weak-password':
-      'The password does not meet the required security policy.',
-    'auth/password-does-not-meet-requirements':
-      'The password does not meet the required security policy.',
-    'auth/too-many-requests':
-      'Too many unsuccessful attempts. Please wait and try again.',
-    'auth/quota-exceeded':
-      'Authentication is temporarily busy. Please wait and try again.',
-    'auth/network-request-failed':
-      'Unable to reach Firebase. Check your connection and try again.',
-    'auth/timeout': 'The request timed out. Check your connection and try again.',
-    'auth/internal-error':
-      'Authentication is temporarily unavailable. Please try again.',
-    'auth/cancelled-popup-request':
-      'The previous Google sign-in request was cancelled.',
-    'auth/popup-blocked':
-      'Your browser blocked the Google sign-in popup. Allow popups and try again.',
-    'auth/popup-closed-by-user':
-      'Google sign-in was cancelled before it finished.',
-    'auth/unauthorized-domain':
-      'Google sign-in is not authorized on this domain. Please contact support.',
-    'auth/provider-already-linked':
-      'Google is already connected to this account.',
-    'auth/operation-not-allowed':
-      'Email and password authentication is not enabled. Please contact support.',
-    'auth/expired-action-code':
-      'This password reset link has expired. Request a new one and try again.',
-    'auth/invalid-action-code':
-      'This password reset link is invalid or has already been used.',
-    'auth/requires-recent-login':
-      'Please sign out, sign in again, and retry this security-sensitive change.',
-    'functions/already-exists':
-      'An account already exists with this phone number.',
-    'functions/failed-precondition':
-      'Verify your email address before signing in with your phone number.',
-    'functions/invalid-argument': 'Check the information and try again.',
-    'functions/not-found': 'Incorrect login details.',
-    'functions/resource-exhausted':
-      'Too many unsuccessful attempts. Please wait and try again.',
-    'functions/unauthenticated': 'Incorrect login details.',
-    'functions/permission-denied':
-      'This account is unavailable. Please contact support.',
-    'functions/unavailable':
-      'Authentication is temporarily unavailable. Please try again.',
-  }
-  const fallback =
-    typeof error?.code === 'string' &&
-    (error.code.startsWith('auth/') || error.code.startsWith('functions/'))
-      ? 'Authentication failed. Please try again.'
-      : error?.message || 'Authentication failed. Please try again.'
-  return new Error(
-    messages[error?.code] || fallback,
-  )
-}
+const getErrorMessage = (error) => toUserFacingAuthError(error)
 
 const joinRequirements = (requirements) =>
   requirements.length < 2
@@ -192,7 +135,7 @@ async function loadUser(firebaseUser, retries = 0) {
       await wait(350)
     }
   }
-  throw new Error('Unable to load the user profile.')
+  throw createUserFacingAuthError('Unable to load the user profile.')
 }
 
 export async function signUpUser({ name, phone, email, password }) {
@@ -224,7 +167,7 @@ export async function signUpUser({ name, phone, email, password }) {
     await setPersistence(userAuth, browserLocalPersistence)
     const passwordStatus = await validatePassword(userAuth, normalizedPassword)
     if (!passwordStatus.isValid) {
-      throw new Error(passwordPolicyMessage(passwordStatus))
+      throw createUserFacingAuthError(passwordPolicyMessage(passwordStatus))
     }
     credential = await createUserWithEmailAndPassword(
       userAuth,
@@ -238,10 +181,9 @@ export async function signUpUser({ name, phone, email, password }) {
       try {
         await deleteUser(credential.user)
       } catch {
-        await signOut(userAuth)
+        await bestEffortSignOut()
       }
     }
-    if (error instanceof Error && !error.code) throw error
     throw getErrorMessage(error)
   } finally {
     settleRegistration()
@@ -296,7 +238,9 @@ export async function signInUser(identifier, password) {
       )
     } else {
       if (!EMAIL_PATTERN.test(normalizedIdentifier)) {
-        throw new Error('Enter a valid email address or 10-digit mobile number.')
+        throw createUserFacingAuthError(
+          'Enter a valid email address or 10-digit mobile number.',
+        )
       }
       credential = await signInWithEmailAndPassword(
         userAuth,
@@ -308,7 +252,7 @@ export async function signInUser(identifier, password) {
     if (pendingGoogleLink) {
       const signedInEmail = String(credential.user.email || '').toLowerCase()
       if (signedInEmail !== pendingGoogleLink.email) {
-        throw new Error(
+        throw createUserFacingAuthError(
           `Sign in with ${pendingGoogleLink.email} to connect that Google account.`,
         )
       }
@@ -342,8 +286,7 @@ export async function signInUser(identifier, password) {
       verificationEmailSent,
     }
   } catch (error) {
-    if (credential?.user) await signOut(userAuth)
-    if (error instanceof Error && !error.code) throw error
+    if (credential?.user) await bestEffortSignOut()
     throw getErrorMessage(error)
   } finally {
     signInInProgress = false
@@ -390,13 +333,12 @@ export async function signInUserWithGoogle() {
         try {
           await deleteUser(result.user)
         } catch {
-          await signOut(userAuth)
+          await bestEffortSignOut()
         }
       } else {
-        await signOut(userAuth)
+        await bestEffortSignOut()
       }
     }
-    if (error instanceof Error && !error.code) throw error
     throw getErrorMessage(error)
   } finally {
     settleGoogleSignIn()
@@ -454,11 +396,10 @@ export async function completeUserPasswordReset(actionCode, nextPassword) {
   try {
     const passwordStatus = await validatePassword(userAuth, password)
     if (!passwordStatus.isValid) {
-      throw new Error(passwordPolicyMessage(passwordStatus))
+      throw createUserFacingAuthError(passwordPolicyMessage(passwordStatus))
     }
     await confirmPasswordReset(userAuth, actionCode, password)
   } catch (error) {
-    if (error instanceof Error && !error.code) throw error
     throw getErrorMessage(error)
   }
 }
@@ -480,7 +421,7 @@ export function observeUserSession(onUser, onError) {
         onUser(await loadUser(firebaseUser, 40))
       } catch (error) {
         if (userAuth.currentUser?.uid !== firebaseUser.uid) return
-        await signOut(userAuth)
+        await bestEffortSignOut()
         onError?.(getErrorMessage(error))
       }
     },
@@ -499,7 +440,9 @@ export async function saveUserProfile(profile) {
       const response = await fetch(photo)
       const blob = await response.blob()
       if (blob.size > 8 * 1024 * 1024) {
-        throw new Error('Profile photos must be smaller than 8 MB.')
+        throw createUserFacingAuthError(
+          'Profile photos must be smaller than 8 MB.',
+        )
       }
       const photoReference = ref(
         userStorage,
@@ -514,7 +457,7 @@ export async function saveUserProfile(profile) {
         String(firebaseUser.email || '').toLowerCase()
     if (emailChanged) {
       if (!EMAIL_PATTERN.test(profile.email.trim().toLowerCase())) {
-        throw new Error('Enter a valid email address.')
+        throw createUserFacingAuthError('Enter a valid email address.')
       }
       await verifyBeforeUpdateEmail(
         firebaseUser,
@@ -534,7 +477,6 @@ export async function saveUserProfile(profile) {
     const savedUser = await loadUser(firebaseUser)
     return { ...savedUser, emailChangePending: Boolean(emailChanged) }
   } catch (error) {
-    if (error instanceof Error && !error.code) throw error
     throw getErrorMessage(error)
   }
 }
