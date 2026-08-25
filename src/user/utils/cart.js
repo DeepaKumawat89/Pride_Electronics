@@ -4,6 +4,8 @@ export const FREE_SHIPPING_THRESHOLD = 999
 export const STANDARD_SHIPPING_CHARGE = 99
 
 const normalize = (value) => String(value || '').trim().toLowerCase()
+const roundMoney = (value) =>
+  Math.round((Number(value) + Number.EPSILON) * 100) / 100
 
 const appliesToProduct = (coupon, product) => {
   const products = coupon.applicableProducts || []
@@ -81,33 +83,37 @@ export function calculateCartPricing(
   shippingSettings = {},
   taxSettings = {},
 ) {
-  const mrpSubtotal = items.reduce(
+  const mrpSubtotal = roundMoney(items.reduce(
     (sum, { product, quantity }) =>
       sum + parsePrice(product.originalPrice || product.price) * Number(quantity || 0),
     0,
-  )
-  const sellingSubtotal = items.reduce(
+  ))
+  const sellingSubtotal = roundMoney(items.reduce(
     (sum, { product, quantity }) =>
       sum + parsePrice(product.price) * Number(quantity || 0),
     0,
-  )
+  ))
   const selectedCoupon = coupons.find(
     (coupon) => coupon.code.toUpperCase() === couponCode.trim().toUpperCase(),
   )
   const eligibleSubtotal = selectedCoupon
-    ? items.reduce(
+    ? roundMoney(items.reduce(
         (sum, { product, quantity }) =>
           appliesToProduct(selectedCoupon, product)
             ? sum + parsePrice(product.price) * Number(quantity || 0)
             : sum,
         0,
-      )
+      ))
     : sellingSubtotal
-  const productDiscount = Math.max(0, mrpSubtotal - sellingSubtotal)
-  const coupon = validateCartCoupon(couponCode, sellingSubtotal, now, coupons, {
+  const productDiscount = roundMoney(Math.max(0, mrpSubtotal - sellingSubtotal))
+  const validatedCoupon = validateCartCoupon(couponCode, sellingSubtotal, now, coupons, {
     eligibleSubtotal,
     userKey,
   })
+  const coupon = {
+    ...validatedCoupon,
+    discount: roundMoney(validatedCoupon.discount),
+  }
   const standardShipping =
     sellingSubtotal >=
       Number(
@@ -115,14 +121,14 @@ export function calculateCartPricing(
       ) || sellingSubtotal === 0
       ? 0
       : Number(shippingSettings.standardCharge ?? STANDARD_SHIPPING_CHARGE)
-  const shipping = coupon.freeShipping ? 0 : standardShipping
+  const shipping = roundMoney(coupon.freeShipping ? 0 : standardShipping)
   const taxableAmount = Math.max(0, sellingSubtotal - coupon.discount)
   const taxRate = taxSettings.gstEnabled === false
     ? 0
     : Number(taxSettings.defaultRate || 0)
   const tax = taxSettings.gstEnabled === false
     ? 0
-    : Math.round(
+    : roundMoney(
         items.reduce((sum, { product, quantity }) => {
           const lineValue = parsePrice(product.price) * Number(quantity || 0)
           const couponShare = sellingSubtotal
@@ -135,10 +141,10 @@ export function calculateCartPricing(
             : (lineTaxableValue * lineTaxRate) / 100)
         }, 0),
       )
-  const total = Math.max(
+  const total = roundMoney(Math.max(
     0,
     taxableAmount + shipping + (taxSettings.pricesIncludeTax ? 0 : tax),
-  )
+  ))
 
   return {
     mrpSubtotal,

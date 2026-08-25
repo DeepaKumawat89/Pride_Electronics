@@ -81,7 +81,6 @@ export default function CouponsPage({
       usageLimit: Number(form.usageLimit),
       perUserLimit: Number(form.perUserLimit),
       usageCount: Number(form.usageCount || 0),
-      usageBy: editingCoupon?.usageBy || {},
       applicableProducts: parseList(form.applicableProducts),
       applicableCategories: parseList(form.applicableCategories),
       enabled: form.enabled !== false,

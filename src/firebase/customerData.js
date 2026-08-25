@@ -15,8 +15,16 @@ const messageFor = (error, fallback) => {
     'functions/not-found': 'The requested order was not found.',
     'functions/resource-exhausted':
       'One or more products no longer have enough stock.',
+    'functions/already-exists':
+      'This request has already been completed.',
+    'functions/unavailable':
+      'The service is temporarily unavailable. Check your connection and try again.',
+    'functions/deadline-exceeded':
+      'The request timed out. Check your connection and try again.',
+    'functions/internal':
+      'The service is temporarily unavailable. Please try again.',
   }
-  return new Error(messages[error?.code] || error?.message || fallback)
+  return new Error(messages[error?.code] || fallback)
 }
 
 export async function placeCustomerOrder(order) {

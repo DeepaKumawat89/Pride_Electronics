@@ -7,7 +7,10 @@ import {
   setDoc,
   where,
 } from 'firebase/firestore'
-import { db, userDb } from './firebase'
+import { httpsCallable } from 'firebase/functions'
+import { db, userDb, userFunctions } from './firebase'
+
+const accountStateGateway = httpsCallable(userFunctions, 'updateUserProfile')
 
 const withoutId = (value) => {
   const serialized = JSON.parse(JSON.stringify(value || {}))
@@ -114,12 +117,29 @@ export function subscribeToUserAccount(uid, onValue, onError) {
   )
 }
 
-export const saveUserAccount = (uid, values) =>
-  setDoc(
-    doc(userDb, 'users', uid),
-    {
-      ...JSON.parse(JSON.stringify(values)),
-      updatedAt: new Date().toISOString(),
-    },
-    { merge: true },
-  )
+export const saveUserAccount = async (_uid, values) => {
+  try {
+    await accountStateGateway({
+      operation: 'saveAccountState',
+      payload: JSON.parse(JSON.stringify(values)),
+    })
+  } catch (error) {
+    const messages = {
+      'functions/invalid-argument':
+        'One of your account changes is invalid. Review it and try again.',
+      'functions/unauthenticated': 'Please sign in again to save your changes.',
+      'functions/failed-precondition':
+        'Your customer profile is unavailable. Sign in again and retry.',
+      'functions/permission-denied':
+        'Your account does not permit this change. Contact support if this is unexpected.',
+      'functions/unavailable':
+        'Unable to save your changes. Check your connection and try again.',
+      'functions/deadline-exceeded':
+        'Saving took too long. Check your connection and try again.',
+    }
+    throw new Error(
+      messages[error?.code] || 'Unable to save your account changes. Please try again.',
+      { cause: error },
+    )
+  }
+}

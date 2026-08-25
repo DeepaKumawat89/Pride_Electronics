@@ -83,12 +83,12 @@ after(async () => {
   await testEnvironment?.cleanup()
 })
 
-test('User A can read and update only the allowed fields in users/UID_A', async () => {
+test('User A can read their profile but direct account writes require the backend', async () => {
   const database = testEnvironment.authenticatedContext('UID_A').firestore()
   const ownProfile = doc(database, 'users', 'UID_A')
 
   await assertSucceeds(getDoc(ownProfile))
-  await assertSucceeds(
+  await assertFails(
     updateDoc(ownProfile, {
       wishlistIds: ['product-1'],
       cartItems: [{ productId: 'product-1', quantity: 1 }],
@@ -186,4 +186,17 @@ test('an admin custom claim authorizes privileged Firestore operations', async (
   await assertSucceeds(
     updateDoc(doc(database, 'products', 'PRODUCT_1'), { stock: 4 }),
   )
+  await assertSucceeds(
+    updateDoc(doc(database, 'users', 'UID_B'), { status: 'Suspended' }),
+  )
+})
+
+test('payment and backend index collections are inaccessible to customers', async () => {
+  const database = testEnvironment.authenticatedContext('UID_A').firestore()
+  for (const collectionName of ['paymentIntents', 'couponUsages', '_authPhoneIndex']) {
+    await assertFails(getDoc(doc(database, collectionName, 'private-record')))
+    await assertFails(
+      setDoc(doc(database, collectionName, 'private-record'), { userId: 'UID_A' }),
+    )
+  }
 })

@@ -2,19 +2,85 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
+    // Assumed private user model: users/{uid} contains Firebase identity fields
+    // plus bounded account state (wishlistIds, addresses, paymentMethods,
+    // cartItems, savedCartItems). Clients read only their own document; all
+    // writes are performed by trusted callable functions or an admin claim.
+    // Orders/returns carry an immutable backend-assigned userId and are
+    // client-readable only by that owner. Payment intents, coupon usage, and
+    // phone indexes have no client match and therefore remain default-denied.
+
+    function isAuthenticated() {
       return request.auth != null;
     }
 
     function isAdmin() {
-      return signedIn() && (
-        request.auth.token.admin == true ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-      );
+      return isAuthenticated() &&
+        request.auth.token.keys().hasAny(['admin']) &&
+        request.auth.token.admin == true;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function uidUnchanged(userId) {
+      return request.resource.data.uid == userId;
+    }
+
+    function uidNotModified() {
+      return request.resource.data.uid == resource.data.uid;
+    }
+
+    function optionalString(data, field, maxSize) {
+      return !data.keys().hasAny([field]) ||
+        (data[field] is string && data[field].size() <= maxSize);
+    }
+
+    function optionalList(data, field, maxSize) {
+      return !data.keys().hasAny([field]) ||
+        (data[field] is list && data[field].size() <= maxSize);
+    }
+
+    function optionalNonNegativeNumber(data, field) {
+      return !data.keys().hasAny([field]) ||
+        (data[field] is number && data[field] >= 0);
+    }
+
+    function isValidUser(data, userId) {
+      return data.keys().hasOnly([
+          'uid', 'name', 'phone', 'phoneNormalized', 'email', 'emailVerified',
+          'role', 'createdAt', 'updatedAt', 'dob', 'gender', 'photo', 'status',
+          'membershipRole', 'joinedDate', 'registrationDate', 'ordersCount',
+          'totalSpentValue', 'lastOrderAt', 'wishlistIds', 'addresses',
+          'paymentMethods', 'cartItems', 'savedCartItems'
+        ]) &&
+        data.uid == userId &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 80 &&
+        data.email is string && data.email.size() <= 320 &&
+        data.role == 'customer' &&
+        optionalString(data, 'phone', 10) &&
+        optionalString(data, 'phoneNormalized', 10) &&
+        optionalString(data, 'dob', 10) &&
+        optionalString(data, 'gender', 30) &&
+        optionalString(data, 'photo', 2000) &&
+        optionalString(data, 'membershipRole', 50) &&
+        optionalString(data, 'joinedDate', 40) &&
+        optionalString(data, 'registrationDate', 40) &&
+        optionalString(data, 'lastOrderAt', 40) &&
+        (!data.keys().hasAny(['status']) || data.status in ['Active', 'Suspended']) &&
+        (!data.keys().hasAny(['emailVerified']) || data.emailVerified is bool) &&
+        optionalNonNegativeNumber(data, 'ordersCount') &&
+        optionalNonNegativeNumber(data, 'totalSpentValue') &&
+        optionalList(data, 'wishlistIds', 200) &&
+        optionalList(data, 'addresses', 20) &&
+        optionalList(data, 'paymentMethods', 10) &&
+        optionalList(data, 'cartItems', 100) &&
+        optionalList(data, 'savedCartItems', 100);
     }
 
     function owns(resourceData) {
-      return signedIn() && resourceData.userId == request.auth.uid;
+      return isAuthenticated() && resourceData.userId == request.auth.uid;
     }
 
     match /products/{productId} {
@@ -66,25 +132,15 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
+      allow read: if isAdmin() || isOwner(userId);
       allow create: if false;
-      allow update: if isAdmin() || (
-        signedIn() &&
-        request.auth.uid == userId &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'wishlistIds',
-          'addresses',
-          'paymentMethods',
-          'cartItems',
-          'savedCartItems',
-          'updatedAt'
-        ])
-      );
+      allow update: if isAdmin() && uidUnchanged(userId) &&
+        uidNotModified() && isValidUser(request.resource.data, userId);
       allow delete: if false;
     }
 
     match /admins/{adminId} {
-      allow read: if signedIn() && request.auth.uid == adminId;
+      allow read: if isOwner(adminId);
       allow write: if isAdmin();
     }
 

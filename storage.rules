@@ -7,33 +7,35 @@ service firebase.storage {
     }
 
     function isAdmin() {
-      return signedIn() && (
-        request.auth.token.admin == true ||
-        firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid))
-      );
+      return signedIn() &&
+        request.auth.token.keys().hasAny(['admin']) &&
+        request.auth.token.admin == true;
     }
 
     match /products/{productId}/{fileName} {
       allow read: if true;
-      allow write: if isAdmin() &&
+      allow create, update: if isAdmin() &&
         request.resource.size < 10 * 1024 * 1024 &&
         request.resource.contentType.matches('image/.*');
+      allow delete: if isAdmin();
     }
 
     match /returns/{userId}/{orderId}/{fileName} {
       allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
-      allow write: if signedIn() &&
+      allow create, update: if signedIn() &&
         request.auth.uid == userId &&
         request.resource.size < 8 * 1024 * 1024 &&
         request.resource.contentType.matches('image/.*');
+      allow delete: if isAdmin() || (signedIn() && request.auth.uid == userId);
     }
 
     match /users/{userId}/profile/{fileName} {
-      allow read: if true;
-      allow write: if signedIn() &&
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
+      allow create, update: if signedIn() &&
         request.auth.uid == userId &&
         request.resource.size < 8 * 1024 * 1024 &&
         request.resource.contentType.matches('image/.*');
+      allow delete: if isAdmin() || (signedIn() && request.auth.uid == userId);
     }
   }
 }

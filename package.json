@@ -10,9 +10,11 @@
     "preview": "vite preview",
     "test:routes": "node --test tests/protectedRoutes.test.mjs",
     "test:errors": "node --test tests/auth-errors.test.mjs",
+    "test:customer": "node --test tests/customer-domain.test.mjs",
     "test:admin": "node --test tests/admin-authorization.test.mjs",
     "test:auth": "npx -y firebase-tools@14.19.1 emulators:exec --only auth --project demo-pride-electronics \"node --test tests/firebase-auth.test.mjs\"",
-    "test:rules": "npx -y firebase-tools@14.19.1 emulators:exec --only firestore --project demo-pride-electronics \"node --test tests/firestore.rules.test.mjs\""
+    "test:rules": "npx -y firebase-tools@14.19.1 emulators:exec --only firestore --project demo-pride-electronics \"node --test tests/firestore.rules.test.mjs\"",
+    "test:storage": "npx -y firebase-tools@14.19.1 emulators:exec --only storage --project demo-pride-electronics \"node --test tests/storage.rules.test.mjs\""
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -34,6 +34,9 @@ import {
 import { useAddressEntryAssist } from '../../hooks/useAddressEntryAssist'
 
 const createPaymentReceipt = () => `pride_${Date.now()}`
+const createCheckoutRequestId = () =>
+  globalThis.crypto?.randomUUID?.() ||
+  `checkout_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`
 
 const createEstimatedDeliveryDate = (days) => {
   const date = new Date()
@@ -70,6 +73,8 @@ const razorpayMethodFor = (payment) => {
 }
 
 export default function CheckoutPage({ items = [], initialCouponCode = '', coupons = [], savedAddresses = [], savedPayments = [], user, onSaveAddress, onBack, onPlaceOrder, shippingSettings = initialShippingSettings, taxSettings = initialInvoiceSettings.tax, paymentSettings = initialAdminSettings.payment, storeName = initialAdminSettings.store.name }) {
+  const checkoutRequestId = useRef(createCheckoutRequestId())
+  const paymentInFlight = useRef(false)
   const defaultAddress = savedAddresses.find((address) => address.isDefault) || savedAddresses[0]
   const defaultPayment = savedPayments.find((payment) => payment.isDefault) || savedPayments[0]
   const onlinePaymentEnabled = paymentSettings.razorpayEnabled && [
@@ -143,10 +148,12 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
   ]
   const selectedDelivery =
     deliveryOptions.find((option) => option.id === deliveryId) || deliveryOptions[0]
-  const checkoutTotal = Math.max(
-    0,
-    pricing.total - pricing.shipping + selectedDelivery.charge,
-  )
+  const checkoutTotal = Math.round(
+    Math.max(
+      0,
+      pricing.total - pricing.shipping + selectedDelivery.charge,
+    ) * 100,
+  ) / 100
   const hasUnavailableItems = items.some(
     ({ product, quantity }) =>
       Number(product.stock) <= 0 || quantity > Number(product.stock),
@@ -217,6 +224,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
 
   const submit = async (event) => {
     event.preventDefault()
+    if (paymentInFlight.current) return
     setPaymentError('')
     if (!usingSavedAddress) {
       setPaymentError('Select or save a delivery address before placing the order.')
@@ -235,7 +243,9 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
       return
     }
     const checkoutDetails = {
+      requestId: checkoutRequestId.current,
       address: usingSavedAddress ? selectedAddress : null,
+      billingAddress: usingSavedAddress ? selectedAddress : null,
       payment: paymentMode === 'cod'
         ? { type: 'Cash on Delivery' }
         : usingSavedPayment ? selectedPayment : null,
@@ -243,6 +253,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
       shipping: selectedDelivery.charge,
       tax: pricing.tax,
       total: checkoutTotal,
+      expectedTotalPaise: Math.round(checkoutTotal * 100),
       couponCode: pricing.coupon.status === 'applied' ? appliedCoupon : '',
       delivery: {
         ...selectedDelivery,
@@ -254,6 +265,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
               ),
       },
     }
+    paymentInFlight.current = true
     setPaying(true)
 
     if (paymentMode === 'cod') {
@@ -261,6 +273,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
         await onPlaceOrder({ ...checkoutDetails, cod: true })
       } catch (error) {
         setPaymentError(error.message || 'Unable to place the order.')
+        paymentInFlight.current = false
         setPaying(false)
       }
       return
@@ -270,10 +283,24 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
       const loaded = await loadRazorpayCheckout()
       if (!loaded) throw new Error('Unable to load Razorpay Checkout. Check your connection and try again.')
 
-      const { keyId, order } = await postRazorpayApi('orders', {
-        amount: Math.round(checkoutTotal * 100),
+      const { keyId, order, quote } = await postRazorpayApi('orders', {
+        requestId: checkoutRequestId.current,
+        items: items.map(({ product, quantity }) => ({
+          productId: product.id,
+          quantity,
+        })),
+        couponCode: pricing.coupon.status === 'applied' ? appliedCoupon : '',
+        deliveryId: selectedDelivery.id,
+        deliveryDate: checkoutDetails.delivery.estimatedDate,
+        shippingAddress: checkoutDetails.address,
+        billingAddress: checkoutDetails.billingAddress,
         receipt: createPaymentReceipt(),
       })
+      if (Number(quote?.totalPaise) !== Math.round(checkoutTotal * 100)) {
+        throw new Error(
+          'Your cart total changed while checking out. Review the updated cart and try again.',
+        )
+      }
 
       const allowedMethods = [
         paymentSettings.upiEnabled && 'upi',
@@ -307,6 +334,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
           escape: true,
           ondismiss: () => {
             setPaymentError('Payment was cancelled. Your order was not placed.')
+            paymentInFlight.current = false
             setPaying(false)
           },
         },
@@ -325,18 +353,23 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
             })
           } catch (error) {
             setPaymentError(error.message)
+            paymentInFlight.current = false
             setPaying(false)
           }
         },
       })
 
-      razorpay.on('payment.failed', (response) => {
-        setPaymentError(response.error?.description || 'The test payment failed. Please try again.')
+      razorpay.on('payment.failed', () => {
+        setPaymentError(
+          'Payment failed. No order was placed. Please try again or use another method.',
+        )
+        paymentInFlight.current = false
         setPaying(false)
       })
       razorpay.open()
     } catch (error) {
       setPaymentError(error.message)
+      paymentInFlight.current = false
       setPaying(false)
     }
   }

@@ -33,6 +33,11 @@ import {
 import { sortCatalogProducts } from './utils/catalog'
 import { normalizeAddress } from './utils/address'
 import {
+  emptyAccountState,
+  mergeInitialGuestAccount,
+  normalizeAccountState,
+} from './utils/accountState'
+import {
   CHECKOUT_PATH,
   getProtectedPathForSection,
   getProtectedRoute,
@@ -130,36 +135,8 @@ function getSessionItems(key, fallback) {
   }
 }
 
-function mergeUserOrders(localOrders, sharedOrders, user) {
-  if (!sharedOrders.length) return localOrders
-  const sharedById = new Map(
-    sharedOrders.map((order) => [String(order.id), order]),
-  )
-  const localIds = new Set(localOrders.map((order) => String(order.id)))
-  const syncedOrders = localOrders.map((order) => {
-    const sharedOrder = sharedById.get(String(order.id))
-    return sharedOrder ? { ...order, ...sharedOrder } : order
-  })
-  if (!user) return syncedOrders
-
-  const userEmail = String(user.email || '').trim().toLowerCase()
-  const userName = String(user.name || '').trim().toLowerCase()
-  const ownedOrders = sharedOrders.filter((order) => {
-    if (localIds.has(String(order.id))) return false
-    const orderEmail = String(order.email || '').trim().toLowerCase()
-    const orderCustomer = String(order.customer || '').trim().toLowerCase()
-    return (
-      (userEmail && orderEmail === userEmail) ||
-      (!orderEmail && userName && orderCustomer === userName)
-    )
-  })
-  return [...ownedOrders, ...syncedOrders]
-}
-
 export default function UserApp({
   products = [],
-  orders: sharedOrders = [],
-  returns: sharedReturnRequests = [],
   coupons = [],
   marketingSettings,
   shippingSettings,
@@ -211,6 +188,7 @@ export default function UserApp({
   const accountHydrated = useRef(false)
   const accountSaveTimer = useRef(null)
   const accountSnapshot = useRef('')
+  const accountStateRef = useRef(emptyAccountState())
   const cartReturnSection = useRef(null)
   const cartHistoryActive = useRef(false)
   const productReturnSection = useRef(null)
@@ -231,6 +209,9 @@ export default function UserApp({
     accountHydrated.current = false
     accountSnapshot.current = ''
     clearTimeout(accountSaveTimer.current)
+    cartPersistenceRef.current = emptyAccountState()
+    likedIdsRef.current = []
+    accountStateRef.current = emptyAccountState()
     activeUserUid.current = null
     sessionStorage.removeItem(ORDER_SUCCESS_SESSION_KEY)
     setOrders([])
@@ -250,11 +231,8 @@ export default function UserApp({
     hydrateCart({})
     setUser(null)
   }, [hydrateCart])
-  const orders = useMemo(
-    () => mergeUserOrders(localOrders, sharedOrders, user),
-    [localOrders, sharedOrders, user],
-  )
-  const returnRequests = user ? userReturns : sharedReturnRequests
+  const orders = localOrders
+  const returnRequests = userReturns
   const customerEmail = user?.email || ''
   const customerCoupons = useMemo(
     () =>
@@ -270,7 +248,13 @@ export default function UserApp({
   useEffect(() => {
     cartPersistenceRef.current = cartPersistence
     likedIdsRef.current = likedIds
-  }, [cartPersistence, likedIds])
+    accountStateRef.current = normalizeAccountState({
+      wishlistIds: likedIds,
+      addresses: savedAddresses,
+      paymentMethods: savedPayments,
+      ...cartPersistence,
+    })
+  }, [cartPersistence, likedIds, savedAddresses, savedPayments])
 
   useEffect(() => {
     const handleHistoryBack = () => {
@@ -512,8 +496,8 @@ export default function UserApp({
       return undefined
     }
 
-    const handleError = (error) => {
-      setToast(error.message || 'Unable to load your Firebase account data.')
+    const handleError = () => {
+      setToast('Unable to load your account data. Check your connection and try again.')
       clearTimeout(toastTimer.current)
       toastTimer.current = setTimeout(() => setToast(''), 4200)
     }
@@ -521,35 +505,14 @@ export default function UserApp({
       subscribeToUserAccount(
         user.uid,
         (account) => {
-          const guestCart = cartPersistenceRef.current
-          const remoteCart = account.cartItems || []
-          const cartByProduct = new Map(
-            [...remoteCart, ...(guestCart.cartItems || [])].map((item) => [
-              String(item.productId),
-              item,
-            ]),
-          )
-          const mergedCartItems = [...cartByProduct.values()]
-          const savedProductIds = new Set(
-            [...(account.savedCartItems || []), ...(guestCart.savedCartItems || [])]
-              .map((item) => item.productId || item)
-              .filter((productId) => !cartByProduct.has(String(productId)))
-              .map(String),
-          )
-          const nextAccount = {
-            wishlistIds: [...new Set([...(account.wishlistIds || []), ...likedIdsRef.current])],
-            addresses: (account.addresses || []).map(normalizeAddress),
-            paymentMethods: account.paymentMethods || [],
-            cartItems: mergedCartItems,
-            savedCartItems: [...savedProductIds].map((productId) => ({ productId })),
-          }
-          accountSnapshot.current = JSON.stringify({
-            wishlistIds: account.wishlistIds || [],
-            addresses: (account.addresses || []).map(normalizeAddress),
-            paymentMethods: account.paymentMethods || [],
-            cartItems: remoteCart,
-            savedCartItems: account.savedCartItems || [],
-          })
+          const remoteAccount = normalizeAccountState(account)
+          const nextAccount = accountHydrated.current
+            ? remoteAccount
+            : mergeInitialGuestAccount(remoteAccount, {
+                wishlistIds: likedIdsRef.current,
+                ...cartPersistenceRef.current,
+              })
+          accountSnapshot.current = JSON.stringify(remoteAccount)
           setLikedIds(nextAccount.wishlistIds)
           setSavedAddresses(nextAccount.addresses)
           setSavedPayments(nextAccount.paymentMethods)
@@ -597,7 +560,7 @@ export default function UserApp({
     clearTimeout(accountSaveTimer.current)
     accountSaveTimer.current = setTimeout(() => {
       void saveUserAccount(user.uid, account).catch((error) => {
-        setToast(error.message || 'Unable to save your account changes.')
+        setToast(error.message)
       })
     }, 350)
     return () => clearTimeout(accountSaveTimer.current)
@@ -1053,10 +1016,7 @@ export default function UserApp({
   const handleUpdateUser = async (updatedUser) => {
     try {
       const savedUser = await saveUserProfile(updatedUser)
-      const nextUser = {
-        ...savedUser,
-        photo: updatedUser.photo || savedUser.photo,
-      }
+      const nextUser = savedUser
       setUser(nextUser)
       onCustomerAuthenticatedRef.current?.(nextUser)
       notify(
@@ -1168,6 +1128,13 @@ export default function UserApp({
       cartHistoryActive.current = false
     }
     try {
+      clearTimeout(accountSaveTimer.current)
+      if (user?.uid && accountHydrated.current) {
+        await Promise.race([
+          saveUserAccount(user.uid, accountStateRef.current).catch(() => undefined),
+          new Promise((resolve) => window.setTimeout(resolve, 800)),
+        ])
+      }
       await signOutUser()
       if ([CHECKOUT_HASH, ORDER_SUCCESS_HASH].includes(window.location.hash)) {
         window.history.replaceState(
@@ -1260,7 +1227,8 @@ export default function UserApp({
       ? `${checkoutDetails.payment.type} via ${gatewayLabel}`
       : gatewayLabel
     const order = {
-      id: `${adminSettings.store.orderPrefix || 'ORD'}-${Math.floor(1000 + Math.random() * 9000)}`,
+      clientRequestId: checkoutDetails.requestId,
+      expectedTotalPaise: checkoutDetails.expectedTotalPaise,
       customer: user?.name || 'Pride customer',
       email: user?.email || '',
       date: new Date().toISOString().slice(0, 10),
@@ -1290,6 +1258,9 @@ export default function UserApp({
         ? new Date(verifiedPayment.createdAt * 1000).toISOString()
         : new Date().toISOString(),
       shippingAddress: checkoutDetails.address || null,
+      billingAddress:
+        checkoutDetails.billingAddress || checkoutDetails.address || null,
+      deliveryId: checkoutDetails.delivery?.id || 'standard',
       paymentMethod: checkoutDetails.cod
         ? 'Cash on Delivery'
         : formatVerifiedPaymentMethod(

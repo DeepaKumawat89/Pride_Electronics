@@ -38,10 +38,23 @@ export async function postRazorpayApi(path, payload) {
     }
     return data
   } catch (error) {
+    const safeBackendCodes = new Set([
+      'functions/already-exists',
+      'functions/failed-precondition',
+      'functions/invalid-argument',
+      'functions/permission-denied',
+      'functions/resource-exhausted',
+      'app/payment-error',
+    ])
+    const message = error.code === 'functions/deadline-exceeded'
+      ? 'The payment request timed out. Please try again.'
+      : error.code === 'functions/unavailable'
+        ? 'The payment service is temporarily unavailable. Check your connection and try again.'
+        : safeBackendCodes.has(error.code)
+          ? error.message
+          : 'The payment request could not be completed. Please try again.'
     throw new Error(
-      error.code === 'functions/deadline-exceeded'
-        ? 'The payment request timed out. Please try again.'
-        : error.message || 'Razorpay request failed. Please try again.',
+      message,
       { cause: error },
     )
   }

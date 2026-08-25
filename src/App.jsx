@@ -521,7 +521,7 @@ function App() {
     setCouponsList((current) =>
       current.map((item) => (item.id === coupon.id ? coupon : item)),
     )
-    void saveRecord('coupons', coupon, { merge: true }).catch((error) =>
+    void saveRecord('coupons', coupon).catch((error) =>
       setProductsError(error.message || 'Unable to update the coupon.'),
     )
   }
@@ -680,8 +680,6 @@ function App() {
       {activePortal === 'user' ? (
         <UserApp
           products={storefrontProducts}
-          orders={ordersList}
-          returns={returnsList}
           coupons={couponsList}
           marketingSettings={marketingSettings}
           shippingSettings={shippingSettings}
