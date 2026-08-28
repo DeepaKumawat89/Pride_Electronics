@@ -7,6 +7,21 @@ const normalize = (value) => String(value || '').trim().toLowerCase()
 const roundMoney = (value) =>
   Math.round((Number(value) + Number.EPSILON) * 100) / 100
 
+export const toRazorpayAmount = (amountInRupees) =>
+  Math.round(Number(amountInRupees) * 100)
+
+export const paymentAmountMatchesCheckout = (
+  checkoutTotal,
+  orderAmount,
+  quoteTotalPaise,
+) => {
+  const serverAmountPaise = Number(quoteTotalPaise ?? orderAmount)
+  return (
+    Number.isInteger(serverAmountPaise) &&
+    serverAmountPaise === toRazorpayAmount(checkoutTotal)
+  )
+}
+
 const appliesToProduct = (coupon, product) => {
   const products = coupon.applicableProducts || []
   const categories = coupon.applicableCategories || []

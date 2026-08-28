@@ -50,6 +50,8 @@ import {
   signOutUser,
 } from '../firebase/userAuth'
 import {
+  removeUserCartItem,
+  removeUserCartItems,
   saveUserAccount,
   subscribeToUserAccount,
   subscribeToUserOrders,
@@ -1169,6 +1171,36 @@ export default function UserApp({
     navigateToProtectedPath('/cart')
   }
 
+  const handleRemoveCartItem = (productId) => {
+    const previousAccount = accountStateRef.current
+    const previousCart = cartPersistenceRef.current
+    const currentCart = cartPersistenceRef.current
+    const nextCart = {
+      ...currentCart,
+      cartItems: (currentCart.cartItems || []).filter(
+        (item) => String(item.productId) !== String(productId),
+      ),
+    }
+    const nextAccount = normalizeAccountState({
+      ...accountStateRef.current,
+      ...nextCart,
+    })
+    clearTimeout(accountSaveTimer.current)
+    cartPersistenceRef.current = nextCart
+    accountStateRef.current = nextAccount
+    accountSnapshot.current = JSON.stringify(nextAccount)
+    cart.remove(productId)
+    if (user?.uid) {
+      void removeUserCartItem(productId).catch((error) => {
+        cartPersistenceRef.current = previousCart
+        accountStateRef.current = previousAccount
+        accountSnapshot.current = JSON.stringify(previousAccount)
+        hydrateCart(previousAccount)
+        notify(error.message)
+      })
+    }
+  }
+
   const handleAccountSectionChange = (nextSection) => {
     setOrderToViewId(null)
     const path = getProtectedPathForSection(nextSection)
@@ -1309,9 +1341,17 @@ export default function UserApp({
         [savedOrder.couponCode]: Number(current[savedOrder.couponCode] || 0) + 1,
       }))
     }
-    cart.clear()
-    setCheckoutOpen(false)
-    checkoutHistoryActive.current = false
+    const clearedAccount = normalizeAccountState({
+      ...accountStateRef.current,
+      cartItems: [],
+    })
+    clearTimeout(accountSaveTimer.current)
+    cartPersistenceRef.current = {
+      ...cartPersistenceRef.current,
+      cartItems: [],
+    }
+    accountStateRef.current = clearedAccount
+    accountSnapshot.current = JSON.stringify(clearedAccount)
     sessionStorage.setItem(ORDER_SUCCESS_SESSION_KEY, JSON.stringify(savedOrder))
     orderSuccessHistoryActive.current = true
     window.history.replaceState(
@@ -1320,6 +1360,16 @@ export default function UserApp({
       `/${ORDER_SUCCESS_HASH}`,
     )
     setSuccessfulOrder(savedOrder)
+    setCheckoutOpen(false)
+    checkoutHistoryActive.current = false
+    cart.clear()
+    if (user?.uid) {
+      void removeUserCartItems(
+        savedOrder.items.map((item) => item.productId),
+      ).catch((error) => {
+        notify(error.message)
+      })
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' })
     notify(`Order ${savedOrder.id} placed successfully`)
     return savedOrder
@@ -1599,7 +1649,7 @@ export default function UserApp({
           onViewProduct={navigateToProduct}
           onAddToCart={handleAdd}
           onChangeQuantity={cart.changeQuantity}
-          onRemoveCartItem={cart.remove}
+          onRemoveCartItem={handleRemoveCartItem}
           onSaveCartItem={cart.saveForLater}
           onMoveSavedItemToCart={cart.moveToCart}
           onRemoveSavedItem={cart.removeSaved}

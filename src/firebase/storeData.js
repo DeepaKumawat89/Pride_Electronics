@@ -11,6 +11,7 @@ import { httpsCallable } from 'firebase/functions'
 import { db, userDb, userFunctions } from './firebase'
 
 const accountStateGateway = httpsCallable(userFunctions, 'updateUserProfile')
+const removeCartItemsGateway = httpsCallable(userFunctions, 'removeCartItems')
 
 const withoutId = (value) => {
   const serialized = JSON.parse(JSON.stringify(value || {}))
@@ -143,3 +144,30 @@ export const saveUserAccount = async (_uid, values) => {
     )
   }
 }
+
+export const removeUserCartItems = async (productIds) => {
+  try {
+    const result = await removeCartItemsGateway({ productIds })
+    return result.data?.cartItems || []
+  } catch (error) {
+    const messages = {
+      'functions/invalid-argument': 'This cart item is invalid.',
+      'functions/unauthenticated': 'Please sign in again to update your cart.',
+      'functions/failed-precondition':
+        'Your customer profile is unavailable. Sign in again and retry.',
+      'functions/permission-denied':
+        'Your account does not permit this change. Contact support if this is unexpected.',
+      'functions/unavailable':
+        'Unable to update your cart. Check your connection and try again.',
+      'functions/deadline-exceeded':
+        'Updating your cart took too long. Please try again.',
+    }
+    throw new Error(
+      messages[error?.code] || 'Unable to remove this item. Please try again.',
+      { cause: error },
+    )
+  }
+}
+
+export const removeUserCartItem = (productId) =>
+  removeUserCartItems([productId])

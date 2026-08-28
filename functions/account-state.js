@@ -148,4 +148,15 @@ function sanitizeAccountState(value = {}) {
   return { wishlistIds, addresses, paymentMethods, cartItems, savedCartItems }
 }
 
-module.exports = { limits, sanitizeAccountState }
+function removePurchasedCartItems(cartItems, purchasedItems) {
+  const purchasedProductIds = new Set(
+    (Array.isArray(purchasedItems) ? purchasedItems : []).map((item) =>
+      String(item?.productId),
+    ),
+  )
+  return (Array.isArray(cartItems) ? cartItems : []).filter(
+    (item) => !purchasedProductIds.has(String(item?.productId)),
+  )
+}
+
+module.exports = { limits, removePurchasedCartItems, sanitizeAccountState }

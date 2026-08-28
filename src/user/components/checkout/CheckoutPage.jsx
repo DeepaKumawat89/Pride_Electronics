@@ -2,20 +2,21 @@ import { useRef, useState } from 'react'
 import {
   ArrowLeft,
   CheckCircle2,
-  CreditCard,
   LockKeyhole,
   MapPin,
   PackageCheck,
   Pencil,
-  QrCode,
   ShieldCheck,
   ShoppingBag,
   Tag,
   Truck,
-  WalletCards,
 } from 'lucide-react'
 import { formatCurrency, parsePrice } from '../../utils/currency'
-import { calculateCartPricing } from '../../utils/cart'
+import {
+  calculateCartPricing,
+  paymentAmountMatchesCheckout,
+  toRazorpayAmount,
+} from '../../utils/cart'
 import {
   getPinDeliveryAvailability,
   normalizeAddress,
@@ -84,20 +85,20 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
     paymentSettings.walletsEnabled,
   ].some(Boolean)
   const [addressId, setAddressId] = useState(defaultAddress?.id || '')
-  const [paymentId, setPaymentId] = useState(defaultPayment?.id || '')
   const [useManualAddress, setUseManualAddress] = useState(false)
   const [addressForm, setAddressForm] = useState(() => createCheckoutAddress(user))
   const [addressError, setAddressError] = useState('')
-  const [useManualPayment, setUseManualPayment] = useState(false)
   const [coupon, setCoupon] = useState(initialCouponCode)
   const [appliedCoupon, setAppliedCoupon] = useState(initialCouponCode)
   const [couponAttempted, setCouponAttempted] = useState(Boolean(initialCouponCode))
   const [paymentError, setPaymentError] = useState('')
   const [paying, setPaying] = useState(false)
   const [deliveryId, setDeliveryId] = useState('standard')
-  const [paymentMode, setPaymentMode] = useState(
-    onlinePaymentEnabled ? 'online' : paymentSettings.codEnabled ? 'cod' : '',
-  )
+  const paymentMode = onlinePaymentEnabled
+    ? 'online'
+    : paymentSettings.codEnabled
+      ? 'cod'
+      : ''
   const addressAssist = useAddressEntryAssist(
     addressForm,
     setAddressForm,
@@ -105,9 +106,9 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
   )
 
   const selectedAddress = savedAddresses.find((address) => address.id === addressId) || defaultAddress
-  const selectedPayment = savedPayments.find((payment) => payment.id === paymentId) || defaultPayment
+  const selectedPayment = defaultPayment
   const usingSavedAddress = !useManualAddress && Boolean(selectedAddress)
-  const usingSavedPayment = paymentMode === 'online' && !useManualPayment && Boolean(selectedPayment)
+  const usingSavedPayment = paymentMode === 'online' && Boolean(selectedPayment)
   const pricing = calculateCartPricing(
     items,
     appliedCoupon,
@@ -284,6 +285,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
       if (!loaded) throw new Error('Unable to load Razorpay Checkout. Check your connection and try again.')
 
       const { keyId, order, quote } = await postRazorpayApi('orders', {
+        amount: toRazorpayAmount(checkoutTotal),
         requestId: checkoutRequestId.current,
         items: items.map(({ product, quantity }) => ({
           productId: product.id,
@@ -296,7 +298,11 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
         billingAddress: checkoutDetails.billingAddress,
         receipt: createPaymentReceipt(),
       })
-      if (Number(quote?.totalPaise) !== Math.round(checkoutTotal * 100)) {
+      if (!paymentAmountMatchesCheckout(
+        checkoutTotal,
+        order.amount,
+        quote?.totalPaise,
+      )) {
         throw new Error(
           'Your cart total changed while checking out. Review the updated cart and try again.',
         )
@@ -456,34 +462,10 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
               </div>
             </section>
 
-            <section className="rounded-[28px] bg-white p-5 shadow-sm sm:p-7">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-[#ffe9e2] text-[#d84220]"><WalletCards size={18} /></span><div><p className="text-[9px] font-extrabold uppercase tracking-[0.15em] text-[#ff5c35]">Step 03</p><h2 className="text-lg font-extrabold text-slate-950">Payment method</h2></div></div>
-                {paymentMode === 'online' && !!savedPayments.length && <button type="button" onClick={() => setUseManualPayment((current) => !current)} className="rounded-full bg-[#f2f7f2] px-3 py-2 text-[9px] font-extrabold text-[#397a4a] transition hover:bg-[#397a4a] hover:text-white">{usingSavedPayment ? 'Use another method' : 'Choose saved method'}</button>}
-              </div>
-
-              {onlinePaymentEnabled && paymentSettings.codEnabled && <div className="mt-5 flex gap-2"><button type="button" onClick={() => setPaymentMode('online')} className={`rounded-full px-4 py-2 text-[9px] font-extrabold ${paymentMode === 'online' ? 'bg-[#253329] text-white' : 'border border-slate-200 text-slate-500'}`}>Online payment</button><button type="button" onClick={() => setPaymentMode('cod')} className={`rounded-full px-4 py-2 text-[9px] font-extrabold ${paymentMode === 'cod' ? 'bg-[#253329] text-white' : 'border border-slate-200 text-slate-500'}`}>Cash on delivery</button></div>}
-
-              {paymentMode === 'online' && (usingSavedPayment ? (
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  {savedPayments.map((payment) => (
-                    <label key={payment.id} className={`cursor-pointer rounded-[22px] border-2 p-4 transition ${selectedPayment?.id === payment.id ? 'border-[#253329] bg-[#f6f8f5]' : 'border-slate-100 bg-[#fafbfa] hover:border-slate-300'}`}>
-                      <input type="radio" name="checkout-payment" value={payment.id} checked={selectedPayment?.id === payment.id} onChange={() => setPaymentId(payment.id)} className="sr-only" />
-                      <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-white text-[#536a50] shadow-sm">{payment.type === 'UPI' ? <span className="text-[9px] font-extrabold">UPI</span> : <CreditCard size={17} />}</span><span className="min-w-0 flex-1"><strong className="block text-[11px] text-slate-900">{payment.type}</strong><span className="mt-0.5 block truncate text-[9px] text-slate-400">{payment.type === 'UPI' ? payment.upiId : `•••• ${payment.last4} · ${payment.expiry}`}</span></span>{selectedPayment?.id === payment.id && <CheckCircle2 size={17} className="shrink-0 text-[#397a4a]" />}</div>
-                    </label>
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-5 rounded-[22px] border-2 border-[#397a4a] bg-[#f5faf5] p-4"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-white text-[#397a4a] shadow-sm"><CreditCard size={17} /></span><div className="flex-1"><strong className="text-xs text-slate-900">Card, UPI or Netbanking</strong><p className="mt-1 text-[9px] leading-4 text-slate-500">Select your preferred method on the secure payment step.</p></div><CheckCircle2 size={17} className="text-[#397a4a]" /></div></div>
-              ))}
-              {paymentMode === 'cod' && <div className="mt-5 rounded-[22px] border-2 border-[#397a4a] bg-[#f5faf5] p-4"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-white text-[#397a4a] shadow-sm"><WalletCards size={17} /></span><div className="flex-1"><strong className="text-xs text-slate-900">Cash on Delivery</strong><p className="mt-1 text-[9px] leading-4 text-slate-500">Pay when your order is delivered.</p></div><CheckCircle2 size={17} className="text-[#397a4a]" /></div></div>}
-              {paymentMode === 'online' && <div className="mt-4 flex items-start gap-3 rounded-[20px] border border-[#dcebdd] bg-[#f4f8f4] p-4"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white text-[#397a4a] shadow-sm"><QrCode size={16} /></span><div><p className="text-[10px] font-extrabold text-slate-800">UPI opens first in Razorpay</p><p className="mt-1 text-[9px] leading-5 text-slate-500">Use UPI QR on desktop or a supported UPI app on mobile. Manual UPI ID entry is no longer offered under the current UPI flow.</p></div></div>}
-              <p className="mt-4 flex items-center gap-2 text-[9px] font-semibold text-slate-400"><LockKeyhole size={12} className="text-[#397a4a]" /> Payment information is encrypted and securely processed.</p>
-            </section>
           </div>
 
           <aside className="h-fit rounded-[28px] bg-white p-5 shadow-sm lg:sticky lg:top-5 sm:p-6">
-            <div className="flex items-center justify-between"><div><p className="text-[9px] font-extrabold uppercase tracking-[0.15em] text-[#ff5c35]">Step 04 · Review</p><h2 className="mt-1 text-lg font-extrabold text-slate-950">Order summary</h2></div><span className="grid size-10 place-items-center rounded-2xl bg-[#e4f1e7] text-[#397a4a]"><ShoppingBag size={18} /></span></div>
+            <div className="flex items-center justify-between"><div><p className="text-[9px] font-extrabold uppercase tracking-[0.15em] text-[#ff5c35]">Step 03 · Review</p><h2 className="mt-1 text-lg font-extrabold text-slate-950">Order summary</h2></div><span className="grid size-10 place-items-center rounded-2xl bg-[#e4f1e7] text-[#397a4a]"><ShoppingBag size={18} /></span></div>
 
             <div className="mt-5 space-y-3 rounded-[20px] bg-[#f7f8f5] p-4 text-[9px] leading-5 text-slate-500">
               <div><strong className="block text-[9px] uppercase tracking-wider text-slate-800">Deliver to</strong>{usingSavedAddress ? `${selectedAddress.fullName}, ${selectedAddress.line1}, ${selectedAddress.city} ${selectedAddress.pincode}` : 'Save or select a delivery address'}</div>

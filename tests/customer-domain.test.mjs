@@ -6,7 +6,11 @@ import {
   mergeInitialGuestAccount,
   normalizeAccountState,
 } from '../src/user/utils/accountState.js'
-import { calculateCartPricing } from '../src/user/utils/cart.js'
+import {
+  calculateCartPricing,
+  paymentAmountMatchesCheckout,
+  toRazorpayAmount,
+} from '../src/user/utils/cart.js'
 
 const require = createRequire(import.meta.url)
 const {
@@ -14,7 +18,10 @@ const {
   itemSignature,
   normalizeRequestedItems,
 } = require('../functions/checkout.js')
-const { sanitizeAccountState } = require('../functions/account-state.js')
+const {
+  removePurchasedCartItems,
+  sanitizeAccountState,
+} = require('../functions/account-state.js')
 
 const product = {
   id: 'product-1',
@@ -152,6 +159,14 @@ test('browser and backend totals use the same paise rounding', () => {
   assert.equal(Math.round(browser.total * 100), backend.totalPaise)
 })
 
+test('checkout accepts old and new Razorpay quote response shapes', () => {
+  assert.equal(toRazorpayAmount(18000), 1800000)
+  assert.equal(toRazorpayAmount(199.99), 19999)
+  assert.equal(paymentAmountMatchesCheckout(18000, 1800000, undefined), true)
+  assert.equal(paymentAmountMatchesCheckout(18000, 1800000, 1800000), true)
+  assert.equal(paymentAmountMatchesCheckout(18000, 1800000, 1800100), false)
+})
+
 test('account-state backend keeps only bounded, masked user-owned data', () => {
   const account = sanitizeAccountState({
     wishlistIds: ['product-1', 'product-1'],
@@ -254,4 +269,21 @@ test('account state cannot persist multiple default addresses', () => {
   })
   assert.equal(account.addresses.filter((address) => address.isDefault).length, 1)
   assert.equal(account.addresses[0].isDefault, true)
+})
+
+test('successful checkout removes only purchased products from the persisted cart', () => {
+  assert.deepEqual(
+    removePurchasedCartItems(
+      [
+        { productId: 'purchased-1', quantity: 2 },
+        { productId: 'keep-1', quantity: 1 },
+        { productId: 'purchased-2', quantity: 3 },
+      ],
+      [
+        { productId: 'purchased-1', qty: 2 },
+        { productId: 'purchased-2', qty: 3 },
+      ],
+    ),
+    [{ productId: 'keep-1', quantity: 1 }],
+  )
 })

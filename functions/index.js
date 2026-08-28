@@ -10,7 +10,10 @@ const {
   itemSignature,
   normalizeRequestedItems,
 } = require('./checkout')
-const { sanitizeAccountState } = require('./account-state')
+const {
+  removePurchasedCartItems,
+  sanitizeAccountState,
+} = require('./account-state')
 
 initializeApp()
 
@@ -347,6 +350,9 @@ exports.updateUserProfile = onCall(paymentCallableOptions, async (request) => {
   if (operation === 'getCouponUsage') return getMyCouponUsageHandler(operationRequest)
   if (operation === 'saveAccountState') {
     return saveAccountStateHandler(operationRequest)
+  }
+  if (operation === 'removeCartItems') {
+    return removeCartItemsHandler(operationRequest)
   }
   if (operation === 'createReturn') return createReturnHandler(operationRequest)
   if (operation === 'cancelOrder') return cancelOrderHandler(operationRequest)
@@ -759,11 +765,18 @@ async function placeOrderHandler(request) {
     const invoiceSettingsReference = db.doc('settings/invoice')
     const shippingSettingsReference = db.doc('settings/shipping')
     const storefrontSettingsReference = db.doc('settings/storefront')
-    const [invoiceSettingsDocument, shippingSettingsDocument, storefrontSettingsDocument] =
+    const userReference = db.doc(`users/${uid}`)
+    const [
+      invoiceSettingsDocument,
+      shippingSettingsDocument,
+      storefrontSettingsDocument,
+      userDocument,
+    ] =
       await Promise.all([
         transaction.get(invoiceSettingsReference),
         transaction.get(shippingSettingsReference),
         transaction.get(storefrontSettingsReference),
+        transaction.get(userReference),
       ])
     const paymentConfiguration = storefrontSettingsDocument.data()?.payment || {}
     const isCashOnDelivery = /cash|cod/i.test(submittedOrder.paymentMethod || '')
@@ -1035,9 +1048,14 @@ async function placeOrderHandler(request) {
         updatedAt: now,
       })
     }
+    const remainingCartItems = removePurchasedCartItems(
+      userDocument.data()?.cartItems,
+      quote.items,
+    )
     transaction.set(
-      db.doc(`users/${uid}`),
+      userReference,
       {
+        cartItems: remainingCartItems,
         ordersCount: FieldValue.increment(1),
         totalSpentValue: FieldValue.increment(quote.total),
         lastOrderAt: now,
@@ -1084,6 +1102,43 @@ async function saveAccountStateHandler(request) {
 }
 
 exports.saveAccountState = onCall(callableOptions, saveAccountStateHandler)
+
+async function removeCartItemsHandler(request) {
+  const uid = requireUser(request)
+  const productIds = Array.isArray(request.data?.productIds)
+    ? request.data.productIds.map((productId) => String(productId || '').trim())
+    : []
+  if (
+    !productIds.length ||
+    productIds.length > 50 ||
+    productIds.some((productId) => !/^[a-zA-Z0-9_-]{1,100}$/.test(productId))
+  ) {
+    throw new HttpsError('invalid-argument', 'Select valid cart products.')
+  }
+  const userReference = db.doc(`users/${uid}`)
+  const cartItems = await db.runTransaction(async (transaction) => {
+    const userDocument = await transaction.get(userReference)
+    const userData = userDocument.data()
+    if (!userDocument.exists || userData?.uid !== uid || userData?.role !== 'customer') {
+      throw new HttpsError('failed-precondition', 'Your customer profile is unavailable.')
+    }
+    if (userData.status === 'Suspended') {
+      throw new HttpsError('permission-denied', 'This customer account is suspended.')
+    }
+    const remainingCartItems = removePurchasedCartItems(
+      userData.cartItems,
+      productIds.map((productId) => ({ productId })),
+    )
+    transaction.update(userReference, {
+      cartItems: remainingCartItems,
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+    return remainingCartItems
+  })
+  return { cartItems }
+}
+
+exports.removeCartItems = onCall(callableOptions, removeCartItemsHandler)
 
 async function getMyCouponUsageHandler(request) {
   const uid = requireUser(request)
