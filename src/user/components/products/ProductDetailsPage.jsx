@@ -30,6 +30,13 @@ import ProductCard from './ProductCard'
 import ProductReviews from './ProductReviews'
 import { initialShippingSettings } from '../../../data/shipping'
 import { initialInvoiceSettings } from '../../../data/invoice'
+import { getDisplaySpecifications } from '../../../utils/productSpecifications'
+import {
+  getProductVariants,
+  getProductAvailableStock,
+  getVariantAvailableStock,
+  productForVariant,
+} from '../../../utils/productVariants'
 
 function getSpecificationMeta(spec) {
   const value = spec.toLowerCase()
@@ -39,16 +46,42 @@ function getSpecificationMeta(spec) {
   return { title: 'Features & Compatibility', description: 'Design details, supported features, and everyday usability', icon: Settings2 }
 }
 
+function TechnicalSpecificationsSection({ specifications }) {
+  if (!specifications.length) return null
+
+  return (
+    <section className="mt-6 border-b border-slate-100 pb-6" aria-labelledby="technical-specifications-heading">
+      <h3 id="technical-specifications-heading" className="text-sm font-extrabold text-slate-900">Technical Specifications</h3>
+      <dl className="mt-4 grid gap-px overflow-hidden rounded-[22px] border border-[#dcebdd] bg-[#dcebdd] sm:grid-cols-2">
+        {specifications.map((specification, index) => (
+          <div key={`${specification.id}-${index}`} className="grid grid-cols-[minmax(100px,0.8fr)_minmax(0,1.2fr)] gap-3 bg-[#f8faf7] px-4 py-3 text-xs sm:px-5">
+            <dt className="font-semibold text-slate-400">{specification.label}</dt>
+            <dd className="min-w-0 break-words font-bold text-slate-700">{specification.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  )
+}
+
 export default function ProductDetailsPage({ product, relatedProducts = [], deliveryAddress, likedIds = [], reviews, onBack, onLike, onAdd, onBuyNow, onViewProduct, onViewAllReviews, shippingSettings = initialShippingSettings, taxSettings = initialInvoiceSettings.tax }) {
   const [activeImageIndex, setActiveImageIndex] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [expandedSpec, setExpandedSpec] = useState(null)
+  const [selectedVariantId, setSelectedVariantId] = useState('')
 
-  const images = product.images?.length ? product.images : [product.image]
+  const variants = getProductVariants(product)
+  const requiresVariantSelection = variants.length > 0
+  const selectedVariantProduct = productForVariant(product, selectedVariantId)
+  const displayProduct = selectedVariantProduct || product
+  const images = displayProduct.images?.length ? displayProduct.images : [displayProduct.image]
   const activeImage = images[activeImageIndex] || images[0]
-  const stock = Number(product.stock) || 0
+  const stock = selectedVariantProduct
+    ? getVariantAvailableStock(selectedVariantProduct.variantSnapshot)
+    : getProductAvailableStock(product)
   const liked = likedIds.includes(product.id)
-  const detailInformation = getProductDetailInformation(product)
+  const detailInformation = getProductDetailInformation(displayProduct)
+  const displaySpecifications = getDisplaySpecifications(displayProduct)
   const pinDeliveryAvailability = deliveryAddress
     ? getPinDeliveryAvailability(deliveryAddress.pincode, new Date(), shippingSettings)
     : null
@@ -73,7 +106,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
   }
 
   const handleShare = async () => {
-    const shareData = { title: product.name, text: product.description, url: window.location.href }
+    const shareData = { title: product.name, text: displayProduct.description, url: window.location.href }
     try {
       if (navigator.share) await navigator.share(shareData)
       else if (navigator.clipboard) await navigator.clipboard.writeText(window.location.href)
@@ -131,6 +164,26 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
               <h1 className="mt-3 text-3xl font-extrabold leading-[1.1] tracking-[-0.045em] text-slate-950 sm:text-4xl">{product.name}</h1>
               <p className="mt-3 text-sm leading-6 text-slate-600">{product.description}</p>
 
+              {requiresVariantSelection && (
+                <div className="mt-4">
+                  <p className="mb-2 text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">Select variant *</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {variants.map((variant) => {
+                      const available = getVariantAvailableStock(variant)
+                      const selected = String(selectedVariantId) === String(variant.id)
+                      const variantProduct = productForVariant(product, variant.id)
+                      return (
+                        <button key={variant.id} type="button" disabled={!available} onClick={() => { setSelectedVariantId(variant.id); setActiveImageIndex(0); setQuantity(1) }} className={`rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${selected ? 'border-[#397a4a] bg-[#eef6ef] shadow-sm' : 'border-slate-200 bg-white hover:border-[#9bcaa6]'}`}>
+                          <strong className="block text-[11px] text-slate-900">{variant.name}</strong>
+                          <span className="mt-1 block text-[9px] font-bold text-[#397a4a]">{formatCurrency(parsePrice(variantProduct?.price))} · {available} available</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {!selectedVariantProduct && <p className="mt-2 text-[9px] font-bold text-amber-700">Choose a variant before adding this product to your cart.</p>}
+                </div>
+              )}
+
               <div className="mt-4 flex items-center gap-2 text-[11px] font-bold text-slate-600">
                 <span className="flex items-center gap-0.5">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} className="fill-[#ffb000] text-[#ffb000]" />)}</span>
                 <strong className="text-slate-900">{product.rating}</strong>
@@ -138,9 +191,9 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
               </div>
 
               <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-y border-slate-100 py-3.5">
-                <strong className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">{formatCurrency(parsePrice(product.price))}</strong>
-                <span className="text-sm font-semibold text-slate-400 line-through">{formatCurrency(parsePrice(product.originalPrice))}</span>
-                <span className="rounded-full bg-[#e4f1e7] px-2.5 py-1 text-[10px] font-extrabold text-[#366643]">{product.discount}</span>
+                <strong className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">{formatCurrency(parsePrice(displayProduct.price))}</strong>
+                <span className="text-sm font-semibold text-slate-400 line-through">{formatCurrency(parsePrice(displayProduct.originalPrice))}</span>
+                {displayProduct.discount && <span className="rounded-full bg-[#e4f1e7] px-2.5 py-1 text-[10px] font-extrabold text-[#366643]">{displayProduct.discount}</span>}
                 <p className="w-full text-[10px] font-bold text-slate-400">{taxSettings.pricesIncludeTax ? 'Inclusive of all taxes' : 'Taxes calculated at checkout'}</p>
               </div>
 
@@ -159,10 +212,10 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
               </div>
 
               <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
-                <button type="button" disabled={!stock} onClick={() => onAdd(product, quantity)} className="flex h-12 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-xs font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-[52px]">
-                  <ShoppingBag size={17} /> Add to cart
+                <button type="button" disabled={!stock || (requiresVariantSelection && !selectedVariantProduct)} onClick={() => onAdd(displayProduct, quantity)} className="flex h-12 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-xs font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-[52px]">
+                  <ShoppingBag size={17} /> {requiresVariantSelection && !selectedVariantProduct ? 'Select a variant' : 'Add to cart'}
                 </button>
-                <button type="button" disabled={!stock} onClick={() => onBuyNow(product, quantity)} className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#397a4a] px-4 text-xs font-extrabold text-white transition hover:bg-[#2f663d] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-[52px]">
+                <button type="button" disabled={!stock || (requiresVariantSelection && !selectedVariantProduct)} onClick={() => onBuyNow(displayProduct, quantity)} className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#397a4a] px-4 text-xs font-extrabold text-white transition hover:bg-[#2f663d] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-[52px]">
                   <Zap size={17} fill="currentColor" /> Buy now
                 </button>
               </div>
@@ -218,8 +271,10 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
               </div>
             </section>
 
+            <TechnicalSpecificationsSection specifications={displaySpecifications} />
+
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              {(product.specs?.length ? product.specs : ['Premium quality construction', 'Designed for reliable everyday performance']).map((spec, index) => {
+              {(displayProduct.specs?.length ? displayProduct.specs : ['Premium quality construction', 'Designed for reliable everyday performance']).map((spec, index) => {
                 const meta = getSpecificationMeta(spec)
                 const Icon = meta.icon
                 const isExpanded = expandedSpec === index

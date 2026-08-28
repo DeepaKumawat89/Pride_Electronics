@@ -28,7 +28,7 @@ const appliesToProduct = (coupon, product) => {
 
 const itemSignature = (items) =>
   items
-    .map((item) => `${String(item.productId)}:${Number(item.qty || item.quantity)}`)
+    .map((item) => `${String(item.productId)}:${String(item.variantId || '')}:${Number(item.qty || item.quantity)}`)
     .join('|')
 
 function normalizeRequestedItems(items) {
@@ -40,20 +40,23 @@ function normalizeRequestedItems(items) {
   const productIds = new Set()
   return items.map((item) => {
     const productId = String(item?.productId || '').trim()
+    const variantId = String(item?.variantId || '').trim()
     const qty = Math.floor(Number(item?.qty || item?.quantity))
+    const itemKey = `${productId}::${variantId}`
     if (
       !/^[a-zA-Z0-9_-]{1,100}$/.test(productId) ||
+      (variantId && !/^[a-zA-Z0-9_-]{1,100}$/.test(variantId)) ||
       !Number.isInteger(qty) ||
       qty < 1 ||
       qty > 100 ||
-      productIds.has(productId)
+      productIds.has(itemKey)
     ) {
       const error = new Error('The order contains an invalid product.')
       error.code = 'invalid-items'
       throw error
     }
-    productIds.add(productId)
-    return { productId, qty }
+    productIds.add(itemKey)
+    return { productId, ...(variantId ? { variantId } : {}), qty }
   })
 }
 
@@ -77,23 +80,46 @@ function calculateOrderQuote({
       error.code = 'product-unavailable'
       throw error
     }
+    const variants = Array.isArray(product.variants) ? product.variants : []
+    const variant = variants.find(
+      (item) => String(item.id) === String(requested.variantId || ''),
+    )
+    if ((variants.length && !variant) || (!variants.length && requested.variantId)) {
+      const error = new Error('The selected product variant is no longer available.')
+      error.code = 'product-unavailable'
+      throw error
+    }
+    const inventory = variant || product
     const available = Math.max(
       0,
-      Number(product.stock || 0) - Number(product.reservedStock || 0),
+      Number(inventory.stock || 0) - Number(inventory.reservedStock || 0),
     )
     if (!Number.isInteger(qty) || qty < 1 || qty > 100 || available < qty) {
       const error = new Error('A product has insufficient stock.')
       error.code = 'insufficient-stock'
       throw error
     }
-    const price = money(product.price)
-    const unitPrice = money(product.originalPrice || product.price)
+    const variantListPrice = money(variant?.price)
+    const variantDiscountPrice = money(variant?.discountPrice)
+    const price = variant
+      ? variantDiscountPrice > 0 && variantDiscountPrice <= variantListPrice
+        ? variantDiscountPrice
+        : variantListPrice
+      : money(product.price)
+    const unitPrice = variant
+      ? variantListPrice || price
+      : money(product.originalPrice || product.price)
     return {
       productId: String(product.id),
-      sku: String(product.sku || `PE-${String(product.id).padStart(4, '0')}`).slice(0, 100),
+      ...(variant ? { variantId: String(variant.id) } : {}),
+      sku: String(variant?.sku || product.sku || `PE-${String(product.id).padStart(4, '0')}`).slice(0, 100),
       productName: String(product.name || 'Product').slice(0, 200),
-      variant: String(product.variant || product.specification || '').slice(0, 200),
-      image: String(product.image || '').slice(0, 2000),
+      variant: String(variant?.name || product.variant || product.specification || '').slice(0, 200),
+      variantModelNumber: String(variant?.modelNumber || '').slice(0, 100),
+      variantSpecifications: Array.isArray(variant?.technicalSpecifications)
+        ? variant.technicalSpecifications.slice(0, 50)
+        : [],
+      image: String(variant?.images?.[0] || variant?.image || product.image || '').slice(0, 2000),
       category: String(product.category || '').slice(0, 100),
       qty,
       price,

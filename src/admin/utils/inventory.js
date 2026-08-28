@@ -22,8 +22,45 @@ const findProduct = (products, item) =>
       product.name === item.productName,
   )
 
+const cloneProduct = (product) => ({
+  ...product,
+  variants: Array.isArray(product.variants)
+    ? product.variants.map((variant) => ({ ...variant }))
+    : [],
+})
+
+const findVariant = (product, item) => {
+  if (!item.variantId) return null
+  return product.variants.find(
+    (variant) => String(variant.id) === String(item.variantId),
+  ) || null
+}
+
+const inventoryForItem = (product, item) => {
+  const variant = findVariant(product, item)
+  if (product.variants.length) return variant
+  return product
+}
+
+const availableInventory = (inventory) =>
+  Math.max(0, Number(inventory?.stock || 0) - Number(inventory?.reservedStock || 0))
+
+const syncVariantTotals = (product) => {
+  if (!product.variants.length) return product
+  product.stock = product.variants.reduce(
+    (total, variant) => total + Number(variant.stock || 0),
+    0,
+  )
+  product.reservedStock = product.variants.reduce(
+    (total, variant) => total + Number(variant.reservedStock || 0),
+    0,
+  )
+  return product
+}
+
 const historyEntry = ({
   product,
+  variant,
   action,
   quantity,
   stockBefore,
@@ -34,10 +71,11 @@ const historyEntry = ({
   note,
   timestamp,
 }) => ({
-  id: `${timestamp}-${product.id}-${action}-${reference || 'manual'}`,
+  id: `${timestamp}-${product.id}-${variant?.id || 'product'}-${action}-${reference || 'manual'}`,
   productId: product.id,
-  productName: product.name,
-  sku: product.sku || `PE-${String(product.id).padStart(4, '0')}`,
+  ...(variant ? { variantId: variant.id, variant: variant.name } : {}),
+  productName: variant ? `${product.name} — ${variant.name}` : product.name,
+  sku: variant?.sku || product.sku || `PE-${String(product.id).padStart(4, '0')}`,
   action,
   quantity,
   stockBefore,
@@ -51,14 +89,23 @@ const historyEntry = ({
   timestamp,
 })
 
-export const getAvailableStock = (product) =>
-  Math.max(0, Number(product.stock) - Number(product.reservedStock || 0))
+export const getAvailableStock = (product) => {
+  const variants = Array.isArray(product?.variants) ? product.variants : []
+  return variants.length
+    ? variants.reduce((total, variant) => total + availableInventory(variant), 0)
+    : availableInventory(product)
+}
 
 export function initializeInventory(products, orders) {
-  const inventoryProducts = products.map((product) => ({
-    ...product,
-    reservedStock: 0,
-  }))
+  const inventoryProducts = products.map((value) => {
+    const product = cloneProduct(value)
+    if (product.variants.length) {
+      product.variants.forEach((variant) => { variant.reservedStock = 0 })
+      return syncVariantTotals(product)
+    }
+    product.reservedStock = 0
+    return product
+  })
   const inventoryOrders = orders.map((order) => ({
     ...order,
     inventoryState: RESERVING_STATUSES.has(order.status)
@@ -76,19 +123,24 @@ export function initializeInventory(products, orders) {
     ;(order.items || []).forEach((item) => {
       const product = findProduct(inventoryProducts, item)
       if (!product) return
-      const quantity = Math.min(itemQuantity(item), getAvailableStock(product))
+      const inventory = inventoryForItem(product, item)
+      if (!inventory) return
+      const variant = findVariant(product, item)
+      const quantity = Math.min(itemQuantity(item), availableInventory(inventory))
       if (!quantity) return
-      const reservedBefore = product.reservedStock
-      product.reservedStock += quantity
+      const reservedBefore = Number(inventory.reservedStock || 0)
+      inventory.reservedStock = reservedBefore + quantity
+      syncVariantTotals(product)
       history.push(
         historyEntry({
           product,
+          variant,
           action: 'Order reserved',
           quantity,
-          stockBefore: Number(product.stock),
-          stockAfter: Number(product.stock),
+          stockBefore: Number(inventory.stock),
+          stockAfter: Number(inventory.stock),
           reservedBefore,
-          reservedAfter: product.reservedStock,
+          reservedAfter: inventory.reservedStock,
           reference: order.id,
           note: 'Initial open-order reservation',
           timestamp: `${order.date || '2026-01-01'}T12:00:00.000Z`,
@@ -101,24 +153,29 @@ export function initializeInventory(products, orders) {
 }
 
 export function reserveOrderStock(products, order, timestamp = new Date().toISOString()) {
-  const nextProducts = products.map((product) => ({ ...product }))
+  const nextProducts = products.map(cloneProduct)
   const history = []
   ;(order.items || []).forEach((item) => {
     const product = findProduct(nextProducts, item)
     if (!product) return
+    const inventory = inventoryForItem(product, item)
+    if (!inventory) return
+    const variant = findVariant(product, item)
     const quantity = itemQuantity(item)
-    if (!quantity || quantity > getAvailableStock(product)) return
-    const reservedBefore = Number(product.reservedStock || 0)
-    product.reservedStock = reservedBefore + quantity
+    if (!quantity || quantity > availableInventory(inventory)) return
+    const reservedBefore = Number(inventory.reservedStock || 0)
+    inventory.reservedStock = reservedBefore + quantity
+    syncVariantTotals(product)
     history.push(
       historyEntry({
         product,
+        variant,
         action: 'Order reserved',
         quantity,
-        stockBefore: Number(product.stock),
-        stockAfter: Number(product.stock),
+        stockBefore: Number(inventory.stock),
+        stockAfter: Number(inventory.stock),
         reservedBefore,
-        reservedAfter: product.reservedStock,
+        reservedAfter: inventory.reservedStock,
         reference: order.id,
         note: 'Stock reserved after order placement',
         timestamp,
@@ -135,7 +192,7 @@ export function transitionOrderInventory(
   returnDisposition,
   timestamp = new Date().toISOString(),
 ) {
-  const nextProducts = products.map((product) => ({ ...product }))
+  const nextProducts = products.map(cloneProduct)
   const history = []
   const previousState = order.inventoryState || 'none'
   let inventoryState = previousState
@@ -143,19 +200,22 @@ export function transitionOrderInventory(
   ;(order.items || []).forEach((item) => {
     const product = findProduct(nextProducts, item)
     if (!product) return
+    const inventory = inventoryForItem(product, item)
+    if (!inventory) return
+    const variant = findVariant(product, item)
     const quantity = itemQuantity(item)
     if (!quantity) return
-    const stockBefore = Number(product.stock)
-    const reservedBefore = Number(product.reservedStock || 0)
+    const stockBefore = Number(inventory.stock)
+    const reservedBefore = Number(inventory.reservedStock || 0)
     let action = ''
     let note = ''
 
     if (nextStatus === 'Cancelled' && previousState === 'reserved') {
-      product.reservedStock = Math.max(0, reservedBefore - quantity)
+      inventory.reservedStock = Math.max(0, reservedBefore - quantity)
       action = 'Reservation released'
       note = 'Order cancelled before fulfillment'
     } else if (nextStatus === 'Cancelled' && previousState === 'fulfilled') {
-      product.stock = stockBefore + quantity
+      inventory.stock = stockBefore + quantity
       action = 'Stock restored'
       note = 'Order cancelled after stock deduction'
     } else if (
@@ -164,17 +224,17 @@ export function transitionOrderInventory(
       nextStatus !== 'Refunded' &&
       previousState === 'reserved'
     ) {
-      product.reservedStock = Math.max(0, reservedBefore - quantity)
-      product.stock = Math.max(0, stockBefore - quantity)
+      inventory.reservedStock = Math.max(0, reservedBefore - quantity)
+      inventory.stock = Math.max(0, stockBefore - quantity)
       action = 'Order fulfilled'
       note = `Stock deducted when order moved to ${nextStatus}`
     } else if (nextStatus === 'Returned' && previousState === 'reserved') {
-      product.reservedStock = Math.max(0, reservedBefore - quantity)
+      inventory.reservedStock = Math.max(0, reservedBefore - quantity)
       action = 'Reservation released'
       note = 'Return accepted before stock fulfillment'
     } else if (nextStatus === 'Returned' && previousState === 'fulfilled') {
       if (returnDisposition === 'restock') {
-        product.stock = stockBefore + quantity
+        inventory.stock = stockBefore + quantity
         action = 'Return restocked'
         note = 'Returned product accepted back into sellable stock'
       } else {
@@ -184,15 +244,17 @@ export function transitionOrderInventory(
     }
 
     if (!action) return
+    syncVariantTotals(product)
     history.push(
       historyEntry({
         product,
+        variant,
         action,
         quantity,
         stockBefore,
-        stockAfter: Number(product.stock),
+        stockAfter: Number(inventory.stock),
         reservedBefore,
-        reservedAfter: Number(product.reservedStock || 0),
+        reservedAfter: Number(inventory.reservedStock || 0),
         reference: order.id,
         note,
         timestamp,
@@ -227,9 +289,16 @@ export function adjustProductStock(
   adjustment,
   timestamp = new Date().toISOString(),
 ) {
-  const nextProducts = products.map((product) => ({ ...product }))
+  const nextProducts = products.map(cloneProduct)
   const product = nextProducts.find((item) => item.id === productId)
   if (!product) return { products, history: [], error: 'Product not found.' }
+  if (product.variants.length) {
+    return {
+      products,
+      history: [],
+      error: 'Adjust stock for this product in its individual variants.',
+    }
+  }
 
   const stockBefore = Number(product.stock)
   const reservedBefore = Number(product.reservedStock || 0)

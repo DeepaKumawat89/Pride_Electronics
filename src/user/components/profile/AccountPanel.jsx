@@ -1307,9 +1307,9 @@ function CartSection({
           </p>
         </div>
         <div className="space-y-3">
-          {items.map(({ product, quantity, priceChanged, quantityAdjusted }) => (
+          {items.map(({ key, product, quantity, priceChanged, quantityAdjusted }) => (
             <article
-              key={product.id}
+              key={key}
               className="rounded-[22px] border border-slate-100 bg-[#fafbf8] p-3 transition hover:shadow-md sm:p-4"
             >
               <div className="flex gap-3 sm:gap-4">
@@ -1325,6 +1325,12 @@ function CartSection({
                   <h3 className="mt-1 line-clamp-2 text-xs font-extrabold leading-5 sm:text-sm">
                     {product.name}
                   </h3>
+                  {product.selectedVariantName && (
+                    <p className="mt-1 text-[8px] font-extrabold text-[#397a4a]">
+                      {product.selectedVariantName}
+                      {product.modelNumber ? ` · ${product.modelNumber}` : ''}
+                    </p>
+                  )}
                   <p className="mt-2 text-sm font-extrabold text-[#ff5c35]">
                     {formatCurrency(parsePrice(product.price))}
                   </p>
@@ -1340,7 +1346,7 @@ function CartSection({
                       <button
                         type="button"
                         disabled={quantity <= 1}
-                        onClick={() => onChangeQuantity(product.id, -1)}
+                        onClick={() => onChangeQuantity(key, -1)}
                         className="grid size-8 place-items-center hover:text-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-30"
                       >
                         <Minus size={12} />
@@ -1351,15 +1357,15 @@ function CartSection({
                       <button
                         type="button"
                         disabled={Number(product.stock) <= 0 || quantity >= Number(product.stock)}
-                        onClick={() => onChangeQuantity(product.id, 1)}
+                        onClick={() => onChangeQuantity(key, 1)}
                         className="grid size-8 place-items-center hover:text-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-30"
                       >
                         <Plus size={12} />
                       </button>
                     </div>
                     <div className="flex items-center gap-3">
-                      <button type="button" onClick={() => onSaveForLater(product.id)} className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 transition hover:text-[#397a4a]"><Bookmark size={13} /> Save for later</button>
-                      <button type="button" onClick={() => onRemove(product.id)} className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 transition hover:text-red-500"><Trash2 size={13} /> Remove</button>
+                      <button type="button" onClick={() => onSaveForLater(key)} className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 transition hover:text-[#397a4a]"><Bookmark size={13} /> Save for later</button>
+                      <button type="button" onClick={() => onRemove(key)} className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 transition hover:text-red-500"><Trash2 size={13} /> Remove</button>
                     </div>
                   </div>
                 </div>
@@ -1463,18 +1469,19 @@ function SavedForLaterSection({ items, onMoveToCart, onRemove }) {
     <section className="mt-7 border-t border-slate-100 pt-6">
       <h3 className="text-sm font-extrabold text-slate-800">Saved for later ({items.length})</h3>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        {items.map(({ product }) => {
+        {items.map(({ key, product }) => {
           const available = Number(product.stock) > 0
           return (
-            <article key={product.id} className="flex items-center gap-3 rounded-[20px] border border-slate-100 bg-[#fafbf8] p-3">
+            <article key={key} className="flex items-center gap-3 rounded-[20px] border border-slate-100 bg-[#fafbf8] p-3">
               <img src={product.image} alt={product.name} className="size-16 shrink-0 rounded-2xl object-cover" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[11px] font-extrabold text-slate-800">{product.name}</p>
+                {product.selectedVariantName && <p className="mt-1 truncate text-[8px] font-bold text-[#397a4a]">{product.selectedVariantName}</p>}
                 <p className="mt-1 text-[10px] font-bold text-[#ff5c35]">{formatCurrency(parsePrice(product.price))}</p>
                 <p className={`mt-1 text-[8px] font-extrabold ${available ? 'text-emerald-700' : 'text-red-600'}`}>{available ? 'In stock' : 'Out of stock'}</p>
                 <div className="mt-2 flex items-center gap-3">
-                  <button type="button" disabled={!available} onClick={() => onMoveToCart(product.id)} className="text-[8px] font-extrabold text-[#397a4a] disabled:cursor-not-allowed disabled:text-slate-300">Move to cart</button>
-                  <button type="button" onClick={() => onRemove(product.id)} className="text-[8px] font-extrabold text-red-500">Remove</button>
+                  <button type="button" disabled={!available} onClick={() => onMoveToCart(key)} className="text-[8px] font-extrabold text-[#397a4a] disabled:cursor-not-allowed disabled:text-slate-300">Move to cart</button>
+                  <button type="button" onClick={() => onRemove(key)} className="text-[8px] font-extrabold text-red-500">Remove</button>
                 </div>
               </div>
             </article>

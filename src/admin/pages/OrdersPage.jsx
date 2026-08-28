@@ -250,10 +250,10 @@ export default function OrdersPage({
                       <div className="flex max-w-56 flex-wrap gap-1">
                         {order.items?.slice(0, 2).map((item) => (
                           <span
-                            key={item.productName}
+                            key={`${item.productId || item.productName}-${item.variantId || ''}`}
                             className="max-w-40 truncate rounded-full bg-slate-100 px-2 py-1 text-[7px] font-bold text-slate-600"
                           >
-                            {item.productName} ×{item.qty}
+                            {item.productName}{item.variant ? ` · ${item.variant}` : ''} ×{item.qty}
                           </span>
                         ))}
                         {!order.items && (
@@ -360,13 +360,18 @@ export default function OrdersPage({
               <div className="mt-3 divide-y divide-slate-100">
                 {selectedOrder.items?.map((item) => (
                   <div
-                    key={item.productName}
+                    key={`${item.productId || item.productName}-${item.variantId || ''}`}
                     className="flex items-center justify-between gap-4 py-3"
                   >
                     <div>
                       <strong className="text-[10px] text-slate-800">
                         {item.productName}
                       </strong>
+                      {item.variant && (
+                        <p className="mt-1 text-[8px] font-bold text-[#397a4a]">
+                          {item.variant}{item.variantModelNumber ? ` · ${item.variantModelNumber}` : ''}
+                        </p>
+                      )}
                       <p className="mt-1 text-[8px] text-slate-400">
                         Quantity: {item.qty}
                       </p>

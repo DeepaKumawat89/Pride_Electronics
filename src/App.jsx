@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import UserApp from './user/UserApp'
 import AdminApp from './admin/AdminApp'
@@ -26,6 +26,7 @@ import {
 import {
   removeProductImages,
   uploadProductImages,
+  uploadVariantImages,
 } from './firebase/productImages'
 import { auth } from './firebase/firebase'
 import {
@@ -44,6 +45,16 @@ import {
   submitCustomerOrderFeedback,
 } from './firebase/customerData'
 import { updateCustomerAccountStatus } from './firebase/adminData'
+import {
+  categoryForProduct,
+  legacySubcategoriesForProducts,
+  legacyTaxonomyPatch,
+  normalizeProductTaxonomy,
+  productBelongsToCategory,
+  productBelongsToSubcategory,
+  subcategoryForProduct,
+} from './utils/catalogTaxonomy'
+import { applyDefaultProductSpecificationTemplate } from './data/productSpecificationTemplates'
 
 const getChangedProducts = (currentProducts, nextProducts) =>
   nextProducts.filter((nextProduct) => {
@@ -52,6 +63,48 @@ const getChangedProducts = (currentProducts, nextProducts) =>
     )
     return JSON.stringify(currentProduct) !== JSON.stringify(nextProduct)
   })
+
+const prepareProductVariants = async (productId, variants = [], currentVariants = []) => {
+  const uploadedPaths = []
+  const replacedPaths = []
+  const prepared = []
+  try {
+    for (const variant of variants) {
+      const { imageFiles = [], ...fields } = variant
+      const current = currentVariants.find((item) => String(item.id) === String(variant.id))
+      let media = {
+        images: fields.images || current?.images || [],
+        imageStoragePaths: fields.imageStoragePaths || current?.imageStoragePaths || [],
+      }
+      if (imageFiles.length) {
+        const uploaded = await uploadVariantImages(productId, variant.id, imageFiles)
+        uploadedPaths.push(...uploaded.paths)
+        replacedPaths.push(...(current?.imageStoragePaths || []))
+        media = { images: uploaded.urls, imageStoragePaths: uploaded.paths }
+      }
+      prepared.push({
+        ...fields,
+        ...media,
+        image: media.images[0] || '',
+        stock: Math.max(0, Number(fields.stock) || 0),
+        reservedStock: Math.max(
+          Number(current?.reservedStock || 0),
+          Number(fields.reservedStock || 0),
+        ),
+      })
+    }
+    const retainedIds = new Set(prepared.map((variant) => String(variant.id)))
+    currentVariants.forEach((variant) => {
+      if (!retainedIds.has(String(variant.id))) {
+        replacedPaths.push(...(variant.imageStoragePaths || []))
+      }
+    })
+    return { variants: prepared, uploadedPaths, replacedPaths }
+  } catch (error) {
+    await removeProductImages(uploadedPaths)
+    throw error
+  }
+}
 const mergeSetting = (fallback, stored) =>
   stored
     ? Object.fromEntries(
@@ -99,6 +152,7 @@ function App() {
   const [returnsList, setReturnsList] = useState([])
   const [couponsList, setCouponsList] = useState([])
   const [categoriesList, setCategoriesList] = useState([])
+  const [subcategoriesList, setSubcategoriesList] = useState([])
   const [publicReviews, setPublicReviews] = useState([])
   const [adminReviews, setAdminReviews] = useState([])
   const [adminAuthenticated, setAdminAuthenticated] = useState(false)
@@ -106,6 +160,8 @@ function App() {
   const [shippingSettings, setShippingSettings] = useState(initialShippingSettings)
   const [invoiceSettings, setInvoiceSettings] = useState(initialInvoiceSettings)
   const [adminSettings, setAdminSettings] = useState(initialAdminSettings)
+  const taxonomyMigrationKey = useRef('')
+  const specificationTemplateMigrationKey = useRef('')
 
   useEffect(() => {
     const syncPortalWithLocation = () =>
@@ -140,6 +196,7 @@ function App() {
     const unsubscribers = [
       subscribeToCollection('coupons', setCouponsList, reportError),
       subscribeToCollection('categories', setCategoriesList, reportError),
+      subscribeToCollection('subcategories', setSubcategoriesList, reportError),
       subscribeToPublishedReviews(setPublicReviews, reportError),
       subscribeToSetting('marketing', (value) =>
         setMarketingSettings(mergeSetting(initialMarketingSettings, value)), reportError),
@@ -156,6 +213,79 @@ function App() {
     ]
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
   }, [])
+
+  useEffect(() => {
+    if (!adminAuthenticated || productsLoading || !categoriesList.length) return
+    const legacySubcategories = legacySubcategoriesForProducts(
+      productsList,
+      categoriesList,
+      subcategoriesList,
+    )
+    const effectiveSubcategories = [
+      ...subcategoriesList,
+      ...legacySubcategories,
+    ]
+    const productsToMigrate = productsList.flatMap((product) => {
+      const patch = legacyTaxonomyPatch(
+        product,
+        categoriesList,
+        effectiveSubcategories,
+      )
+      return Object.keys(patch).length ? [{ ...product, ...patch }] : []
+    })
+    if (!productsToMigrate.length && !legacySubcategories.length) return
+
+    const migrationKey = [
+      ...productsToMigrate.map(
+        (product) =>
+          `${product.id}:${product.categoryId}:${product.category}:${product.subcategoryId}:${product.subcategory}`,
+      ),
+      ...legacySubcategories.map((subcategory) => subcategory.id),
+    ]
+      .sort()
+      .join('|')
+    if (taxonomyMigrationKey.current === migrationKey) return
+    taxonomyMigrationKey.current = migrationKey
+    void Promise.all([
+      productsToMigrate.length ? saveProducts(productsToMigrate) : Promise.resolve(),
+      legacySubcategories.length
+        ? saveRecords('subcategories', legacySubcategories)
+        : Promise.resolve(),
+    ]).catch((error) => {
+      taxonomyMigrationKey.current = ''
+      setProductsError(
+        error.message || 'Unable to migrate legacy product category references.',
+      )
+    })
+  }, [
+    adminAuthenticated,
+    categoriesList,
+    productsList,
+    productsLoading,
+    subcategoriesList,
+  ])
+
+  useEffect(() => {
+    if (!adminAuthenticated || !subcategoriesList.length) return
+    const updates = subcategoriesList.flatMap((subcategory) => {
+      const next = applyDefaultProductSpecificationTemplate(subcategory)
+      return next === subcategory ? [] : [next]
+    })
+    if (!updates.length) return
+
+    const migrationKey = updates
+      .map((subcategory) => `${subcategory.id}:${subcategory.specificationTemplateId}:${subcategory.specificationTemplateVersion}`)
+      .sort()
+      .join('|')
+    if (specificationTemplateMigrationKey.current === migrationKey) return
+    specificationTemplateMigrationKey.current = migrationKey
+    const updatesById = new Map(updates.map((subcategory) => [String(subcategory.id), subcategory]))
+    setSubcategoriesList((current) => current.map((subcategory) => updatesById.get(String(subcategory.id)) || subcategory))
+    void saveRecords('subcategories', updates).catch((error) => {
+      specificationTemplateMigrationKey.current = ''
+      setProductsError(error.message || 'Unable to add recommended product specification templates.')
+    })
+  }, [adminAuthenticated, subcategoriesList])
 
   useEffect(() => {
     let restrictedUnsubscribers = []
@@ -273,37 +403,51 @@ function App() {
     delete productFields.imageStoragePaths
     const productId = createProductId()
     let uploadedImages = { paths: [], urls: [] }
+    let preparedVariants = { variants: [], uploadedPaths: [], replacedPaths: [] }
 
     try {
       if (imageFiles.length) {
         uploadedImages = await uploadProductImages(productId, imageFiles)
       }
+      preparedVariants = await prepareProductVariants(
+        productId,
+        productFields.variants,
+      )
       const existingImages = Array.isArray(productFields.images)
         ? productFields.images.filter(Boolean)
         : [productFields.image].filter(Boolean)
       const images = uploadedImages.urls.length
         ? uploadedImages.urls
         : existingImages
-      const openingStock = Math.max(0, Number(productFields.stock) || 0)
+      const openingStock = preparedVariants.variants.length
+        ? preparedVariants.variants.reduce((total, variant) => total + Number(variant.stock || 0), 0)
+        : Math.max(0, Number(productFields.stock) || 0)
+      const reservedStock = preparedVariants.variants.reduce(
+        (total, variant) => total + Number(variant.reservedStock || 0),
+        0,
+      )
       const product = await createProduct({
         ...productFields,
+        variants: preparedVariants.variants,
         id: productId,
         image: images[0] || '',
         images,
         imageStoragePaths: uploadedImages.paths,
         videos: [],
         stock: openingStock,
-        reservedStock: 0,
+        reservedStock,
       })
-      const result = adjustProductStock(
-        [{ ...product, stock: 0 }],
-        product.id,
-        {
-          type: 'add',
-          quantity: openingStock,
-          note: 'Opening stock for newly created or duplicated product',
-        },
-      )
+      const result = preparedVariants.variants.length
+        ? { history: [] }
+        : adjustProductStock(
+            [{ ...product, stock: 0 }],
+            product.id,
+            {
+              type: 'add',
+              quantity: openingStock,
+              note: 'Opening stock for newly created or duplicated product',
+            },
+          )
       setProductsList((current) =>
         current.some((item) => item.id === product.id)
           ? current
@@ -316,6 +460,7 @@ function App() {
       return product
     } catch (error) {
       await removeProductImages(uploadedImages.paths)
+      await removeProductImages(preparedVariants.uploadedPaths)
       throw error
     }
   }
@@ -327,9 +472,15 @@ function App() {
     )
     if (!currentProduct) throw new Error('Product not found.')
     let uploadedImages = { paths: [], urls: [] }
+    let preparedVariants = { variants: [], uploadedPaths: [], replacedPaths: [] }
     if (imageFiles.length) {
       uploadedImages = await uploadProductImages(currentProduct.id, imageFiles)
     }
+    preparedVariants = await prepareProductVariants(
+      currentProduct.id,
+      productFields.variants,
+      currentProduct.variants || [],
+    )
     const mediaFields = uploadedImages.urls.length
       ? {
           image: uploadedImages.urls[0],
@@ -344,15 +495,21 @@ function App() {
             currentProduct.imageStoragePaths ||
             [],
         }
-    const reservedStock = Number(currentProduct.reservedStock || 0)
+    const hasVariants = preparedVariants.variants.length > 0
+    const reservedStock = hasVariants
+      ? preparedVariants.variants.reduce((total, variant) => total + Number(variant.reservedStock || 0), 0)
+      : Number(currentProduct.reservedStock || 0)
     const requestedStock = Math.max(
       reservedStock,
-      Number(productFields.stock) || 0,
+      hasVariants
+        ? preparedVariants.variants.reduce((total, variant) => total + Number(variant.stock || 0), 0)
+        : Number(productFields.stock) || 0,
     )
     const updatedProducts = productsList.map((product) =>
       product.id === productFields.id
         ? {
             ...productFields,
+            variants: preparedVariants.variants,
             ...mediaFields,
             videos: [],
             stock: currentProduct.stock,
@@ -362,9 +519,12 @@ function App() {
     )
     try {
       let savedProduct
-      if (requestedStock === Number(currentProduct.stock)) {
+      if (hasVariants || requestedStock === Number(currentProduct.stock)) {
         savedProduct = await saveProduct(
-          updatedProducts.find((product) => product.id === productFields.id),
+          {
+            ...updatedProducts.find((product) => product.id === productFields.id),
+            ...(hasVariants ? { stock: requestedStock, reservedStock } : {}),
+          },
         )
       } else {
         const result = adjustProductStock(
@@ -393,9 +553,11 @@ function App() {
       if (uploadedImages.paths.length) {
         await removeProductImages(currentProduct.imageStoragePaths)
       }
+      await removeProductImages(preparedVariants.replacedPaths)
       return savedProduct
     } catch (error) {
       await removeProductImages(uploadedImages.paths)
+      await removeProductImages(preparedVariants.uploadedPaths)
       throw error
     }
   }
@@ -404,6 +566,9 @@ function App() {
     const product = productsList.find((item) => item.id === productId)
     await removeProduct(productId)
     await removeProductImages(product?.imageStoragePaths)
+    await removeProductImages(
+      (product?.variants || []).flatMap((variant) => variant.imageStoragePaths || []),
+    )
     setProductsList((prev) => prev.filter((p) => p.id !== productId))
   }
 
@@ -548,10 +713,15 @@ function App() {
       setProductsError(error.message || 'Unable to update the category.'),
     )
     if (previousName && previousName !== category.name) {
+      const previousCategory = { ...category, name: previousName }
       const renamedProducts = productsList.map((product) =>
-          product.category === previousName
-            ? { ...product, category: category.name }
-            : product,
+        productBelongsToCategory(product, previousCategory)
+          ? {
+              ...product,
+              categoryId: category.id,
+              category: category.name,
+            }
+          : product,
       )
       setProductsList(renamedProducts)
       void saveProducts(
@@ -559,19 +729,98 @@ function App() {
       ).catch((error) =>
         setProductsError(error.message || 'Unable to update product categories.'),
       )
+      const renamedSubcategories = subcategoriesList.map((subcategory) =>
+        String(subcategory.categoryId) === String(category.id)
+          ? { ...subcategory, categoryName: category.name }
+          : subcategory,
+      )
+      setSubcategoriesList(renamedSubcategories)
+      void saveRecords(
+        'subcategories',
+        renamedSubcategories.filter(
+          (subcategory) => String(subcategory.categoryId) === String(category.id),
+        ),
+      ).catch((error) =>
+        setProductsError(error.message || 'Unable to update subcategories.'),
+      )
     }
   }
   const handleDeleteCategory = (categoryId) => {
     const category = categoriesList.find((item) => item.id === categoryId)
     if (!category) return 'Category not found.'
-    if (productsList.some((product) => product.category === category.name)) {
+    if (productsList.some((product) => productBelongsToCategory(product, category))) {
       return 'Move or delete products in this category before deleting it.'
+    }
+    if (
+      subcategoriesList.some(
+        (subcategory) => String(subcategory.categoryId) === String(category.id),
+      )
+    ) {
+      return 'Delete or move this category\'s subcategories before deleting it.'
     }
     setCategoriesList((current) =>
       current.filter((item) => item.id !== categoryId),
     )
     void removeRecord('categories', categoryId).catch((error) =>
       setProductsError(error.message || 'Unable to delete the category.'),
+    )
+    return ''
+  }
+
+  const handleAddSubcategory = (subcategory) => {
+    setSubcategoriesList((current) => [...current, subcategory])
+    void saveRecord('subcategories', subcategory).catch((error) =>
+      setProductsError(error.message || 'Unable to add the subcategory.'),
+    )
+  }
+  const handleUpdateSubcategory = (subcategory, previousSubcategory) => {
+    setSubcategoriesList((current) =>
+      current.map((item) => (item.id === subcategory.id ? subcategory : item)),
+    )
+    void saveRecord('subcategories', subcategory, { merge: true }).catch((error) =>
+      setProductsError(error.message || 'Unable to update the subcategory.'),
+    )
+
+    if (!previousSubcategory) return
+    const category = categoriesList.find(
+      (item) => String(item.id) === String(subcategory.categoryId),
+    )
+    if (!category) return
+    const updatedProducts = productsList.map((product) =>
+      productBelongsToSubcategory(product, previousSubcategory)
+        ? {
+            ...product,
+            categoryId: category.id,
+            category: category.name,
+            subcategoryId: subcategory.id,
+            subcategory: subcategory.name,
+          }
+        : product,
+    )
+    const changedProducts = getChangedProducts(productsList, updatedProducts)
+    if (!changedProducts.length) return
+    setProductsList(updatedProducts)
+    void saveProducts(changedProducts).catch((error) =>
+      setProductsError(error.message || 'Unable to update product subcategories.'),
+    )
+  }
+  const handleDeleteSubcategory = (subcategoryId) => {
+    const subcategory = subcategoriesList.find(
+      (item) => String(item.id) === String(subcategoryId),
+    )
+    if (!subcategory) return 'Subcategory not found.'
+    if (
+      productsList.some((product) =>
+        productBelongsToSubcategory(product, subcategory),
+      )
+    ) {
+      return 'Move or delete products in this subcategory before deleting it.'
+    }
+    setSubcategoriesList((current) =>
+      current.filter((item) => String(item.id) !== String(subcategoryId)),
+    )
+    void removeRecord('subcategories', subcategoryId).catch((error) =>
+      setProductsError(error.message || 'Unable to delete the subcategory.'),
     )
     return ''
   }
@@ -657,12 +906,25 @@ function App() {
           enabled: true,
         }),
       )
-  const storefrontProducts = productsList
+  const managedSubcategories = subcategoriesList
+  const catalogProducts = productsList.map((product) =>
+    normalizeProductTaxonomy(product, managedCategories, managedSubcategories),
+  )
+  const storefrontProducts = catalogProducts
     .filter(
-      (product) =>
-        product.enabled !== false &&
-        managedCategories.find((category) => category.name === product.category)
-          ?.enabled !== false,
+      (product) => {
+        const category = categoryForProduct(product, managedCategories)
+        const subcategory = subcategoryForProduct(
+          product,
+          managedSubcategories,
+          category,
+        )
+        return (
+          product.enabled !== false &&
+          category?.enabled !== false &&
+          subcategory?.enabled !== false
+        )
+      },
     )
     .map((product) => ({
       ...product,
@@ -696,7 +958,7 @@ function App() {
         />
       ) : (
         <AdminApp
-          products={productsList}
+          products={catalogProducts}
           orders={ordersList}
           refunds={refundsList}
           returns={returnsList}
@@ -705,6 +967,7 @@ function App() {
           productsLoading={productsLoading}
           productsError={productsError}
           categories={managedCategories}
+          subcategories={managedSubcategories}
           reviews={reviewsList}
           marketingSettings={marketingSettings}
           shippingSettings={shippingSettings}
@@ -723,6 +986,9 @@ function App() {
           onAddCategory={handleAddCategory}
           onUpdateCategory={handleUpdateCategory}
           onDeleteCategory={handleDeleteCategory}
+          onAddSubcategory={handleAddSubcategory}
+          onUpdateSubcategory={handleUpdateSubcategory}
+          onDeleteSubcategory={handleDeleteSubcategory}
           onUpdateReview={handleUpdateReview}
           onDeleteReview={handleDeleteReview}
           onUpdatePaymentStatus={handleUpdatePaymentStatus}

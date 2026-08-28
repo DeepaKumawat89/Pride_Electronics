@@ -67,8 +67,14 @@ export async function saveProduct(product) {
   return savedProduct
 }
 
-export const saveProducts = (products) =>
-  Promise.all(products.map((product) => saveProduct(product)))
+export async function saveProducts(products, { batchSize = 50 } = {}) {
+  const savedProducts = []
+  for (let index = 0; index < products.length; index += batchSize) {
+    const batch = products.slice(index, index + batchSize)
+    savedProducts.push(...(await Promise.all(batch.map((product) => saveProduct(product)))))
+  }
+  return savedProducts
+}
 
 export async function removeProduct(productId) {
   if (!productId) throw new Error('A Firestore product ID is required.')

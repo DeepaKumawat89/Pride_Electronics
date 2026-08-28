@@ -14,18 +14,43 @@ import {
 } from 'lucide-react'
 import SelectMenu from '../../components/ui/SelectMenu'
 import { EmptyState, Modal, PageHeader } from '../components/ui/AdminUI'
+import { DynamicProductSpecifications } from '../components/DynamicProductSpecifications'
+import ProductVariantsEditor from '../components/ProductVariantsEditor'
 import { formatCurrency, parsePrice } from '../../user/utils/currency'
 import {
   MAX_PRODUCT_IMAGES,
   MAX_PRODUCT_IMAGE_SIZE,
   PRODUCT_IMAGE_TYPES,
 } from '../../firebase/productImages'
+import {
+  categoryForProduct,
+  normalizeProductTaxonomy,
+  subcategoriesForCategory,
+} from '../../utils/catalogTaxonomy'
+import {
+  buildTechnicalSpecifications,
+  compactCustomSpecifications,
+  getDisplaySpecifications,
+  getProductSpecificationValues,
+  normalizeCustomSpecifications,
+  normalizeSpecificationFields,
+  validateCustomSpecifications,
+  validateSpecificationValues,
+} from '../../utils/productSpecifications'
+import {
+  createVariantId,
+  getProductVariants,
+  productForVariant,
+} from '../../utils/productVariants'
 
 const blankProduct = {
   name: '',
   sku: '',
   brand: 'Pride',
+  categoryId: '',
   category: '',
+  subcategoryId: '',
+  subcategory: '',
   price: '',
   originalPrice: '',
   stock: 0,
@@ -52,6 +77,9 @@ const parseList = (value) =>
     .map((item) => item.trim())
     .filter(Boolean)
 
+const LEGACY_SUBCATEGORY_VALUE = '__legacy_subcategory__'
+const createGeneratedSku = () => `PE-${Date.now().toString().slice(-6)}`
+
 const createDuplicateProduct = (product) => {
   const duplicateId = Date.now()
   return {
@@ -59,6 +87,13 @@ const createDuplicateProduct = (product) => {
     id: duplicateId,
     name: `${product.name} Copy`,
     sku: `${product.sku || `PE-${product.id}`}-COPY-${String(duplicateId).slice(-4)}`,
+    variants: getProductVariants(product).map((variant, index) => ({
+      ...variant,
+      id: createVariantId(),
+      sku: `${variant.sku || `PE-${product.id}-V${index + 1}`}-COPY-${String(duplicateId).slice(-4)}`,
+      reservedStock: 0,
+      imageStoragePaths: [],
+    })),
     createdAt: new Date().toISOString().slice(0, 10),
     featured: false,
     enabled: false,
@@ -68,6 +103,7 @@ const createDuplicateProduct = (product) => {
 export default function ProductsPage({
   products = [],
   categories: managedCategories = [],
+  subcategories: managedSubcategories = [],
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
@@ -76,7 +112,7 @@ export default function ProductsPage({
   loadError = '',
 }) {
   const categoryOptions = managedCategories.map((category) => ({
-    value: category.name,
+    value: String(category.id),
     label: category.name,
   }))
   const [category, setCategory] = useState('All')
@@ -84,6 +120,10 @@ export default function ProductsPage({
   const [creatingProduct, setCreatingProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
   const [form, setForm] = useState(blankProduct)
+  const [specificationValues, setSpecificationValues] = useState({})
+  const [customSpecifications, setCustomSpecifications] = useState([])
+  const [variants, setVariants] = useState([])
+  const [variantErrors, setVariantErrors] = useState({})
   const [formErrors, setFormErrors] = useState({})
   const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -92,6 +132,33 @@ export default function ProductsPage({
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleteError, setDeleteError] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const selectedCategory = categoryForProduct(form, managedCategories)
+  const selectedSubcategory = managedSubcategories.find(
+    (subcategory) =>
+      String(subcategory.id) === String(form.subcategoryId) &&
+      String(subcategory.categoryId) === String(selectedCategory?.id),
+  )
+  const specificationFields = normalizeSpecificationFields(
+    selectedSubcategory?.specificationFields,
+  )
+  const subcategoryOptions = [
+    { value: '', label: 'No subcategory' },
+    ...(form.subcategory && !form.subcategoryId
+      ? [
+          {
+            value: LEGACY_SUBCATEGORY_VALUE,
+            label: `${form.subcategory} (legacy)`,
+          },
+        ]
+      : []),
+    ...subcategoriesForCategory(
+      managedSubcategories,
+      selectedCategory?.id,
+    ).map((subcategory) => ({
+      value: String(subcategory.id),
+      label: subcategory.name,
+    })),
+  ]
   const productFormOpen = creatingProduct || Boolean(editingProduct)
   const categories = [
     'All',
@@ -101,7 +168,10 @@ export default function ProductsPage({
     (product) =>
       (category === 'All' || product.category === category) &&
       (!searchQuery ||
-        `${product.name} ${product.sku || ''} ${product.brand || ''} ${product.category}`
+        `${product.name} ${product.sku || ''} ${product.brand || ''} ${product.category} ${product.subcategory || ''} ${getDisplaySpecifications(product).flatMap(({ label, value }) => [label, value]).join(' ')} ${getProductVariants(product).flatMap((variant) => {
+          const effectiveProduct = productForVariant(product, variant.id)
+          return [variant.name, variant.sku, variant.modelNumber, ...getDisplaySpecifications(effectiveProduct || variant).flatMap(({ label, value }) => [label, value])]
+        }).join(' ')}`
           .toLowerCase()
           .includes(searchQuery.toLowerCase())),
   )
@@ -114,6 +184,52 @@ export default function ProductsPage({
   const clearImageSelection = () => {
     setSelectedImages([])
     setImagePreviews([])
+  }
+
+  const clearVariantImagePreviews = (items = variants) => {
+    items.forEach((variant) =>
+      (variant.imagePreviews || []).forEach((preview) => URL.revokeObjectURL(preview)),
+    )
+  }
+
+  const selectVariantImages = (variantIndex, event) => {
+    const files = Array.from(event.target.files || [])
+    if (files.length > MAX_PRODUCT_IMAGES) {
+      event.target.value = ''
+      setVariantErrors((current) => ({
+        ...current,
+        [variants[variantIndex]?.id]: {
+          ...(current[variants[variantIndex]?.id] || {}),
+          message: `Select no more than ${MAX_PRODUCT_IMAGES} images for a variant.`,
+        },
+      }))
+      return
+    }
+    const invalidImage = files.find(
+      (file) => !PRODUCT_IMAGE_TYPES.includes(file.type) || file.size > MAX_PRODUCT_IMAGE_SIZE,
+    )
+    if (invalidImage) {
+      event.target.value = ''
+      setVariantErrors((current) => ({
+        ...current,
+        [variants[variantIndex]?.id]: {
+          ...(current[variants[variantIndex]?.id] || {}),
+          message: PRODUCT_IMAGE_TYPES.includes(invalidImage.type)
+            ? `${invalidImage.name} must be smaller than 20 MB.`
+            : `${invalidImage.name} must be a JPG, PNG, or WebP image.`,
+        },
+      }))
+      return
+    }
+    setVariants((current) => current.map((variant, index) => {
+      if (index !== variantIndex) return variant
+      ;(variant.imagePreviews || []).forEach((preview) => URL.revokeObjectURL(preview))
+      return {
+        ...variant,
+        imageFiles: files,
+        imagePreviews: files.map((file) => URL.createObjectURL(file)),
+      }
+    }))
   }
 
   const selectImages = (event) => {
@@ -137,22 +253,67 @@ export default function ProductsPage({
   }
 
   const openAdd = () => {
+    const defaultCategory = managedCategories[0]
     clearImageSelection()
     setEditingProduct(null)
+    setSpecificationValues({})
+    setCustomSpecifications([])
+    clearVariantImagePreviews()
+    setVariants([])
+    setVariantErrors({})
     setForm({
       ...blankProduct,
-      category: categoryOptions[0]?.value || blankProduct.category,
+      categoryId: defaultCategory?.id || '',
+      category: defaultCategory?.name || '',
     })
     setFormErrors({})
     setSaveError('')
     setCreatingProduct(true)
   }
   const openEdit = (product) => {
+    const normalizedProduct = normalizeProductTaxonomy(
+      product,
+      managedCategories,
+      managedSubcategories,
+    )
+    const productSubcategory = managedSubcategories.find(
+      (subcategory) =>
+        String(subcategory.id) === String(normalizedProduct.subcategoryId),
+    )
+    const productSpecificationFields = normalizeSpecificationFields(
+      productSubcategory?.specificationFields,
+    )
     clearImageSelection()
     setEditingProduct(product)
+    setSpecificationValues(
+      getProductSpecificationValues(product, productSpecificationFields),
+    )
+    setCustomSpecifications(
+      normalizeCustomSpecifications(product.customSpecifications),
+    )
+    clearVariantImagePreviews()
+    setVariants(getProductVariants(product).map((variant) => ({
+      ...variant,
+      price: parsePrice(variant.price),
+      discountPrice: variant.discountPrice ? parsePrice(variant.discountPrice) : '',
+      stock: Number(variant.stock) || 0,
+      imageFiles: [],
+      imagePreviews: [],
+      specificationValues: getProductSpecificationValues(
+        variant,
+        productSpecificationFields,
+      ),
+      customSpecifications: normalizeCustomSpecifications(
+        variant.customSpecifications,
+      ),
+    })))
+    setVariantErrors({})
     setForm({
       ...blankProduct,
-      ...product,
+      ...normalizedProduct,
+      subcategoryId:
+        normalizedProduct.subcategoryId ||
+        (normalizedProduct.subcategory ? LEGACY_SUBCATEGORY_VALUE : ''),
       specs: Array.isArray(product.specs)
         ? product.specs.join(', ')
         : String(product.specs || ''),
@@ -164,6 +325,11 @@ export default function ProductsPage({
     clearImageSelection()
     setCreatingProduct(false)
     setEditingProduct(null)
+    setSpecificationValues({})
+    setCustomSpecifications([])
+    clearVariantImagePreviews()
+    setVariants([])
+    setVariantErrors({})
     setFormErrors({})
     setSaveError('')
   }
@@ -174,7 +340,15 @@ export default function ProductsPage({
     if (form.name.trim().length < 3)
       errors.name = 'Enter at least 3 characters.'
     if (!form.brand.trim()) errors.brand = 'Brand is required.'
-    if (!form.category) errors.category = 'Select a category.'
+    if (!selectedCategory) errors.category = 'Select a valid category.'
+    if (
+      form.subcategoryId &&
+      !subcategoryOptions.some(
+        (option) => String(option.value) === String(form.subcategoryId),
+      )
+    ) {
+      errors.subcategory = 'Select a subcategory from the chosen category.'
+    }
     if (form.description.trim().length < 20)
       errors.description = 'Enter at least 20 characters.'
     if (sellingPrice <= 0) errors.price = 'Enter a valid selling price.'
@@ -224,6 +398,74 @@ export default function ProductsPage({
       )
     )
       errors.sku = 'This SKU is already in use.'
+    Object.entries(
+      validateSpecificationValues(specificationFields, specificationValues),
+    ).forEach(([fieldId, message]) => {
+      errors[`specification:${fieldId}`] = message
+    })
+    Object.entries(validateCustomSpecifications(customSpecifications)).forEach(
+      ([specificationId, message]) => {
+        errors[`customSpecification:${specificationId}`] = message
+      },
+    )
+    const nextVariantErrors = {}
+    const seenVariantSkus = new Set()
+    variants.forEach((variant, index) => {
+      const messages = []
+      const name = String(variant.name || '').trim()
+      const sku = String(variant.sku || '').trim()
+      const price = parsePrice(variant.price)
+      const discountPrice = parsePrice(variant.discountPrice)
+      const stock = Number(variant.stock)
+      if (!name) messages.push(`Variant ${index + 1} needs a name.`)
+      if (!sku) messages.push(`${name || `Variant ${index + 1}`} needs a SKU.`)
+      const normalizedSku = sku.toLowerCase()
+      if (sku && seenVariantSkus.has(normalizedSku)) messages.push(`SKU ${sku} is duplicated.`)
+      if (sku && normalizedSku === form.sku.trim().toLowerCase()) messages.push(`SKU ${sku} is already used by the base product.`)
+      if (sku) seenVariantSkus.add(normalizedSku)
+      if (
+        sku &&
+        products.some((product) =>
+          product.id !== editingProduct?.id &&
+          [product.sku, ...getProductVariants(product).map((item) => item.sku)]
+            .some((candidate) => String(candidate || '').toLowerCase() === normalizedSku),
+        )
+      ) messages.push(`SKU ${sku} is already in use.`)
+      if (price <= 0) messages.push(`${name || `Variant ${index + 1}`} needs a valid price.`)
+      if (discountPrice < 0 || discountPrice > price) messages.push('Discount price cannot exceed the variant price.')
+      if (!Number.isInteger(stock) || stock < Number(variant.reservedStock || 0)) {
+        messages.push(`Stock must be a whole number of at least ${Number(variant.reservedStock || 0)}.`)
+      }
+      const fields = validateSpecificationValues(
+        specificationFields,
+        variant.specificationValues,
+      )
+      const custom = validateCustomSpecifications(variant.customSpecifications)
+      if (Object.keys(fields).length || Object.keys(custom).length) {
+        messages.push('Complete the required variant specifications.')
+      }
+      if (messages.length) nextVariantErrors[variant.id] = {
+        message: messages.join(' '),
+        fields,
+        custom,
+      }
+    })
+    getProductVariants(editingProduct || {}).forEach((existingVariant) => {
+      if (
+        Number(existingVariant.reservedStock || 0) > 0 &&
+        !variants.some((variant) => String(variant.id) === String(existingVariant.id))
+      ) {
+        nextVariantErrors[existingVariant.id] = {
+          message: `${existingVariant.name} cannot be removed while it has stock reserved for open orders.`,
+          fields: {},
+          custom: {},
+        }
+      }
+    })
+    setVariantErrors(nextVariantErrors)
+    if (Object.keys(nextVariantErrors).length) {
+      errors.variants = 'Complete all variant details.'
+    }
     return errors
   }
   const submit = async (event) => {
@@ -236,6 +478,14 @@ export default function ProductsPage({
       ...editingProduct,
       ...form,
       id: editingProduct?.id || '',
+      categoryId: selectedCategory.id,
+      category: selectedCategory.name,
+      subcategoryId: selectedSubcategory?.id || '',
+      subcategory:
+        selectedSubcategory?.name ||
+        (form.subcategoryId === LEGACY_SUBCATEGORY_VALUE
+          ? form.subcategory
+          : ''),
       price: formatCurrency(parsePrice(form.price)),
       originalPrice: formatCurrency(parsePrice(form.originalPrice)),
       stock: Number(form.stock),
@@ -243,8 +493,43 @@ export default function ProductsPage({
       taxRate: Number(form.taxRate),
       rating: Number(form.rating),
       reviewsCount: Number(form.reviewsCount),
-      sku: form.sku.trim() || `PE-${Date.now().toString().slice(-6)}`,
+      sku: form.sku.trim() || createGeneratedSku(),
       specs: parseList(form.specs),
+      technicalSpecifications: selectedSubcategory
+        ? buildTechnicalSpecifications(
+            specificationFields,
+            specificationValues,
+          )
+        : form.subcategoryId === LEGACY_SUBCATEGORY_VALUE
+          ? editingProduct?.technicalSpecifications || []
+          : [],
+      customSpecifications: compactCustomSpecifications(customSpecifications),
+      variants: variants.map((variant) => {
+        const {
+          imageFiles = [],
+          specificationValues: variantSpecificationValues,
+          customSpecifications: variantCustomSpecifications,
+          ...variantFields
+        } = variant
+        delete variantFields.imagePreviews
+        return {
+          ...variantFields,
+          name: String(variant.name).trim(),
+          sku: String(variant.sku).trim(),
+          price: parsePrice(variant.price),
+          discountPrice: parsePrice(variant.discountPrice) || '',
+          stock: Number(variant.stock),
+          reservedStock: Number(variant.reservedStock || 0),
+          technicalSpecifications: buildTechnicalSpecifications(
+            specificationFields,
+            variantSpecificationValues,
+          ),
+          customSpecifications: compactCustomSpecifications(
+            variantCustomSpecifications,
+          ),
+          imageFiles,
+        }
+      }),
       imageFiles: selectedImages,
       image: editingProduct?.image || '',
       images: editingProduct?.images || [editingProduct?.image].filter(Boolean),
@@ -489,17 +774,6 @@ export default function ProductsPage({
             <FormField label="Brand">
               <input required {...field('brand')} className={inputClass} />
             </FormField>
-            <FormField label="Category">
-              <SelectMenu
-                value={form.category}
-                onChange={(category) =>
-                  setForm((current) => ({ ...current, category }))
-                }
-                options={categoryOptions}
-                ariaLabel="Product category"
-                buttonClassName={inputClass}
-              />
-            </FormField>
             <FormField label="Badge">
               <input {...field('badge')} className={inputClass} />
             </FormField>
@@ -511,7 +785,63 @@ export default function ProductsPage({
               />
             </FormField>
 
-            <FormSectionTitle title="Pricing" />
+            <FormSectionTitle title="Category & Subcategory" />
+            <FormField label="Category">
+              <SelectMenu
+                value={form.categoryId}
+                onChange={(categoryId) => {
+                  const category = managedCategories.find(
+                    (item) => String(item.id) === String(categoryId),
+                  )
+                  setForm((current) => ({
+                    ...current,
+                    categoryId,
+                    category: category?.name || '',
+                    subcategoryId: '',
+                    subcategory: '',
+                  }))
+                  setSpecificationValues({})
+                }}
+                options={categoryOptions}
+                ariaLabel="Product category"
+                buttonClassName={inputClass}
+              />
+            </FormField>
+            <FormField label="Subcategory">
+              <SelectMenu
+                value={form.subcategoryId}
+                onChange={(subcategoryId) => {
+                  const subcategory = managedSubcategories.find(
+                    (item) => String(item.id) === String(subcategoryId),
+                  )
+                  setForm((current) => ({
+                    ...current,
+                    subcategoryId,
+                    subcategory:
+                      subcategory?.name ||
+                      (subcategoryId === LEGACY_SUBCATEGORY_VALUE
+                        ? current.subcategory
+                        : ''),
+                  }))
+                  const nextFields = normalizeSpecificationFields(
+                    subcategory?.specificationFields,
+                  )
+                  setSpecificationValues((current) => {
+                    const defaults = getProductSpecificationValues({}, nextFields)
+                    return nextFields.reduce((next, item) => {
+                      next[item.id] = current[item.id] ?? defaults[item.id]
+                      return next
+                    }, {})
+                  })
+                }}
+                options={subcategoryOptions}
+                ariaLabel="Product subcategory"
+                buttonClassName={inputClass}
+                disabled={!selectedCategory}
+              />
+            </FormField>
+
+            <FormSectionTitle title="Pricing & Inventory" />
             <FormField label="MRP">
               <input required {...field('originalPrice')} className={inputClass} />
             </FormField>
@@ -525,7 +855,6 @@ export default function ProductsPage({
               <input required type="number" min="0" max="100" step="0.01" {...field('taxRate')} className={inputClass} />
             </FormField>
 
-            <FormSectionTitle title="Inventory" />
             <FormField label="Stock">
               <input
                 required
@@ -539,7 +868,6 @@ export default function ProductsPage({
               <input required type="number" min="0" {...field('lowStockThreshold')} className={inputClass} />
             </FormField>
 
-            <FormSectionTitle title="Catalog Display" />
             <FormField label="Rating">
               <input
                 required
@@ -555,7 +883,7 @@ export default function ProductsPage({
               <input required type="number" min="0" {...field('reviewsCount')} className={inputClass} />
             </FormField>
 
-            <FormSectionTitle title="Media" />
+            <FormSectionTitle title="Images" />
             <FormField label="Product images" wide>
               <input
                 required={!editingProduct?.image && !editingProduct?.images?.length}
@@ -571,12 +899,9 @@ export default function ProductsPage({
               </span>
             </FormField>
 
-            <FormSectionTitle title="Specifications" />
+            <FormSectionTitle title="Technical Specifications" />
             <FormField label="Model">
               <input {...field('modelNumber')} className={inputClass} />
-            </FormField>
-            <FormField label="Warranty">
-              <input {...field('warranty')} className={inputClass} />
             </FormField>
             <FormField label="Technical specifications (comma separated)" wide>
               <textarea
@@ -584,6 +909,22 @@ export default function ProductsPage({
                 className={`${inputClass} min-h-20 py-3`}
               />
             </FormField>
+            <DynamicProductSpecifications
+              fields={specificationFields}
+              values={specificationValues}
+              onValueChange={(fieldId, value) => setSpecificationValues((current) => ({ ...current, [fieldId]: value }))}
+              customSpecifications={customSpecifications}
+              onCustomSpecificationsChange={setCustomSpecifications}
+              fieldErrors={Object.fromEntries(specificationFields.map((item) => [item.id, formErrors[`specification:${item.id}`]]).filter(([, message]) => message))}
+              customErrors={Object.fromEntries(customSpecifications.map((item) => [item.id, formErrors[`customSpecification:${item.id}`]]).filter(([, message]) => message))}
+            />
+            <ProductVariantsEditor
+              variants={variants}
+              fields={specificationFields}
+              errors={variantErrors}
+              onChange={setVariants}
+              onSelectImages={selectVariantImages}
+            />
 
             <FormSectionTitle title="Shipping" />
             <FormField label="Weight">
@@ -594,6 +935,11 @@ export default function ProductsPage({
             </FormField>
             <FormField label="Delivery information" wide>
               <textarea {...field('deliveryInformation')} className={`${inputClass} min-h-20 py-3`} />
+            </FormField>
+
+            <FormSectionTitle title="Warranty" />
+            <FormField label="Warranty details" wide>
+              <input {...field('warranty')} className={inputClass} />
             </FormField>
             <button
               type="submit"
@@ -717,7 +1063,12 @@ function ProductRow({ product, onEdit, onDuplicate, onToggle, onDelete }) {
         </div>
       </td>
       <td className="px-5 py-4 text-[10px] font-bold text-slate-500">
-        {product.category}
+        <span className="block">{product.category}</span>
+        {product.subcategory && (
+          <span className="mt-1 block text-[8px] font-semibold text-slate-400">
+            {product.subcategory}
+          </span>
+        )}
       </td>
       <td className="px-5 py-4">
         <strong className="block text-xs text-slate-900">
@@ -788,7 +1139,7 @@ function ProductGridCard({ product, onEdit, onDuplicate, onToggle, onDelete }) {
       </div>
       <div className="p-4">
         <p className="text-[8px] font-extrabold uppercase tracking-wider text-[#397a4a]">
-          {product.category} · {product.sku || `PE-${String(product.id).padStart(4, '0')}`}
+          {product.category}{product.subcategory ? ` / ${product.subcategory}` : ''} · {product.sku || `PE-${String(product.id).padStart(4, '0')}`}
         </p>
         <h3 className="mt-2 min-h-10 line-clamp-2 text-xs font-extrabold leading-5 text-slate-900">
           {product.name}

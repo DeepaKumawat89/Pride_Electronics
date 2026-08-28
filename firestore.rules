@@ -93,6 +93,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /subcategories/{subcategoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /coupons/{couponId} {
       allow read: if true;
       allow write: if isAdmin();

@@ -72,6 +72,11 @@ beforeEach(async () => {
       name: 'Test product',
       stock: 5,
     })
+    await setDoc(doc(database, 'subcategories', 'SUBCATEGORY_1'), {
+      name: 'Test subcategory',
+      categoryId: 'CATEGORY_1',
+      enabled: true,
+    })
     await setDoc(doc(database, 'inventoryHistory', 'ENTRY_1'), {
       productId: 'PRODUCT_1',
       adjustment: 5,
@@ -124,6 +129,13 @@ test('unauthenticated clients cannot read user profiles', async () => {
   await assertFails(getDoc(doc(database, 'users', 'UID_A')))
 })
 
+test('subcategory catalog documents remain publicly readable', async () => {
+  const database = testEnvironment.unauthenticatedContext().firestore()
+  await assertSucceeds(
+    getDoc(doc(database, 'subcategories', 'SUBCATEGORY_1')),
+  )
+})
+
 test('orders are readable only by their owner and require an ownership query', async () => {
   const database = testEnvironment.authenticatedContext('UID_A').firestore()
 
@@ -169,6 +181,9 @@ test('a normal user cannot read admin data or perform direct admin writes', asyn
   await assertFails(getDoc(doc(database, 'inventoryHistory', 'ENTRY_1')))
   await assertFails(updateDoc(doc(database, 'products', 'PRODUCT_1'), { stock: 999 }))
   await assertFails(
+    updateDoc(doc(database, 'subcategories', 'SUBCATEGORY_1'), { enabled: false }),
+  )
+  await assertFails(
     setDoc(doc(database, 'admins', 'UID_A'), {
       uid: 'UID_A',
       role: 'Store Administrator',
@@ -185,6 +200,9 @@ test('an admin custom claim authorizes privileged Firestore operations', async (
   await assertSucceeds(getDoc(doc(database, 'inventoryHistory', 'ENTRY_1')))
   await assertSucceeds(
     updateDoc(doc(database, 'products', 'PRODUCT_1'), { stock: 4 }),
+  )
+  await assertSucceeds(
+    updateDoc(doc(database, 'subcategories', 'SUBCATEGORY_1'), { enabled: false }),
   )
   await assertSucceeds(
     updateDoc(doc(database, 'users', 'UID_B'), { status: 'Suspended' }),

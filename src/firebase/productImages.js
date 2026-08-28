@@ -67,7 +67,7 @@ const createImageId = () =>
   globalThis.crypto?.randomUUID?.() ||
   `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
-export async function uploadProductImages(productId, files) {
+export async function uploadProductImages(productId, files, { prefix = '' } = {}) {
   if (!productId) throw new Error('A product ID is required for image uploads.')
   if (!files.length) return { paths: [], urls: [] }
   if (files.length > MAX_PRODUCT_IMAGES) {
@@ -78,7 +78,8 @@ export async function uploadProductImages(productId, files) {
   try {
     for (const [index, file] of files.entries()) {
       const optimizedImage = await optimizeProductImage(file)
-      const path = `products/${productId}/${String(index + 1).padStart(2, '0')}-${createImageId()}.webp`
+      const safePrefix = String(prefix || '').replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 80)
+      const path = `products/${productId}/${safePrefix}${String(index + 1).padStart(2, '0')}-${createImageId()}.webp`
       const imageReference = ref(storage, path)
       await uploadBytes(imageReference, optimizedImage, {
         contentType: 'image/webp',
@@ -98,6 +99,9 @@ export async function uploadProductImages(productId, files) {
     throw error
   }
 }
+
+export const uploadVariantImages = (productId, variantId, files) =>
+  uploadProductImages(productId, files, { prefix: `variant-${variantId}-` })
 
 export const removeProductImages = (paths = []) =>
   Promise.allSettled(paths.map((path) => deleteObject(ref(storage, path))))

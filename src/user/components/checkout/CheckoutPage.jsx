@@ -289,6 +289,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
         requestId: checkoutRequestId.current,
         items: items.map(({ product, quantity }) => ({
           productId: product.id,
+          ...(product.selectedVariantId ? { variantId: product.selectedVariantId } : {}),
           quantity,
         })),
         couponCode: pricing.coupon.status === 'applied' ? appliedCoupon : '',
@@ -473,8 +474,8 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
             </div>
 
             <div className="mt-5 max-h-64 space-y-3 overflow-y-auto pr-1">
-              {items.map(({ product, quantity }) => (
-                <article key={product.id} className="flex gap-3 rounded-2xl bg-[#f7f8f5] p-3"><img src={product.image} alt={product.name} className="size-16 shrink-0 rounded-xl object-cover" /><div className="min-w-0 flex-1"><p className="line-clamp-2 text-[10px] font-extrabold leading-4 text-slate-800">{product.name}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="rounded-full bg-white px-2 py-1 text-[8px] font-bold text-slate-500">Qty {quantity}</span><strong className="text-[10px] text-slate-900">{formatCurrency(parsePrice(product.price) * quantity)}</strong></div></div></article>
+              {items.map(({ key, product, quantity }) => (
+                <article key={key} className="flex gap-3 rounded-2xl bg-[#f7f8f5] p-3"><img src={product.image} alt={product.name} className="size-16 shrink-0 rounded-xl object-cover" /><div className="min-w-0 flex-1"><p className="line-clamp-2 text-[10px] font-extrabold leading-4 text-slate-800">{product.name}</p>{product.selectedVariantName && <p className="mt-1 text-[8px] font-bold text-[#397a4a]">{product.selectedVariantName}{product.modelNumber ? ` · ${product.modelNumber}` : ''}</p>}<div className="mt-2 flex items-center justify-between gap-2"><span className="rounded-full bg-white px-2 py-1 text-[8px] font-bold text-slate-500">Qty {quantity}</span><strong className="text-[10px] text-slate-900">{formatCurrency(parsePrice(product.price) * quantity)}</strong></div></div></article>
               ))}
             </div>
 

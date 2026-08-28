@@ -58,6 +58,10 @@ import {
   subscribeToUserReturns,
 } from '../firebase/storeData'
 import { getCustomerCouponUsage } from '../firebase/customerData'
+import {
+  productHasVariants,
+  variantCartKey,
+} from '../utils/productVariants'
 
 const PRODUCT_HASH_PREFIX = '#product-'
 const PRODUCTS_HASH_PREFIX = '#products'
@@ -808,6 +812,11 @@ export default function UserApp({
   )
 
   const handleAdd = (product, quantity = 1) => {
+    if (productHasVariants(product) && !product.selectedVariantId) {
+      navigateToProduct(product)
+      notify(`Select a variant for ${product.name} before adding it to your cart`)
+      return
+    }
     const added = cart.add(product, quantity)
     if (!added) {
       notify(`${product.name} is currently out of stock`)
@@ -953,6 +962,11 @@ export default function UserApp({
   }
 
   const handleBuyNow = (product, quantity) => {
+    if (productHasVariants(product) && !product.selectedVariantId) {
+      navigateToProduct(product)
+      notify(`Select a variant for ${product.name} before buying`)
+      return
+    }
     const added = cart.add(product, quantity)
     if (!added) {
       notify(`${product.name} is currently out of stock`)
@@ -1171,14 +1185,18 @@ export default function UserApp({
     navigateToProtectedPath('/cart')
   }
 
-  const handleRemoveCartItem = (productId) => {
+  const handleRemoveCartItem = (itemKey) => {
     const previousAccount = accountStateRef.current
     const previousCart = cartPersistenceRef.current
     const currentCart = cartPersistenceRef.current
+    const target = (currentCart.cartItems || []).find(
+      (item) => variantCartKey(item.productId, item.variantId) === itemKey,
+    )
+    if (!target) return
     const nextCart = {
       ...currentCart,
       cartItems: (currentCart.cartItems || []).filter(
-        (item) => String(item.productId) !== String(productId),
+        (item) => variantCartKey(item.productId, item.variantId) !== itemKey,
       ),
     }
     const nextAccount = normalizeAccountState({
@@ -1189,9 +1207,9 @@ export default function UserApp({
     cartPersistenceRef.current = nextCart
     accountStateRef.current = nextAccount
     accountSnapshot.current = JSON.stringify(nextAccount)
-    cart.remove(productId)
+    cart.remove(itemKey)
     if (user?.uid) {
-      void removeUserCartItem(productId).catch((error) => {
+      void removeUserCartItem(target.productId, target.variantId).catch((error) => {
         cartPersistenceRef.current = previousCart
         accountStateRef.current = previousAccount
         accountSnapshot.current = JSON.stringify(previousAccount)
@@ -1313,9 +1331,12 @@ export default function UserApp({
         '',
       items: cart.items.map(({ product, quantity }) => ({
         productId: product.id,
+        ...(product.selectedVariantId ? { variantId: product.selectedVariantId } : {}),
         sku: product.sku || `PE-${String(product.id).padStart(4, '0')}`,
         productName: product.name,
-        variant: product.variant || product.specification || '',
+        variant: product.selectedVariantName || product.variant || product.specification || '',
+        variantModelNumber: product.modelNumber || '',
+        variantSpecifications: product.variantSnapshot?.technicalSpecifications || [],
         image: product.image,
         qty: quantity,
         price: product.price,
@@ -1365,7 +1386,10 @@ export default function UserApp({
     cart.clear()
     if (user?.uid) {
       void removeUserCartItems(
-        savedOrder.items.map((item) => item.productId),
+        savedOrder.items.map((item) => ({
+          productId: item.productId,
+          ...(item.variantId ? { variantId: item.variantId } : {}),
+        })),
       ).catch((error) => {
         notify(error.message)
       })
@@ -1508,7 +1532,8 @@ export default function UserApp({
         ) : selectedProduct && reviewsOpen ? (
           <ProductReviewsPage product={selectedProduct} reviews={selectedProductReviews} onBack={closeReviews} />
         ) : selectedProduct ? (
-          <ProductDetailsPage
+        <ProductDetailsPage
+          key={selectedProduct.id}
             key={selectedProduct.id}
             product={selectedProduct}
             relatedProducts={relatedProducts}

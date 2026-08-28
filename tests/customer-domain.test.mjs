@@ -287,3 +287,86 @@ test('successful checkout removes only purchased products from the persisted car
     [{ productId: 'keep-1', quantity: 1 }],
   )
 })
+
+test('variant checkout uses variant price, stock, media, and purchase snapshot', () => {
+  const variantProduct = {
+    ...product,
+    price: 9999,
+    stock: 7,
+    variants: [
+      {
+        id: 'variant-a',
+        name: '24 V DC',
+        sku: 'SENSOR-24V',
+        modelNumber: 'PX-24',
+        price: 1500,
+        discountPrice: 1250,
+        stock: 4,
+        reservedStock: 1,
+        images: ['https://example.com/variant-a.webp'],
+        technicalSpecifications: [{ fieldId: 'voltage', label: 'Voltage', value: '24 V DC' }],
+      },
+    ],
+  }
+  const quote = quoteFor({
+    requestedItems: [{ productId: product.id, variantId: 'variant-a', quantity: 2 }],
+    products: [variantProduct],
+  })
+  assert.equal(quote.items[0].variantId, 'variant-a')
+  assert.equal(quote.items[0].variant, '24 V DC')
+  assert.equal(quote.items[0].sku, 'SENSOR-24V')
+  assert.equal(quote.items[0].variantModelNumber, 'PX-24')
+  assert.equal(quote.items[0].price, 1250)
+  assert.equal(quote.items[0].unitPrice, 1500)
+  assert.equal(quote.items[0].image, 'https://example.com/variant-a.webp')
+  assert.equal(quote.sellingSubtotal, 2500)
+})
+
+test('variant products require a current selection and allow sibling variants as separate rows', () => {
+  const variantProduct = {
+    ...product,
+    variants: [
+      { id: 'variant-a', name: 'A', price: 100, stock: 2 },
+      { id: 'variant-b', name: 'B', price: 200, stock: 3 },
+    ],
+  }
+  assert.throws(
+    () => quoteFor({ products: [variantProduct] }),
+    (error) => error.code === 'product-unavailable',
+  )
+  assert.throws(
+    () => quoteFor({
+      requestedItems: [{ productId: product.id, variantId: 'removed', quantity: 1 }],
+      products: [variantProduct],
+    }),
+    (error) => error.code === 'product-unavailable',
+  )
+  const requested = normalizeRequestedItems([
+    { productId: product.id, variantId: 'variant-a', quantity: 1 },
+    { productId: product.id, variantId: 'variant-b', quantity: 1 },
+  ])
+  assert.equal(requested.length, 2)
+  assert.throws(
+    () => normalizeRequestedItems([
+      { productId: product.id, variantId: 'variant-a', quantity: 1 },
+      { productId: product.id, variantId: 'variant-a', quantity: 1 },
+    ]),
+    (error) => error.code === 'invalid-items',
+  )
+})
+
+test('account state keeps sibling variants distinct and removes only the purchased variant', () => {
+  const state = sanitizeAccountState({
+    cartItems: [
+      { productId: 'product-1', variantId: 'variant-a', quantity: 1 },
+      { productId: 'product-1', variantId: 'variant-b', quantity: 2 },
+    ],
+  })
+  assert.equal(state.cartItems.length, 2)
+  assert.deepEqual(
+    removePurchasedCartItems(state.cartItems, [
+      { productId: 'product-1', variantId: 'variant-a', qty: 1 },
+    ]),
+    [{ productId: 'product-1', variantId: 'variant-b', quantity: 2 }],
+  )
+})

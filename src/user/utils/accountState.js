@@ -1,4 +1,5 @@
 import { normalizeAddress } from './address.js'
+import { variantCartKey } from '../../utils/productVariants.js'
 
 export const ACCOUNT_LIMITS = {
   wishlist: 200,
@@ -38,18 +39,22 @@ export const normalizeAccountState = (account = {}) => ({
       .filter((item) => item?.productId !== null && item?.productId !== undefined)
       .map((item) => ({
         productId: item.productId,
+        ...(item.variantId ? { variantId: item.variantId } : {}),
         quantity: Math.max(1, Math.min(100, Number(item.quantity) || 1)),
       })),
-    (item) => String(item.productId),
+    (item) => variantCartKey(item.productId, item.variantId),
     ACCOUNT_LIMITS.cart,
   ),
   savedCartItems: uniqueBy(
     list(account.savedCartItems)
-      .map((item) => ({ productId: item?.productId ?? item }))
+      .map((item) => ({
+        productId: item?.productId ?? item,
+        ...(item?.variantId ? { variantId: item.variantId } : {}),
+      }))
       .filter(
         (item) => item.productId !== null && item.productId !== undefined,
       ),
-    (item) => String(item.productId),
+    (item) => variantCartKey(item.productId, item.variantId),
     ACCOUNT_LIMITS.savedCart,
   ),
 })
@@ -59,16 +64,18 @@ export const mergeInitialGuestAccount = (remoteAccount, guestAccount) => {
   const guest = normalizeAccountState(guestAccount)
   const cartItems = uniqueBy(
     [...remote.cartItems, ...guest.cartItems],
-    (item) => String(item.productId),
+    (item) => variantCartKey(item.productId, item.variantId),
     ACCOUNT_LIMITS.cart,
   )
-  const cartProductIds = new Set(cartItems.map((item) => String(item.productId)))
+  const cartProductIds = new Set(
+    cartItems.map((item) => variantCartKey(item.productId, item.variantId)),
+  )
   return normalizeAccountState({
     ...remote,
     wishlistIds: [...remote.wishlistIds, ...guest.wishlistIds],
     cartItems,
     savedCartItems: [...remote.savedCartItems, ...guest.savedCartItems].filter(
-      (item) => !cartProductIds.has(String(item.productId)),
+      (item) => !cartProductIds.has(variantCartKey(item.productId, item.variantId)),
     ),
   })
 }

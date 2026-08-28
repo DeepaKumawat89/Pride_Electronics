@@ -29,6 +29,11 @@ const unique = (values, keyFor) => [
   ...new Map(values.map((value) => [keyFor(value), value])).values(),
 ]
 
+const cartKey = (item) =>
+  item?.variantId
+    ? `${String(item.productId)}::${String(item.variantId)}`
+    : String(item?.productId)
+
 const withSingleDefault = (values) => {
   const defaultIndex = values.findIndex((value) => value.isDefault)
   return values.map((value, index) => ({
@@ -99,18 +104,21 @@ const sanitizePaymentMethod = (payment) => {
 
 const sanitizeCartItem = (item) => {
   const productId = shortText(item?.productId, 100, true)
+  const variantId = shortText(item?.variantId, 100)
   const quantity = Number(item?.quantity)
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
     const error = new Error('Invalid cart quantity.')
     error.code = 'invalid-account-state'
     throw error
   }
-  return { productId, quantity }
+  return { productId, ...(variantId ? { variantId } : {}), quantity }
 }
 
-const sanitizeSavedItem = (item) => ({
-  productId: shortText(item?.productId ?? item, 100, true),
-})
+const sanitizeSavedItem = (item) => {
+  const productId = shortText(item?.productId ?? item, 100, true)
+  const variantId = shortText(item?.variantId, 100)
+  return { productId, ...(variantId ? { variantId } : {}) }
+}
 
 function sanitizeAccountState(value = {}) {
   const wishlistIds = unique(
@@ -133,29 +141,27 @@ function sanitizeAccountState(value = {}) {
   ))
   const cartItems = unique(
     inputList(value.cartItems || [], 'cart', limits.cart).map(sanitizeCartItem),
-    (item) => item.productId,
+    cartKey,
   )
-  const cartIds = new Set(cartItems.map((item) => item.productId))
+  const cartIds = new Set(cartItems.map(cartKey))
   const savedCartItems = unique(
     inputList(
       value.savedCartItems || [],
       'saved cart',
       limits.savedCart,
     ).map(sanitizeSavedItem),
-    (item) => item.productId,
-  ).filter((item) => !cartIds.has(item.productId))
+    cartKey,
+  ).filter((item) => !cartIds.has(cartKey(item)))
 
   return { wishlistIds, addresses, paymentMethods, cartItems, savedCartItems }
 }
 
 function removePurchasedCartItems(cartItems, purchasedItems) {
   const purchasedProductIds = new Set(
-    (Array.isArray(purchasedItems) ? purchasedItems : []).map((item) =>
-      String(item?.productId),
-    ),
+    (Array.isArray(purchasedItems) ? purchasedItems : []).map(cartKey),
   )
   return (Array.isArray(cartItems) ? cartItems : []).filter(
-    (item) => !purchasedProductIds.has(String(item?.productId)),
+    (item) => !purchasedProductIds.has(cartKey(item)),
   )
 }
 

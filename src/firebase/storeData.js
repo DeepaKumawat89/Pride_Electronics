@@ -145,9 +145,14 @@ export const saveUserAccount = async (_uid, values) => {
   }
 }
 
-export const removeUserCartItems = async (productIds) => {
+export const removeUserCartItems = async (items) => {
   try {
-    const result = await removeCartItemsGateway({ productIds })
+    const normalizedItems = items.map((item) =>
+      typeof item === 'object' && item !== null
+        ? item
+        : { productId: item },
+    )
+    const result = await removeCartItemsGateway({ items: normalizedItems })
     return result.data?.cartItems || []
   } catch (error) {
     const messages = {
@@ -169,5 +174,5 @@ export const removeUserCartItems = async (productIds) => {
   }
 }
 
-export const removeUserCartItem = (productId) =>
-  removeUserCartItems([productId])
+export const removeUserCartItem = (productId, variantId = '') =>
+  removeUserCartItems([{ productId, ...(variantId ? { variantId } : {}) }])

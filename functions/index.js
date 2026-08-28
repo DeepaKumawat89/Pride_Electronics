@@ -57,6 +57,14 @@ const normalizeOrderItems = (items) => {
   }
 }
 
+const variantForItem = (product, item) =>
+  (Array.isArray(product?.variants) ? product.variants : []).find(
+    (variant) => String(variant.id) === String(item?.variantId || ''),
+  ) || null
+
+const inventoryForItem = (product, item) =>
+  item?.variantId ? variantForItem(product, item) : product
+
 const checkoutError = (error) => {
   if (error?.code === 'product-unavailable') {
     return new HttpsError('failed-precondition', error.message)
@@ -553,6 +561,7 @@ async function createRazorpayOrderHandler(request) {
       paymentMethod: 'Online payment',
       items: quote.items.map((item) => ({
         productId: item.productId,
+        ...(item.variantId ? { variantId: item.variantId } : {}),
         quantity: item.qty,
       })),
     },
@@ -821,14 +830,21 @@ async function placeOrderHandler(request) {
     let inventoryNeedsAttention = false
     productDocuments.forEach((productDocument, index) => {
       const product = productDocument.data()
+      const variants = Array.isArray(product?.variants) ? product.variants : []
+      const variant = variantForItem(product, items[index])
+      const inventory = inventoryForItem(product, items[index])
       const available = productDocument.exists
         ? Math.max(
             0,
-            Number(product.stock || 0) - Number(product.reservedStock || 0),
+            Number(inventory?.stock || 0) - Number(inventory?.reservedStock || 0),
           )
         : 0
       const unavailable =
-        !productDocument.exists || product.enabled === false || available < items[index].qty
+        !productDocument.exists ||
+        product.enabled === false ||
+        (variants.length > 0 && !variant) ||
+        (variants.length === 0 && items[index].variantId) ||
+        available < items[index].qty
       if (!unavailable) return
       if (!isCashOnDelivery) {
         inventoryNeedsAttention = true
@@ -908,36 +924,43 @@ async function placeOrderHandler(request) {
       }
     }
 
+    const inventoryUpdates = new Map()
     quote.items.forEach((quotedItem, index) => {
       const productDocument = productDocuments[index]
-      const product = productDocument.data() || {}
+      const product = inventoryUpdates.get(productDocument.id) || cleanObject(productDocument.data())
       const quantity = quotedItem.qty
-      const reservedBefore = Number(product.reservedStock || 0)
-      if (!inventoryNeedsAttention) {
-        transaction.update(productReferences[index], {
-          reservedStock: FieldValue.increment(quantity),
-          updatedAt: now,
-        })
+      const inventory = inventoryForItem(product, quotedItem) || product
+      const reservedBefore = Number(inventory.reservedStock || 0)
+      const stock = Number(inventory.stock || 0)
+      if (!inventoryNeedsAttention) inventory.reservedStock = reservedBefore + quantity
+      if (quotedItem.variantId) {
+        product.reservedStock = (product.variants || []).reduce(
+          (total, variant) => total + Number(variant.reservedStock || 0),
+          0,
+        )
       }
+      inventoryUpdates.set(productDocument.id, product)
       const historyReference = db.collection('inventoryHistory').doc()
       transaction.create(historyReference, {
         productId: productDocument.id,
         productName: product.name || quotedItem.productName || '',
-        sku: product.sku || quotedItem.sku || '',
+        variantId: quotedItem.variantId || '',
+        variantName: quotedItem.variant || '',
+        sku: quotedItem.sku || product.sku || '',
         action: inventoryNeedsAttention
           ? 'Reservation attention required'
           : 'Order reserved',
         quantity,
-        stockBefore: Number(product.stock || 0),
-        stockAfter: Number(product.stock || 0),
+        stockBefore: stock,
+        stockAfter: stock,
         reservedBefore,
         reservedAfter: inventoryNeedsAttention
           ? reservedBefore
           : reservedBefore + quantity,
-        availableBefore: Math.max(0, Number(product.stock || 0) - reservedBefore),
+        availableBefore: Math.max(0, stock - reservedBefore),
         availableAfter: inventoryNeedsAttention
-          ? Math.max(0, Number(product.stock || 0) - reservedBefore)
-          : Math.max(0, Number(product.stock || 0) - reservedBefore - quantity),
+          ? Math.max(0, stock - reservedBefore)
+          : Math.max(0, stock - reservedBefore - quantity),
         reference: orderReference.id,
         note: inventoryNeedsAttention
           ? 'Product availability changed after verified payment; manual inventory review required'
@@ -947,6 +970,16 @@ async function placeOrderHandler(request) {
         updatedAt: now,
       })
     })
+    if (!inventoryNeedsAttention) {
+      inventoryUpdates.forEach((product, productId) => {
+        transaction.update(db.doc(`products/${productId}`), {
+          ...(Array.isArray(product.variants) && product.variants.length
+            ? { variants: product.variants, reservedStock: product.reservedStock }
+            : { reservedStock: product.reservedStock }),
+          updatedAt: now,
+        })
+      })
+    }
 
     if (couponDocument) {
       transaction.update(couponDocument.ref, {
@@ -1105,13 +1138,24 @@ exports.saveAccountState = onCall(callableOptions, saveAccountStateHandler)
 
 async function removeCartItemsHandler(request) {
   const uid = requireUser(request)
-  const productIds = Array.isArray(request.data?.productIds)
-    ? request.data.productIds.map((productId) => String(productId || '').trim())
+  const requestedItems = Array.isArray(request.data?.items)
+    ? request.data.items.map((item) => ({
+        productId: String(item?.productId || '').trim(),
+        variantId: String(item?.variantId || '').trim(),
+      }))
+    : Array.isArray(request.data?.productIds)
+      ? request.data.productIds.map((productId) => ({
+          productId: String(productId || '').trim(),
+          variantId: '',
+        }))
     : []
   if (
-    !productIds.length ||
-    productIds.length > 50 ||
-    productIds.some((productId) => !/^[a-zA-Z0-9_-]{1,100}$/.test(productId))
+    !requestedItems.length ||
+    requestedItems.length > 50 ||
+    requestedItems.some(({ productId, variantId }) =>
+      !/^[a-zA-Z0-9_-]{1,100}$/.test(productId) ||
+      (variantId && !/^[a-zA-Z0-9_-]{1,100}$/.test(variantId)),
+    )
   ) {
     throw new HttpsError('invalid-argument', 'Select valid cart products.')
   }
@@ -1127,7 +1171,7 @@ async function removeCartItemsHandler(request) {
     }
     const remainingCartItems = removePurchasedCartItems(
       userData.cartItems,
-      productIds.map((productId) => ({ productId })),
+      requestedItems,
     )
     transaction.update(userReference, {
       cartItems: remainingCartItems,
@@ -1221,30 +1265,38 @@ async function cancelOrderHandler(request) {
     for (const productReference of productReferences) {
       productDocuments.push(await transaction.get(productReference))
     }
+    const inventoryUpdates = new Map()
     items.forEach((item, index) => {
-      const productReference = productReferences[index]
       const productDocument = productDocuments[index]
       if (productDocument.exists && order.inventoryState === 'reserved') {
-        const product = productDocument.data()
-        const reservedBefore = Number(product.reservedStock || 0)
+        const product = inventoryUpdates.get(productDocument.id) || cleanObject(productDocument.data())
+        const inventory = inventoryForItem(product, item)
+        if (!inventory) return
+        const reservedBefore = Number(inventory.reservedStock || 0)
         const reservedAfter = Math.max(0, reservedBefore - item.qty)
-        transaction.update(productReference, {
-          reservedStock: reservedAfter,
-          updatedAt: now,
-        })
+        inventory.reservedStock = reservedAfter
+        if (Array.isArray(product.variants) && product.variants.length) {
+          product.reservedStock = product.variants.reduce(
+            (total, variant) => total + Number(variant.reservedStock || 0),
+            0,
+          )
+        }
+        inventoryUpdates.set(productDocument.id, product)
         const historyReference = db.collection('inventoryHistory').doc()
         transaction.create(historyReference, {
           productId: productDocument.id,
+          variantId: item.variantId || '',
+          variantName: item.variant || '',
           productName: product.name || item.productName || '',
-          sku: product.sku || item.sku || '',
+          sku: item.sku || product.sku || '',
           action: 'Reservation released',
           quantity: item.qty,
-          stockBefore: Number(product.stock || 0),
-          stockAfter: Number(product.stock || 0),
+          stockBefore: Number(inventory.stock || 0),
+          stockAfter: Number(inventory.stock || 0),
           reservedBefore,
           reservedAfter,
-          availableBefore: Math.max(0, Number(product.stock || 0) - reservedBefore),
-          availableAfter: Math.max(0, Number(product.stock || 0) - reservedAfter),
+          availableBefore: Math.max(0, Number(inventory.stock || 0) - reservedBefore),
+          availableAfter: Math.max(0, Number(inventory.stock || 0) - reservedAfter),
           reference: orderId,
           note: 'Reservation released after customer cancellation',
           timestamp: now,
@@ -1252,6 +1304,14 @@ async function cancelOrderHandler(request) {
           updatedAt: now,
         })
       }
+    })
+    inventoryUpdates.forEach((product, productId) => {
+      transaction.update(db.doc(`products/${productId}`), {
+        ...(Array.isArray(product.variants) && product.variants.length
+          ? { variants: product.variants, reservedStock: product.reservedStock }
+          : { reservedStock: product.reservedStock }),
+        updatedAt: now,
+      })
     })
     const paymentStatus = /cash|cod/i.test(order.paymentMethod || '')
       ? 'Cancelled'

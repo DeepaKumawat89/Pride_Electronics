@@ -1,0 +1,360 @@
+import { normalizeSpecificationFields } from '../utils/productSpecifications.js'
+
+const text = (key, label, details = {}) => ({ key, label, type: 'text', ...details })
+const number = (key, label, unit = '', details = {}) => ({ key, label, type: 'number', unit, ...details })
+const select = (key, label, options, details = {}) => ({ key, label, type: 'select', options, ...details })
+const multiSelect = (key, label, options, details = {}) => ({ key, label, type: 'multi-select', options, ...details })
+const boolean = (key, label, details = {}) => ({ key, label, type: 'boolean', ...details })
+const textarea = (key, label, details = {}) => ({ key, label, type: 'textarea', ...details })
+
+const template = (id, name, aliases, fields) => ({
+  id,
+  name,
+  version: 1,
+  aliases: [name, ...aliases],
+  fields: normalizeSpecificationFields(
+    fields.map((field) => ({
+      id: `${id}-${field.key}`,
+      required: false,
+      placeholder: '',
+      unit: '',
+      options: [],
+      ...field,
+    })),
+  ),
+})
+
+export const PRODUCT_SPECIFICATION_TEMPLATES = [
+  template('proximity-sensors', 'Proximity Sensors', ['Proximity Sensor'], [
+    select('sensing-technology', 'Sensing technology', ['Inductive', 'Capacitive', 'Magnetic', 'Ultrasonic']),
+    number('sensing-distance', 'Sensing distance', 'mm'),
+    text('supply-voltage', 'Supply voltage', { placeholder: 'For example, 10–30 V DC' }),
+    select('output-configuration', 'Output configuration', ['PNP NO', 'PNP NC', 'NPN NO', 'NPN NC', '2-wire AC', '2-wire DC', 'NAMUR', 'Analog']),
+    number('switching-frequency', 'Switching frequency', 'Hz'),
+    select('mounting-style', 'Mounting style', ['Flush', 'Non-flush', 'Quasi-flush']),
+    text('housing-size', 'Housing / thread size', { placeholder: 'For example, M18' }),
+    select('connection-type', 'Connection type', ['Pre-wired cable', 'M8 connector', 'M12 connector', 'Terminal']),
+    select('ip-rating', 'IP rating', ['IP54', 'IP65', 'IP67', 'IP68', 'IP69K']),
+    text('operating-temperature', 'Operating temperature range'),
+    text('target-material', 'Detectable target material'),
+  ]),
+  template('photoelectric-sensors', 'Photoelectric Sensors', ['Photoelectric Sensor', 'Photo Sensors'], [
+    select('sensing-mode', 'Sensing mode', ['Diffuse reflective', 'Retro-reflective', 'Through-beam', 'Background suppression', 'Foreground suppression', 'Fiber optic']),
+    text('sensing-range', 'Sensing range'),
+    select('light-source', 'Light source', ['Red LED', 'Infrared LED', 'Laser', 'White LED', 'Blue LED']),
+    text('supply-voltage', 'Supply voltage'),
+    select('output-configuration', 'Output configuration', ['PNP', 'NPN', 'Relay', 'Push-pull', 'Analog']),
+    number('response-time', 'Response time', 'ms'),
+    select('sensitivity-adjustment', 'Sensitivity adjustment', ['Fixed', 'Potentiometer', 'Teach-in', 'IO-Link / software']),
+    select('connection-type', 'Connection type', ['Pre-wired cable', 'M8 connector', 'M12 connector', 'Terminal']),
+    text('housing-style', 'Housing style / dimensions'),
+    select('ip-rating', 'IP rating', ['IP54', 'IP65', 'IP67', 'IP68', 'IP69K']),
+    text('operating-temperature', 'Operating temperature range'),
+  ]),
+  template('temperature-sensors', 'Temperature Sensors', ['Temperature Sensor'], [
+    select('sensor-element', 'Sensor element / type', ['PT100', 'PT1000', 'Thermocouple J', 'Thermocouple K', 'Thermocouple T', 'Thermistor NTC', 'Thermistor PTC', 'Semiconductor', 'Infrared']),
+    text('measurement-range', 'Measurement range'),
+    text('accuracy', 'Accuracy / tolerance'),
+    select('output-signal', 'Output signal', ['Resistance / RTD', 'Thermocouple mV', '4–20 mA', '0–10 V', 'I²C', 'SPI', '1-Wire', 'Digital switch']),
+    select('wire-configuration', 'Wire configuration', ['2-wire', '3-wire', '4-wire', 'Not applicable']),
+    text('probe-material', 'Probe / sheath material'),
+    number('probe-length', 'Probe length', 'mm'),
+    number('probe-diameter', 'Probe diameter', 'mm'),
+    text('process-connection', 'Process connection'),
+    select('electrical-connection', 'Electrical connection', ['Cable', 'Terminal head', 'M8 connector', 'M12 connector', 'Plug', 'PCB pins']),
+    text('response-time', 'Response time'),
+    select('ip-rating', 'IP rating', ['IP54', 'IP65', 'IP67', 'IP68']),
+  ]),
+  template('pressure-sensors', 'Pressure Sensors', ['Pressure Sensor', 'Pressure Transducers'], [
+    select('pressure-reference', 'Pressure reference', ['Gauge', 'Absolute', 'Differential', 'Vacuum / compound', 'Sealed gauge']),
+    text('pressure-range', 'Pressure range'),
+    select('pressure-unit', 'Primary pressure unit', ['bar', 'mbar', 'psi', 'kPa', 'MPa', 'Pa', 'kgf/cm²']),
+    select('output-signal', 'Output signal', ['4–20 mA', '0–10 V', '0–5 V', '1–5 V', 'IO-Link', 'PNP switch', 'NPN switch', 'Digital']),
+    text('supply-voltage', 'Supply voltage'),
+    text('accuracy', 'Accuracy'),
+    text('process-connection', 'Process connection'),
+    text('wetted-material', 'Wetted parts material'),
+    text('overpressure-rating', 'Overpressure / burst rating'),
+    select('electrical-connection', 'Electrical connection', ['Cable', 'DIN 43650', 'M12 connector', 'Packard connector', 'Terminal']),
+    select('ip-rating', 'IP rating', ['IP54', 'IP65', 'IP67', 'IP68', 'IP69K']),
+    text('media-temperature', 'Media temperature range'),
+  ]),
+  template('plcs', 'PLCs', ['PLC', 'Programmable Logic Controllers', 'Programmable Logic Controller'], [
+    text('cpu-family', 'CPU / controller family'),
+    select('power-supply', 'Power supply', ['24 V DC', '100–240 V AC', '12–24 V DC', 'Other']),
+    number('digital-inputs', 'Digital inputs'),
+    number('digital-outputs', 'Digital outputs'),
+    select('digital-output-type', 'Digital output type', ['Relay', 'Transistor sourcing', 'Transistor sinking', 'Triac', 'Mixed']),
+    number('analog-inputs', 'Analog inputs'),
+    number('analog-outputs', 'Analog outputs'),
+    text('program-memory', 'Program / data memory'),
+    text('scan-time', 'Typical instruction / scan time'),
+    multiSelect('communication-protocols', 'Communication protocols', ['Modbus RTU', 'Modbus TCP', 'PROFINET', 'PROFIBUS', 'EtherNet/IP', 'CANopen', 'DeviceNet', 'EtherCAT', 'OPC UA', 'MQTT']),
+    multiSelect('communication-ports', 'Communication ports', ['Ethernet', 'RS-232', 'RS-485', 'USB', 'CAN', 'MPI']),
+    boolean('expansion-supported', 'Expansion modules supported'),
+    number('maximum-expansion-modules', 'Maximum expansion modules'),
+    text('programming-software', 'Programming software'),
+  ]),
+  template('hmis', 'HMIs', ['HMI', 'Human Machine Interfaces', 'Human Machine Interface'], [
+    number('screen-size', 'Screen size', 'in'),
+    text('resolution', 'Display resolution', { placeholder: 'For example, 800 × 480' }),
+    select('display-type', 'Display type', ['TFT LCD', 'IPS LCD', 'OLED', 'Monochrome LCD']),
+    select('touch-technology', 'Touch technology', ['Resistive', 'Capacitive', 'Non-touch']),
+    text('color-depth', 'Colours / colour depth'),
+    text('supply-voltage', 'Supply voltage'),
+    multiSelect('communication-ports', 'Communication ports', ['Ethernet', 'RS-232', 'RS-485', 'USB host', 'USB device', 'CAN', 'SD card']),
+    multiSelect('communication-protocols', 'Communication protocols', ['Modbus RTU', 'Modbus TCP', 'PROFINET', 'EtherNet/IP', 'PROFIBUS', 'CANopen', 'OPC UA', 'MQTT']),
+    text('memory-storage', 'Memory / storage'),
+    select('front-ip-rating', 'Front-panel IP rating', ['IP54', 'IP65', 'IP66', 'IP67']),
+    text('panel-cutout', 'Panel cutout dimensions'),
+    text('runtime-software', 'Runtime / configuration software'),
+    text('operating-temperature', 'Operating temperature range'),
+  ]),
+  template('vfds', 'VFDs', ['VFD', 'Variable Frequency Drives', 'Variable Frequency Drive', 'AC Drives'], [
+    number('rated-motor-power', 'Rated motor power', 'kW'),
+    select('input-supply', 'Input supply', ['Single-phase 200–240 V AC', 'Three-phase 200–240 V AC', 'Three-phase 380–480 V AC', 'Three-phase 500–690 V AC']),
+    number('rated-output-current', 'Rated output current', 'A'),
+    text('output-frequency-range', 'Output frequency range'),
+    multiSelect('control-modes', 'Control modes', ['V/f', 'Sensorless vector', 'Closed-loop vector', 'Torque control', 'PM motor control']),
+    text('overload-capacity', 'Overload capacity'),
+    text('carrier-frequency', 'Carrier frequency range'),
+    multiSelect('communication-protocols', 'Communication protocols', ['Modbus RTU', 'Modbus TCP', 'PROFINET', 'PROFIBUS', 'EtherNet/IP', 'CANopen', 'EtherCAT']),
+    boolean('braking-unit', 'Built-in braking unit'),
+    boolean('emc-filter', 'Built-in EMC filter'),
+    select('enclosure', 'Enclosure / mounting', ['Open chassis', 'IP20', 'IP21', 'IP54', 'IP55', 'IP65', 'Cabinet']),
+    text('operating-temperature', 'Operating temperature range'),
+  ]),
+  template('servo-motors', 'Servo Motors', ['Servo Motor'], [
+    number('rated-power', 'Rated power', 'W'),
+    text('rated-voltage', 'Rated voltage'),
+    number('rated-torque', 'Rated torque', 'N·m'),
+    number('peak-torque', 'Peak torque', 'N·m'),
+    number('rated-speed', 'Rated speed', 'rpm'),
+    number('maximum-speed', 'Maximum speed', 'rpm'),
+    select('encoder-type', 'Encoder type', ['Incremental', 'Absolute single-turn', 'Absolute multi-turn', 'Resolver', 'Sensorless']),
+    text('encoder-resolution', 'Encoder resolution'),
+    text('frame-flange-size', 'Frame / flange size'),
+    number('shaft-diameter', 'Shaft diameter', 'mm'),
+    boolean('holding-brake', 'Holding brake included'),
+    select('ip-rating', 'IP rating', ['IP40', 'IP54', 'IP65', 'IP67']),
+    text('connector-type', 'Power / feedback connector type'),
+  ]),
+  template('stepper-motors', 'Stepper Motors', ['Stepper Motor', 'Step Motors'], [
+    number('step-angle', 'Step angle', '°'),
+    number('holding-torque', 'Holding torque', 'N·m'),
+    number('rated-current', 'Rated current per phase', 'A'),
+    text('rated-voltage', 'Rated voltage'),
+    number('phase-count', 'Number of phases'),
+    select('frame-size', 'Frame size', ['NEMA 8', 'NEMA 11', 'NEMA 14', 'NEMA 17', 'NEMA 23', 'NEMA 24', 'NEMA 34', 'NEMA 42']),
+    number('shaft-diameter', 'Shaft diameter', 'mm'),
+    number('phase-resistance', 'Phase resistance', 'Ω'),
+    number('phase-inductance', 'Phase inductance', 'mH'),
+    number('lead-wire-count', 'Lead wire count'),
+    select('wiring-type', 'Wiring type', ['Bipolar', 'Unipolar', 'Bipolar / unipolar']),
+    boolean('encoder-included', 'Encoder included'),
+  ]),
+  template('servo-drives', 'Servo Drives', ['Servo Drive', 'Servo Amplifiers', 'Servo Amplifier'], [
+    text('rated-output', 'Rated output power'),
+    select('input-supply', 'Input supply', ['Single-phase 100–120 V AC', 'Single-phase 200–240 V AC', 'Three-phase 200–240 V AC', 'Three-phase 380–480 V AC', '24–48 V DC']),
+    text('supported-motor-series', 'Supported motor series / capacity'),
+    multiSelect('control-modes', 'Control modes', ['Position', 'Speed', 'Torque', 'Full closed-loop']),
+    multiSelect('command-interfaces', 'Command interfaces', ['Pulse train', '±10 V analog', 'EtherCAT', 'PROFINET IRT', 'EtherNet/IP', 'CANopen', 'Modbus', 'SSCNET', 'MECHATROLINK']),
+    text('encoder-feedback', 'Encoder feedback compatibility'),
+    number('maximum-output-current', 'Maximum output current', 'A'),
+    text('maximum-pulse-frequency', 'Maximum pulse command frequency'),
+    boolean('regenerative-resistor', 'Built-in regenerative resistor'),
+    boolean('safe-torque-off', 'Safe Torque Off (STO)'),
+    text('tuning-features', 'Auto-tuning / vibration suppression'),
+    select('ip-rating', 'IP rating', ['IP20', 'IP21', 'IP54', 'IP65']),
+  ]),
+  template('contactors', 'Contactors', ['Contactor'], [
+    select('main-poles', 'Main poles', ['2P', '3P', '4P']),
+    number('rated-operational-current', 'Rated operational current', 'A'),
+    multiSelect('utilization-categories', 'Utilization categories', ['AC-1', 'AC-2', 'AC-3', 'AC-4', 'DC-1', 'DC-3', 'DC-5']),
+    text('coil-voltage', 'Coil voltage'),
+    select('coil-type', 'Coil type', ['AC', 'DC', 'AC/DC electronic']),
+    number('motor-rating', 'Motor rating at 415 V AC-3', 'kW'),
+    text('auxiliary-contacts', 'Built-in auxiliary contacts'),
+    text('electrical-life', 'Electrical life'),
+    text('mechanical-life', 'Mechanical life'),
+    select('mounting', 'Mounting', ['DIN rail', 'Panel / screw', 'PCB']),
+    text('terminal-type', 'Terminal type'),
+    text('standards', 'Applicable standards / approvals'),
+  ]),
+  template('relays', 'Relays', ['Relay', 'Industrial Relays', 'Control Relays'], [
+    select('relay-type', 'Relay type', ['Electromechanical', 'Solid-state', 'Timer', 'Latching', 'Monitoring', 'Safety', 'Reed']),
+    text('coil-control-voltage', 'Coil / control voltage'),
+    select('contact-form', 'Contact form', ['SPST-NO', 'SPST-NC', 'SPDT', 'DPST', 'DPDT', '3PDT', '4PDT']),
+    text('contact-rating', 'Contact rating'),
+    number('pole-count', 'Number of poles'),
+    text('coil-power', 'Coil power / consumption'),
+    text('operate-release-time', 'Operate / release time'),
+    text('socket-base', 'Compatible socket / base'),
+    boolean('status-indicator', 'Status indicator'),
+    boolean('test-button', 'Manual test button'),
+    select('mounting', 'Mounting', ['Socket', 'DIN rail', 'PCB', 'Panel']),
+  ]),
+  template('mcbs', 'MCBs', ['MCB', 'Miniature Circuit Breakers', 'Miniature Circuit Breaker'], [
+    select('pole-configuration', 'Pole configuration', ['1P', '1P+N', '2P', '3P', '3P+N', '4P']),
+    number('rated-current', 'Rated current', 'A'),
+    select('trip-curve', 'Tripping curve', ['B', 'C', 'D', 'K', 'Z']),
+    number('breaking-capacity', 'Breaking capacity', 'kA'),
+    text('rated-voltage', 'Rated operational voltage'),
+    text('frequency', 'Rated frequency'),
+    select('energy-limiting-class', 'Energy limiting class', ['Class 1', 'Class 2', 'Class 3', 'Not specified']),
+    number('module-width', 'Width', 'DIN modules'),
+    boolean('isolation-suitable', 'Suitable for isolation'),
+    select('mounting', 'Mounting', ['35 mm DIN rail', 'Plug-in', 'Panel']),
+    text('standards', 'Standards / approvals'),
+  ]),
+  template('smps-power-supplies', 'SMPS / Power Supplies', ['SMPS', 'Power Supplies', 'Power Supply', 'Switch Mode Power Supplies'], [
+    number('output-voltage', 'Nominal output voltage', 'V DC'),
+    number('output-current', 'Rated output current', 'A'),
+    number('output-power', 'Rated output power', 'W'),
+    text('input-voltage-range', 'Input voltage range'),
+    number('efficiency', 'Typical efficiency', '%'),
+    number('output-channels', 'Output channels'),
+    text('line-load-regulation', 'Line / load regulation'),
+    text('ripple-noise', 'Ripple and noise'),
+    multiSelect('protections', 'Protections', ['Short circuit', 'Over-voltage', 'Over-current', 'Over-temperature', 'Overload', 'Brownout']),
+    select('cooling-method', 'Cooling method', ['Natural convection', 'Fan cooled', 'Conduction cooled']),
+    boolean('power-factor-correction', 'Active PFC'),
+    select('mounting-style', 'Mounting style', ['DIN rail', 'Enclosed chassis', 'Open frame', 'Panel mount', 'PCB mount', 'Rack mount']),
+    text('operating-temperature', 'Operating temperature range'),
+  ]),
+  template('push-buttons', 'Push Buttons', ['Push Button', 'Pushbutton Switches', 'Pushbutton Switch'], [
+    select('operator-action', 'Operator action', ['Momentary', 'Maintained', 'Alternate action']),
+    text('contact-configuration', 'Contact configuration', { placeholder: 'For example, 1NO + 1NC' }),
+    select('actuator-style', 'Actuator style', ['Flush', 'Extended', 'Mushroom', 'Keyed', 'Selector', 'Twin-head']),
+    select('actuator-color', 'Actuator colour', ['Red', 'Green', 'Yellow', 'Blue', 'White', 'Black', 'Clear']),
+    boolean('illuminated', 'Illuminated'),
+    text('lamp-voltage', 'Lamp / LED voltage'),
+    number('mounting-diameter', 'Panel cutout diameter', 'mm'),
+    text('bezel-material', 'Bezel / operator material'),
+    select('ip-rating', 'Front-panel IP rating', ['IP40', 'IP54', 'IP65', 'IP66', 'IP67', 'IP69K']),
+    select('terminal-type', 'Terminal type', ['Screw', 'Spring clamp', 'Solder', 'Faston', 'PCB']),
+    text('mechanical-life', 'Mechanical life'),
+  ]),
+  template('emergency-stop-switches', 'Emergency Stop Switches', ['Emergency Stop Switch', 'E-Stop Switches', 'E-Stop Switch'], [
+    select('reset-mechanism', 'Reset mechanism', ['Twist release', 'Pull release', 'Key release', 'Push-pull']),
+    text('contact-configuration', 'Contact configuration'),
+    number('head-diameter', 'Mushroom head diameter', 'mm'),
+    number('mounting-diameter', 'Panel cutout diameter', 'mm'),
+    boolean('illuminated', 'Illuminated'),
+    text('illumination-voltage', 'Illumination voltage'),
+    boolean('direct-opening-action', 'Direct opening action'),
+    boolean('protective-shroud', 'Protective shroud / guard included'),
+    select('ip-rating', 'Front-panel IP rating', ['IP54', 'IP65', 'IP66', 'IP67', 'IP69K']),
+    text('safety-standards', 'Safety standards / approvals'),
+    text('mechanical-life', 'Mechanical life'),
+  ]),
+  template('limit-switches', 'Limit Switches', ['Limit Switch'], [
+    select('actuator-type', 'Actuator type', ['Roller lever', 'Adjustable roller lever', 'Plunger', 'Roller plunger', 'Rotary lever', 'Whisker / spring rod', 'Fork lever']),
+    text('contact-configuration', 'Contact configuration'),
+    select('contact-operation', 'Contact operation', ['Snap action', 'Slow action', 'Direct opening']),
+    text('rated-load', 'Rated voltage / current'),
+    text('operating-travel', 'Operating travel / angle'),
+    text('repeat-accuracy', 'Repeat accuracy'),
+    text('operating-speed', 'Permitted operating speed'),
+    select('body-material', 'Body material', ['Metal', 'Plastic', 'Metal / plastic']),
+    text('conduit-entry', 'Conduit / cable entry'),
+    select('ip-rating', 'IP rating', ['IP54', 'IP65', 'IP66', 'IP67', 'IP69K']),
+    text('operating-temperature', 'Operating temperature range'),
+    text('mechanical-life', 'Mechanical life'),
+  ]),
+  template('industrial-cables', 'Industrial Cables', ['Industrial Cable'], [
+    select('cable-type', 'Cable type', ['Control', 'Power', 'Instrumentation', 'Data / communication', 'Servo', 'VFD', 'Robotic / drag-chain', 'Sensor / actuator']),
+    number('core-count', 'Number of cores'),
+    text('conductor-size', 'Conductor cross-section', { placeholder: 'For example, 4 × 1.5 mm²' }),
+    select('conductor-material', 'Conductor material', ['Bare copper', 'Tinned copper', 'Aluminium', 'Copper-clad aluminium']),
+    text('insulation-material', 'Insulation material'),
+    text('sheath-material', 'Outer sheath material'),
+    select('shielding', 'Shielding', ['Unshielded', 'Foil shield', 'Braided shield', 'Foil + braid', 'Individual + overall shield']),
+    text('voltage-rating', 'Voltage rating'),
+    text('temperature-rating', 'Temperature range'),
+    text('bend-radius-flex-class', 'Minimum bend radius / flex class'),
+    number('overall-diameter', 'Overall diameter', 'mm'),
+    number('supplied-length', 'Supplied length', 'm'),
+    multiSelect('approvals', 'Approvals / compliance', ['CE', 'RoHS', 'REACH', 'UL', 'CSA', 'VDE', 'IEC', 'BIS']),
+    boolean('oil-resistant', 'Oil resistant'),
+    boolean('flame-retardant', 'Flame retardant'),
+    boolean('uv-resistant', 'UV resistant'),
+  ]),
+  template('terminal-blocks', 'Terminal Blocks', ['Terminal Block', 'DIN Rail Terminal Blocks'], [
+    select('terminal-type', 'Terminal block type', ['Feed-through', 'Earth / ground', 'Fuse', 'Disconnect / knife', 'Sensor / actuator', 'Multi-level', 'Power distribution', 'PCB']),
+    select('connection-technology', 'Connection technology', ['Screw clamp', 'Spring cage', 'Push-in', 'Stud', 'Barrier', 'IDC', 'Solder']),
+    text('wire-size-range', 'Wire size range'),
+    number('rated-current', 'Rated current', 'A'),
+    text('rated-voltage', 'Rated voltage'),
+    number('levels', 'Number of levels'),
+    number('positions-poles', 'Positions / poles'),
+    number('pitch', 'Pitch', 'mm'),
+    select('mounting', 'Mounting', ['35 mm DIN rail', '32 mm G rail', 'PCB', 'Panel', 'Direct mount']),
+    text('rail-type', 'Compatible rail type'),
+    text('housing-material', 'Insulation housing material'),
+    text('flammability-rating', 'Flammability rating'),
+    boolean('jumper-supported', 'Cross-connection / jumper supported'),
+    boolean('marker-supported', 'Marker / label support'),
+  ]),
+  template('arduino-esp32-development-boards', 'Arduino / ESP32 / Development Boards', ['Arduino Development Boards', 'ESP32 Development Boards', 'Arduino Boards', 'ESP32 Boards', 'Microcontroller Development Boards'], [
+    text('microcontroller', 'Microcontroller / SoC'),
+    select('architecture', 'CPU architecture', ['AVR', 'ARM Cortex-M', 'RISC-V', 'Xtensa', 'Other']),
+    text('operating-voltage', 'Logic / operating voltage'),
+    text('input-voltage', 'Recommended input voltage'),
+    number('digital-gpio', 'Digital GPIO pins'),
+    number('analog-inputs', 'Analog input pins'),
+    number('pwm-outputs', 'PWM outputs'),
+    text('flash-memory', 'Flash memory'),
+    text('sram', 'SRAM'),
+    number('clock-frequency', 'Maximum clock frequency', 'MHz'),
+    multiSelect('wireless-connectivity', 'Wireless connectivity', ['Wi-Fi 2.4 GHz', 'Wi-Fi 5 GHz', 'Bluetooth Classic', 'Bluetooth LE', 'Zigbee / Thread', 'LoRa', 'None']),
+    multiSelect('interfaces', 'Interfaces', ['UART', 'I²C', 'SPI', 'CAN', 'I²S', 'USB', 'Ethernet', 'SD / microSD']),
+    select('usb-connector', 'USB connector', ['USB-C', 'Micro-USB', 'Mini-USB', 'USB-B', 'None']),
+    text('programming-interface', 'Programming / debug interface'),
+    multiSelect('onboard-features', 'Onboard features', ['LED', 'User button', 'Battery charging', 'Camera connector', 'Display', 'Sensors', 'microSD slot', 'USB-to-serial']),
+    text('board-dimensions', 'Board dimensions'),
+    textarea('software-support', 'SDK / framework support'),
+  ]),
+]
+
+const normalizeTemplateName = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+
+const templatesByName = new Map(
+  PRODUCT_SPECIFICATION_TEMPLATES.flatMap((item) =>
+    item.aliases.map((alias) => [normalizeTemplateName(alias), item]),
+  ),
+)
+
+export function getProductSpecificationTemplate(value) {
+  const name = typeof value === 'string' ? value : value?.name
+  const matched = templatesByName.get(normalizeTemplateName(name))
+  return matched
+    ? { ...matched, aliases: [...matched.aliases], fields: normalizeSpecificationFields(matched.fields) }
+    : null
+}
+
+export function applyProductSpecificationTemplate(subcategory, templateValue) {
+  const matched = typeof templateValue === 'string'
+    ? PRODUCT_SPECIFICATION_TEMPLATES.find((item) => item.id === templateValue) || getProductSpecificationTemplate(templateValue)
+    : templateValue
+  if (!matched) return subcategory
+  return {
+    ...subcategory,
+    specificationFields: normalizeSpecificationFields(matched.fields),
+    specificationTemplateId: matched.id,
+    specificationTemplateVersion: matched.version,
+    specificationTemplateSource: 'default',
+  }
+}
+
+export function applyDefaultProductSpecificationTemplate(subcategory) {
+  if (!subcategory || subcategory.specificationTemplateSource === 'custom') return subcategory
+  if (Array.isArray(subcategory.specificationFields) && subcategory.specificationFields.length) return subcategory
+  const matched = getProductSpecificationTemplate(subcategory.name)
+  return matched ? applyProductSpecificationTemplate(subcategory, matched) : subcategory
+}

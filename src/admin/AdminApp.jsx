@@ -31,6 +31,7 @@ export default function AdminApp({
   coupons = [],
   customers = [],
   categories = [],
+  subcategories = [],
   reviews = [],
   productsLoading = false,
   productsError = '',
@@ -51,6 +52,9 @@ export default function AdminApp({
   onAddCategory,
   onUpdateCategory,
   onDeleteCategory,
+  onAddSubcategory,
+  onUpdateSubcategory,
+  onDeleteSubcategory,
   onUpdateReview,
   onDeleteReview,
   onUpdatePaymentStatus,
@@ -178,6 +182,7 @@ export default function AdminApp({
           onDeleteProduct={onDeleteProduct}
           searchQuery={searchQuery}
           categories={categories}
+          subcategories={subcategories}
           loading={productsLoading}
           loadError={productsError}
         />
@@ -186,10 +191,14 @@ export default function AdminApp({
       {permittedTab === 'categories' && (
         <CategoriesPage
           categories={categories}
+          subcategories={subcategories}
           products={products}
           onAddCategory={onAddCategory}
           onUpdateCategory={onUpdateCategory}
           onDeleteCategory={onDeleteCategory}
+          onAddSubcategory={onAddSubcategory}
+          onUpdateSubcategory={onUpdateSubcategory}
+          onDeleteSubcategory={onDeleteSubcategory}
           searchQuery={searchQuery}
         />
       )}

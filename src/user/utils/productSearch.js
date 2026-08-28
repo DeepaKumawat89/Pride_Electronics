@@ -1,3 +1,9 @@
+import { getDisplaySpecifications } from '../../utils/productSpecifications.js'
+import {
+  getProductVariants,
+  productForVariant,
+} from '../../utils/productVariants.js'
+
 const relatedSearchDefinitions = [
   {
     label: 'Earphones',
@@ -40,7 +46,21 @@ export function matchesProductQuery(product, query) {
   if (!normalizedQuery) return true
 
   const attributeValues = Object.values(product.attributes || {}).flat()
-  return `${product.name} ${product.brand || ''} ${product.category} ${product.subcategory || ''} ${product.description} ${product.badge || ''} ${(product.features || []).join(' ')} ${attributeValues.join(' ')}`
+  const specificationValues = getDisplaySpecifications(product).flatMap(
+    ({ label, value }) => [label, value],
+  )
+  const variantValues = getProductVariants(product).flatMap((variant) => {
+    const effectiveProduct = productForVariant(product, variant.id)
+    return [
+      variant.name,
+      variant.sku,
+      variant.modelNumber,
+      ...getDisplaySpecifications(effectiveProduct || variant).flatMap(
+        ({ label, value }) => [label, value],
+      ),
+    ]
+  })
+  return `${product.name} ${product.sku || ''} ${product.modelNumber || ''} ${product.brand || ''} ${product.category} ${product.subcategory || ''} ${product.description} ${product.badge || ''} ${(product.features || []).join(' ')} ${attributeValues.join(' ')} ${specificationValues.join(' ')} ${variantValues.join(' ')}`
     .toLowerCase()
     .includes(normalizedQuery)
 }
