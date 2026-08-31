@@ -6,6 +6,33 @@ const money = (value) => {
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100
 const normalizedText = (value) => String(value || '').trim().toLowerCase()
 
+const DEFAULT_PAYMENT_CONFIGURATION = Object.freeze({
+  razorpayEnabled: true,
+  testMode: true,
+  autoCapture: true,
+  codEnabled: false,
+  cardsEnabled: true,
+  upiEnabled: true,
+  netBankingEnabled: true,
+  walletsEnabled: true,
+})
+
+function normalizePaymentConfiguration(value = {}) {
+  return Object.fromEntries(
+    Object.entries(DEFAULT_PAYMENT_CONFIGURATION).map(([key, fallback]) => [
+      key,
+      typeof value?.[key] === 'boolean' ? value[key] : fallback,
+    ]),
+  )
+}
+
+function razorpayEnvironmentForKey(keyId) {
+  const normalized = String(keyId || '').trim()
+  if (normalized.startsWith('rzp_test_')) return 'test'
+  if (normalized.startsWith('rzp_live_')) return 'live'
+  return ''
+}
+
 const appliesToProduct = (coupon, product) => {
   const products = Array.isArray(coupon?.applicableProducts)
     ? coupon.applicableProducts
@@ -106,9 +133,15 @@ function calculateOrderQuote({
         ? variantDiscountPrice
         : variantListPrice
       : money(product.price)
-    const unitPrice = variant
+    const rawUnitPrice = variant
       ? variantListPrice || price
       : money(product.originalPrice || product.price)
+    if (!(price > 0)) {
+      const error = new Error('A product does not have a valid current price.')
+      error.code = 'product-unavailable'
+      throw error
+    }
+    const unitPrice = Math.max(price, rawUnitPrice)
     return {
       productId: String(product.id),
       ...(variant ? { variantId: String(variant.id) } : {}),
@@ -226,9 +259,12 @@ function calculateOrderQuote({
 }
 
 module.exports = {
+  DEFAULT_PAYMENT_CONFIGURATION,
   calculateOrderQuote,
   itemSignature,
   money,
+  normalizePaymentConfiguration,
   normalizeRequestedItems,
+  razorpayEnvironmentForKey,
   roundMoney,
 }

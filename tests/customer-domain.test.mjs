@@ -5,18 +5,33 @@ import test from 'node:test'
 import {
   mergeInitialGuestAccount,
   normalizeAccountState,
+  removeSavedAddress,
+  setDefaultSavedAddress,
+  upsertSavedAddress,
 } from '../src/user/utils/accountState.js'
 import {
   calculateCartPricing,
   paymentAmountMatchesCheckout,
   toRazorpayAmount,
 } from '../src/user/utils/cart.js'
+import {
+  createBuyNowSelection,
+  removePurchasedItems as removePurchasedClientItems,
+  resolveCheckoutSelection,
+} from '../src/user/utils/checkoutSelection.js'
+import {
+  createRazorpayDisplayConfig,
+  enabledRazorpayMethods,
+  preferredRazorpayMethod,
+} from '../src/user/utils/razorpayOptions.js'
 
 const require = createRequire(import.meta.url)
 const {
   calculateOrderQuote,
   itemSignature,
+  normalizePaymentConfiguration,
   normalizeRequestedItems,
+  razorpayEnvironmentForKey,
 } = require('../functions/checkout.js')
 const {
   removePurchasedCartItems,
@@ -59,6 +74,36 @@ test('backend quote uses current product price and preserves a purchase snapshot
   const changedQuote = quoteFor({ products: [{ ...product, price: 1250 }] })
   assert.equal(changedQuote.total, 2500)
   assert.equal(quote.items[0].price, 1000)
+})
+
+test('checkout rejects products without a valid current Firebase price', () => {
+  assert.throws(
+    () => quoteFor({ products: [{ ...product, price: '' }] }),
+    (error) => error.code === 'product-unavailable',
+  )
+  assert.throws(
+    () => quoteFor({ products: [{ ...product, price: 0 }] }),
+    (error) => error.code === 'product-unavailable',
+  )
+})
+
+test('buy-now selection resolves current Firebase product data and stays isolated', () => {
+  const selection = createBuyNowSelection(product, 2)
+  const updatedProduct = { ...product, price: 1350, stock: 3 }
+  const checkoutItems = resolveCheckoutSelection(selection, [updatedProduct])
+  assert.equal(checkoutItems.length, 1)
+  assert.equal(checkoutItems[0].product.price, 1350)
+  assert.equal(checkoutItems[0].quantity, 2)
+  assert.deepEqual(
+    removePurchasedClientItems(
+      [
+        { productId: 'product-1', quantity: 2 },
+        { productId: 'keep-in-cart', quantity: 1 },
+      ],
+      [{ productId: 'product-1', qty: 2 }],
+    ),
+    [{ productId: 'keep-in-cart', quantity: 1 }],
+  )
 })
 
 test('backend quote authoritatively calculates coupon, shipping, and GST', () => {
@@ -167,6 +212,38 @@ test('checkout accepts old and new Razorpay quote response shapes', () => {
   assert.equal(paymentAmountMatchesCheckout(18000, 1800000, 1800100), false)
 })
 
+test('checkout exposes only Razorpay methods enabled by Admin settings', () => {
+  const settings = {
+    upiEnabled: true,
+    cardsEnabled: false,
+    netBankingEnabled: true,
+    walletsEnabled: false,
+  }
+  assert.deepEqual(enabledRazorpayMethods(settings), ['upi', 'netbanking'])
+  assert.deepEqual(
+    createRazorpayDisplayConfig(settings).display.blocks.checkout.instruments,
+    [{ method: 'upi' }, { method: 'netbanking' }],
+  )
+  assert.equal(preferredRazorpayMethod({ type: 'Credit Card' }, settings), '')
+  assert.equal(preferredRazorpayMethod({ type: 'UPI' }, settings), 'upi')
+})
+
+test('Razorpay server settings match storefront defaults and credential mode', () => {
+  assert.deepEqual(normalizePaymentConfiguration(), {
+    razorpayEnabled: true,
+    testMode: true,
+    autoCapture: true,
+    codEnabled: false,
+    cardsEnabled: true,
+    upiEnabled: true,
+    netBankingEnabled: true,
+    walletsEnabled: true,
+  })
+  assert.equal(razorpayEnvironmentForKey('rzp_test_example'), 'test')
+  assert.equal(razorpayEnvironmentForKey('rzp_live_example'), 'live')
+  assert.equal(razorpayEnvironmentForKey('invalid'), '')
+})
+
 test('account-state backend keeps only bounded, masked user-owned data', () => {
   const account = sanitizeAccountState({
     wishlistIds: ['product-1', 'product-1'],
@@ -211,6 +288,33 @@ test('account-state backend keeps only bounded, masked user-owned data', () => {
   assert.deepEqual(account.savedCartItems, [{ productId: 'product-2' }])
   assert.equal('password' in account, false)
   assert.equal('role' in account, false)
+})
+
+test('client account snapshots use the same persisted shape as the backend', () => {
+  const input = {
+    wishlistIds: ['product-1'],
+    addresses: [{
+      id: 'address-1',
+      type: 'Shipping',
+      label: 'Home',
+      fullName: ' Test User ',
+      phone: '+91 98765 43210',
+      houseFlat: ' 1 ',
+      street: ' Test Street ',
+      area: ' Test Area ',
+      line1: '1, Test Street, Test Area',
+      city: ' Jaipur ',
+      state: ' Rajasthan ',
+      pincode: '302001',
+      coordinates: { latitude: 1, longitude: 2 },
+      isDefault: true,
+    }],
+    cartItems: [{ productId: 'product-1', quantity: 1 }],
+  }
+  assert.deepEqual(
+    normalizeAccountState(input),
+    sanitizeAccountState(input),
+  )
 })
 
 test('initial sign-in merges guest state, later snapshots stay authoritative', () => {
@@ -269,6 +373,47 @@ test('account state cannot persist multiple default addresses', () => {
   })
   assert.equal(account.addresses.filter((address) => address.isDefault).length, 1)
   assert.equal(account.addresses[0].isDefault, true)
+})
+
+test('saved address add, edit, delete, and default operations remain consistent', () => {
+  const baseAddress = {
+    type: 'Shipping',
+    label: 'Home',
+    fullName: 'Test User',
+    phone: '9876543210',
+    line1: '1 Test Street',
+    city: 'Jaipur',
+    state: 'Rajasthan',
+    pincode: '302001',
+  }
+  const first = upsertSavedAddress([], baseAddress, 'address-1')
+  assert.equal(first.savedAddress.id, 'address-1')
+  assert.equal(first.savedAddress.isDefault, true)
+
+  const second = upsertSavedAddress(
+    first.addresses,
+    { ...baseAddress, label: 'Office', isDefault: true },
+    'address-2',
+  )
+  assert.equal(second.addresses.find((address) => address.id === 'address-1').isDefault, false)
+  assert.equal(second.savedAddress.isDefault, true)
+
+  const edited = upsertSavedAddress(
+    second.addresses,
+    { ...second.savedAddress, city: 'Ajmer' },
+    'unused-id',
+  )
+  assert.equal(edited.savedAddress.city, 'Ajmer')
+  assert.equal(edited.addresses.length, 2)
+
+  const defaulted = setDefaultSavedAddress(edited.addresses, 'address-1')
+  assert.equal(defaulted.find((address) => address.id === 'address-1').isDefault, true)
+  assert.equal(defaulted.filter((address) => address.isDefault).length, 1)
+
+  const removed = removeSavedAddress(defaulted, 'address-1')
+  assert.equal(removed.length, 1)
+  assert.equal(removed[0].id, 'address-2')
+  assert.equal(removed[0].isDefault, true)
 })
 
 test('successful checkout removes only purchased products from the persisted cart', () => {

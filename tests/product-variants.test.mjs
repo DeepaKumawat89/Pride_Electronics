@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   getProductAvailableStock,
+  productForStorefront,
   productForVariant,
   variantCartKey,
 } from '../src/utils/productVariants.js'
@@ -71,6 +72,25 @@ test('variant availability and cart identity are scoped per variant', () => {
   assert.equal(variantCartKey(product.id, 'm12'), 'sensor-1::m12')
   assert.equal(variantCartKey(product.id, 'm18'), 'sensor-1::m18')
   assert.equal(variantCartKey(product.id), 'sensor-1')
+})
+
+test('storefront products expose sellable stock without subtracting reservations twice', () => {
+  const storefrontProduct = productForStorefront(product)
+  assert.equal(storefrontProduct.stock, 7)
+  assert.equal(storefrontProduct.reservedStock, 0)
+  assert.equal(getProductAvailableStock(storefrontProduct), 7)
+  assert.equal(storefrontProduct.variants[0].stock, 4)
+  assert.equal(storefrontProduct.variants[0].reservedStock, 0)
+  assert.equal(productForVariant(storefrontProduct, 'm12').stock, 4)
+
+  const nonVariantProduct = productForStorefront({
+    id: 'controller-1',
+    stock: 8,
+    reservedStock: 3,
+  })
+  assert.equal(nonVariantProduct.stock, 5)
+  assert.equal(nonVariantProduct.reservedStock, 0)
+  assert.equal(getProductAvailableStock(nonVariantProduct), 5)
 })
 
 test('storefront search finds base and variant-specific product data', () => {

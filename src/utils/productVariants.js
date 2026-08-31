@@ -112,3 +112,18 @@ export const getProductAvailableStock = (product) => {
     ? variants.reduce((total, variant) => total + getVariantAvailableStock(variant), 0)
     : Math.max(0, Number(product?.stock || 0) - Number(product?.reservedStock || 0))
 }
+
+export const productForStorefront = (product = {}) => {
+  const variants = getProductVariants(product).map((variant) => ({
+    ...variant,
+    stock: getVariantAvailableStock(variant),
+    reservedStock: 0,
+  }))
+
+  return {
+    ...product,
+    stock: getProductAvailableStock(product),
+    reservedStock: 0,
+    variants,
+  }
+}

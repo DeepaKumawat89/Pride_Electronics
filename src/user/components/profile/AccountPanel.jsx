@@ -31,7 +31,7 @@ import { createPortal } from 'react-dom'
 import SelectMenu from '../../../components/ui/SelectMenu'
 import { useAnchoredPopover } from '../../../hooks/useAnchoredPopover'
 import { getInitials } from '../../../utils/text'
-import { formatCurrency, parsePrice } from '../../utils/currency'
+import { formatCurrency, hasValidPrice, parsePrice } from '../../utils/currency'
 import { calculateCartPricing } from '../../utils/cart'
 import {
   getPinDeliveryAvailability,
@@ -924,7 +924,7 @@ function WishlistSection({ products, query, onRemove, onView, onAdd }) {
               </div>
               <div className="mt-3 flex items-baseline gap-2">
                 <strong className="text-base text-slate-950">
-                  {formatCurrency(parsePrice(product.price))}
+                  {hasValidPrice(product.price) ? formatCurrency(parsePrice(product.price)) : 'Price unavailable'}
                 </strong>
                 {product.originalPrice && (
                   <span className="text-[10px] text-slate-400 line-through">
@@ -943,7 +943,7 @@ function WishlistSection({ products, query, onRemove, onView, onAdd }) {
                 </button>
                 <button
                   type="button"
-                  disabled={Number(product.stock) <= 0}
+                  disabled={Number(product.stock) <= 0 || !hasValidPrice(product.price)}
                   onClick={() => onAdd(product)}
                   className="flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-[#253329] px-4 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:bg-slate-300"
                   aria-label={`Add ${product.name} to cart`}
@@ -1258,8 +1258,11 @@ function CartSection({
       ),
     [appliedCoupon, coupons, items, shippingSettings, taxSettings, userKey],
   )
-  const hasOutOfStockItems = items.some(
-    ({ product }) => Number(product.stock) <= 0,
+  const hasUnavailableItems = items.some(
+    ({ product, quantity }) =>
+      Number(product.stock) <= 0 ||
+      quantity > Number(product.stock) ||
+      !hasValidPrice(product.price),
   )
 
   const applyCoupon = () => {
@@ -1334,11 +1337,12 @@ function CartSection({
                   <p className="mt-2 text-sm font-extrabold text-[#ff5c35]">
                     {formatCurrency(parsePrice(product.price))}
                   </p>
-                  {(priceChanged || quantityAdjusted || Number(product.stock) <= 0) && (
+                  {(priceChanged || quantityAdjusted || Number(product.stock) <= 0 || !hasValidPrice(product.price)) && (
                     <div className="mt-2 space-y-1 text-[8px] font-extrabold">
                       {priceChanged && <p className="text-[#397a4a]">Price updated to the latest catalog price</p>}
                       {quantityAdjusted && <p className="text-amber-700">Quantity adjusted to available stock</p>}
                       {Number(product.stock) <= 0 && <p className="text-red-600">Out of stock — remove or save this item for later</p>}
+                      {!hasValidPrice(product.price) && <p className="text-red-600">Current price unavailable — this item cannot be purchased</p>}
                     </div>
                   )}
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
@@ -1356,7 +1360,7 @@ function CartSection({
                       </span>
                       <button
                         type="button"
-                        disabled={Number(product.stock) <= 0 || quantity >= Number(product.stock)}
+                        disabled={Number(product.stock) <= 0 || quantity >= Math.min(Number(product.stock), 100)}
                         onClick={() => onChangeQuantity(key, 1)}
                         className="grid size-8 place-items-center hover:text-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-30"
                       >
@@ -1437,7 +1441,7 @@ function CartSection({
         </div>
         <button
           type="button"
-          disabled={hasOutOfStockItems}
+          disabled={hasUnavailableItems}
           onClick={() => onCheckout({ couponCode: pricing.coupon.status === 'applied' ? appliedCoupon : '' })}
           className="mt-5 w-full rounded-full bg-[#253329] px-5 py-3.5 text-xs font-extrabold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:hover:translate-y-0"
         >

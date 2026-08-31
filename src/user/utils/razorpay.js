@@ -17,11 +17,20 @@ export function loadRazorpayCheckout() {
   if (razorpayScriptPromise) return razorpayScriptPromise
 
   razorpayScriptPromise = new Promise((resolve) => {
+    const existingScript = document.querySelector(
+      'script[data-pride-razorpay-checkout]',
+    )
+    if (existingScript) existingScript.remove()
     const script = document.createElement('script')
     script.src = 'https://checkout.razorpay.com/v1/checkout.js'
     script.async = true
+    script.dataset.prideRazorpayCheckout = 'true'
     script.onload = () => resolve(Boolean(window.Razorpay))
-    script.onerror = () => resolve(false)
+    script.onerror = () => {
+      script.remove()
+      razorpayScriptPromise = undefined
+      resolve(false)
+    }
     document.body.appendChild(script)
   })
   return razorpayScriptPromise
@@ -33,7 +42,15 @@ export async function postRazorpayApi(path, payload) {
   try {
     const response = await paymentGateway({ operation, payload })
     const data = response.data || {}
-    if (path === 'orders' && (!data.order || !Number.isFinite(data.order.amount))) {
+    if (
+      path === 'orders' &&
+      (
+        !data.order ||
+        !Number.isFinite(data.order.amount) ||
+        !data.keyId ||
+        !['test', 'live'].includes(data.environment)
+      )
+    ) {
       throw new Error('Razorpay returned an invalid order. Please try again.')
     }
     return data

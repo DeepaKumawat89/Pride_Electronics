@@ -1,26 +1,21 @@
 import { useState } from 'react'
 import {
   ArrowLeft,
-  BatteryCharging,
   Check,
-  ChevronDown,
   ChevronRight,
-  Cpu,
   Heart,
   Minus,
   Plus,
   RotateCcw,
-  Settings2,
   Share2,
   ShieldCheck,
   ShoppingBag,
   Sparkles,
   Star,
   Truck,
-  Wifi,
   Zap,
 } from 'lucide-react'
-import { formatCurrency, parsePrice } from '../../utils/currency'
+import { formatCurrency, hasValidPrice, parsePrice } from '../../utils/currency'
 import { getPinDeliveryAvailability } from '../../utils/address'
 import {
   getDeliveryEstimate,
@@ -33,18 +28,8 @@ import { initialInvoiceSettings } from '../../../data/invoice'
 import { getDisplaySpecifications } from '../../../utils/productSpecifications'
 import {
   getProductVariants,
-  getProductAvailableStock,
-  getVariantAvailableStock,
   productForVariant,
 } from '../../../utils/productVariants'
-
-function getSpecificationMeta(spec) {
-  const value = spec.toLowerCase()
-  if (/battery|charge|power/.test(value)) return { title: 'Power & Battery', description: 'Power efficiency, charging, and usage information', icon: BatteryCharging }
-  if (/wifi|bluetooth|gps|usb|pcie|wireless|codec|connect/.test(value)) return { title: 'Connectivity & Interfaces', description: 'Wireless standards, ports, and compatible connections', icon: Wifi }
-  if (/processor|core|ai |audio|driver|display|resolution|hz|tops/.test(value)) return { title: 'Performance & Technology', description: 'Core performance, processing, and product technology', icon: Cpu }
-  return { title: 'Features & Compatibility', description: 'Design details, supported features, and everyday usability', icon: Settings2 }
-}
 
 function TechnicalSpecificationsSection({ specifications }) {
   if (!specifications.length) return null
@@ -67,7 +52,6 @@ function TechnicalSpecificationsSection({ specifications }) {
 export default function ProductDetailsPage({ product, relatedProducts = [], deliveryAddress, likedIds = [], reviews, onBack, onLike, onAdd, onBuyNow, onViewProduct, onViewAllReviews, shippingSettings = initialShippingSettings, taxSettings = initialInvoiceSettings.tax }) {
   const [activeImageIndex, setActiveImageIndex] = useState(0)
   const [quantity, setQuantity] = useState(1)
-  const [expandedSpec, setExpandedSpec] = useState(null)
   const [selectedVariantId, setSelectedVariantId] = useState('')
 
   const variants = getProductVariants(product)
@@ -76,9 +60,9 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
   const displayProduct = selectedVariantProduct || product
   const images = displayProduct.images?.length ? displayProduct.images : [displayProduct.image]
   const activeImage = images[activeImageIndex] || images[0]
-  const stock = selectedVariantProduct
-    ? getVariantAvailableStock(selectedVariantProduct.variantSnapshot)
-    : getProductAvailableStock(product)
+  const stock = Math.max(0, Number(displayProduct.stock) || 0)
+  const purchaseLimit = Math.min(stock, 100)
+  const priceAvailable = hasValidPrice(displayProduct.price)
   const liked = likedIds.includes(product.id)
   const detailInformation = getProductDetailInformation(displayProduct)
   const displaySpecifications = getDisplaySpecifications(displayProduct)
@@ -99,10 +83,18 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
     ['SKU', detailInformation.sku],
     ['Manufacturer', detailInformation.manufacturer],
     ['Country of origin', detailInformation.countryOfOrigin],
-  ]
+  ].filter(([, value]) => String(value || '').trim())
+  const hasProductDetails =
+    detailInformation.highlights.length > 0 ||
+    displaySpecifications.length > 0 ||
+    detailInformation.includedItems.length > 0 ||
+    productInformation.length > 0 ||
+    Boolean(detailInformation.warranty || detailInformation.returnPolicy)
 
   const updateQuantity = (amount) => {
-    setQuantity((current) => Math.min(Math.max(current + amount, 1), Math.max(stock, 1)))
+    setQuantity((current) =>
+      Math.min(Math.max(current + amount, 1), Math.max(purchaseLimit, 1)),
+    )
   }
 
   const handleShare = async () => {
@@ -169,7 +161,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                   <p className="mb-2 text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">Select variant *</p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {variants.map((variant) => {
-                      const available = getVariantAvailableStock(variant)
+                      const available = Math.max(0, Number(variant.stock) || 0)
                       const selected = String(selectedVariantId) === String(variant.id)
                       const variantProduct = productForVariant(product, variant.id)
                       return (
@@ -191,7 +183,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
               </div>
 
               <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-y border-slate-100 py-3.5">
-                <strong className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">{formatCurrency(parsePrice(displayProduct.price))}</strong>
+                <strong className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">{priceAvailable ? formatCurrency(parsePrice(displayProduct.price)) : 'Price unavailable'}</strong>
                 <span className="text-sm font-semibold text-slate-400 line-through">{formatCurrency(parsePrice(displayProduct.originalPrice))}</span>
                 {displayProduct.discount && <span className="rounded-full bg-[#e4f1e7] px-2.5 py-1 text-[10px] font-extrabold text-[#366643]">{displayProduct.discount}</span>}
                 <p className="w-full text-[10px] font-bold text-slate-400">{taxSettings.pricesIncludeTax ? 'Inclusive of all taxes' : 'Taxes calculated at checkout'}</p>
@@ -203,7 +195,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                   <div className="flex h-12 w-36 items-center justify-between rounded-full border border-slate-200 bg-slate-50 p-1">
                     <button type="button" onClick={() => updateQuantity(-1)} disabled={quantity <= 1} className="grid size-9 place-items-center rounded-full text-slate-600 transition hover:bg-white hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-30" aria-label="Decrease quantity"><Minus size={15} /></button>
                     <strong className="text-sm text-slate-950">{quantity}</strong>
-                    <button type="button" onClick={() => updateQuantity(1)} disabled={quantity >= stock} className="grid size-9 place-items-center rounded-full text-slate-600 transition hover:bg-white hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-30" aria-label="Increase quantity"><Plus size={15} /></button>
+                    <button type="button" onClick={() => updateQuantity(1)} disabled={quantity >= purchaseLimit} className="grid size-9 place-items-center rounded-full text-slate-600 transition hover:bg-white hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-30" aria-label="Increase quantity"><Plus size={15} /></button>
                   </div>
                 </div>
                 <p className={`pb-3 text-[11px] font-extrabold ${stock > 0 && stock < 10 ? 'text-amber-600' : stock > 0 ? 'text-emerald-700' : 'text-red-600'}`}>
@@ -212,18 +204,28 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
               </div>
 
               <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
-                <button type="button" disabled={!stock || (requiresVariantSelection && !selectedVariantProduct)} onClick={() => onAdd(displayProduct, quantity)} className="flex h-12 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-xs font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-[52px]">
+                <button type="button" disabled={!stock || !priceAvailable || (requiresVariantSelection && !selectedVariantProduct)} onClick={() => onAdd(displayProduct, quantity)} className="flex h-12 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-xs font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-[52px]">
                   <ShoppingBag size={17} /> {requiresVariantSelection && !selectedVariantProduct ? 'Select a variant' : 'Add to cart'}
                 </button>
-                <button type="button" disabled={!stock || (requiresVariantSelection && !selectedVariantProduct)} onClick={() => onBuyNow(displayProduct, quantity)} className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#397a4a] px-4 text-xs font-extrabold text-white transition hover:bg-[#2f663d] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-[52px]">
+                <button type="button" disabled={!stock || !priceAvailable || (requiresVariantSelection && !selectedVariantProduct)} onClick={() => onBuyNow(displayProduct, quantity)} className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#397a4a] px-4 text-xs font-extrabold text-white transition hover:bg-[#2f663d] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-[52px]">
                   <Zap size={17} fill="currentColor" /> Buy now
                 </button>
               </div>
 
               <div className="mt-5 grid grid-cols-3 gap-2 border-t border-slate-100 pt-4">
                 {[
-                  [Truck, deliveryAvailable ? 'Delivery available' : 'Delivery unavailable'],
-                  [ShieldCheck, '2-year warranty'],
+                  [
+                    Truck,
+                    stock <= 0
+                      ? 'Delivery unavailable'
+                      : deliveryAddress && !pinDeliveryAvailability?.available
+                        ? 'Not deliverable to this address'
+                        : 'Delivery available',
+                  ],
+                  [
+                    ShieldCheck,
+                    detailInformation.warranty || 'Warranty details unavailable',
+                  ],
                   [RotateCcw, 'Easy returns'],
                 ].map(([Icon, label]) => (
                   <div key={label} className="rounded-2xl bg-slate-50 px-2 py-3 text-center text-[9px] font-extrabold text-slate-600 sm:flex sm:items-center sm:justify-center sm:gap-2 sm:text-[10px]">
@@ -244,7 +246,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
           </div>
         </section>
 
-        <section className="mx-auto mt-6 max-w-[1220px] overflow-hidden rounded-[28px] bg-white shadow-sm">
+        {hasProductDetails && <section className="mx-auto mt-6 max-w-[1220px] overflow-hidden rounded-[28px] bg-white shadow-sm">
           <div className="relative overflow-hidden bg-gradient-to-r from-[#dcebdd] via-[#edf5ee] to-white px-5 py-6 sm:px-8 sm:py-8">
             <div className="absolute -right-12 -top-20 size-52 rounded-full bg-[#9bcaa6]/30 blur-3xl" />
             <div className="relative flex items-center gap-3">
@@ -253,7 +255,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
             </div>
           </div>
           <div className="p-5 sm:p-8">
-            <section className="border-b border-slate-100 pb-6">
+            {!!detailInformation.highlights.length && <section className="border-b border-slate-100 pb-6">
               <h3 className="text-sm font-extrabold text-slate-900">
                 Product Highlights
               </h3>
@@ -269,34 +271,13 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                   </div>
                 ))}
               </div>
-            </section>
+            </section>}
 
             <TechnicalSpecificationsSection specifications={displaySpecifications} />
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              {(displayProduct.specs?.length ? displayProduct.specs : ['Premium quality construction', 'Designed for reliable everyday performance']).map((spec, index) => {
-                const meta = getSpecificationMeta(spec)
-                const Icon = meta.icon
-                const isExpanded = expandedSpec === index
-                return (
-                  <article key={spec} className={`self-start overflow-hidden rounded-[22px] border transition ${isExpanded ? 'border-[#9bcaa6] bg-white shadow-lg shadow-slate-900/5' : 'border-[#dcebdd] bg-[#f8faf7] hover:border-[#9bcaa6] hover:bg-white'}`}>
-                    <button type="button" onClick={() => setExpandedSpec(isExpanded ? null : index)} className="flex w-full items-center gap-3 p-4 text-left sm:p-5" aria-expanded={isExpanded}>
-                      <span className={`grid size-10 shrink-0 place-items-center rounded-2xl transition ${isExpanded ? 'bg-[#397a4a] text-white' : 'bg-white text-[#397a4a] shadow-sm'}`}><Icon size={18} /></span>
-                      <span className="min-w-0 flex-1"><strong className="block text-sm text-slate-900">{meta.title}</strong><span className="mt-1 block text-[10px] font-semibold leading-4 text-slate-400">{meta.description}</span></span>
-                      <span className={`grid size-8 shrink-0 place-items-center rounded-full border transition ${isExpanded ? 'rotate-180 border-[#397a4a] bg-[#397a4a] text-white' : 'border-slate-200 bg-white text-slate-500'}`}><ChevronDown size={15} /></span>
-                    </button>
-                    {isExpanded && (
-                      <div className="border-t border-[#dcebdd] px-4 pb-5 pt-4 sm:px-5">
-                        <div className="flex items-start gap-3 rounded-2xl bg-[#eef6ef] p-4"><span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-white text-[#397a4a] shadow-sm"><Check size={12} /></span><p className="text-xs font-bold leading-6 text-slate-700">{spec}</p></div>
-                      </div>
-                    )}
-                  </article>
-                )
-              })}
-            </div>
-
+            {(detailInformation.includedItems.length > 0 || productInformation.length > 0) && (
             <div className="mt-8 grid gap-8 border-t border-slate-100 pt-7 md:grid-cols-2">
-              <section>
+              {!!detailInformation.includedItems.length && <section>
                 <h3 className="text-sm font-extrabold text-slate-900">
                   What's Included / In the Box
                 </h3>
@@ -308,9 +289,9 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                     </li>
                   ))}
                 </ul>
-              </section>
+              </section>}
 
-              <section>
+              {!!productInformation.length && <section>
                 <h3 className="text-sm font-extrabold text-slate-900">
                   Product Information
                 </h3>
@@ -322,29 +303,32 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                     </div>
                   ))}
                 </dl>
-              </section>
+              </section>}
             </div>
+            )}
 
+            {(detailInformation.warranty || detailInformation.returnPolicy) && (
             <div className="mt-7 grid gap-6 border-t border-slate-100 pt-7 md:grid-cols-2">
-              <section>
+              {detailInformation.warranty && <section>
                 <h3 className="text-sm font-extrabold text-slate-900">
                   Warranty
                 </h3>
                 <p className="mt-2 text-xs font-medium leading-6 text-slate-500">
                   {detailInformation.warranty}
                 </p>
-              </section>
-              <section>
+              </section>}
+              {detailInformation.returnPolicy && <section>
                 <h3 className="text-sm font-extrabold text-slate-900">
                   Return / Replacement Policy
                 </h3>
                 <p className="mt-2 text-xs font-medium leading-6 text-slate-500">
                   {detailInformation.returnPolicy}
                 </p>
-              </section>
+              </section>}
             </div>
+            )}
           </div>
-        </section>
+        </section>}
 
         <div className="mx-auto mt-6 max-w-[1220px]">
           <ProductReviews product={product} reviews={reviews} onViewAll={onViewAllReviews} />

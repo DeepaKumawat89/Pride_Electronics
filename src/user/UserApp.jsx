@@ -25,7 +25,7 @@ import AccountPanel, {
   LogoutConfirmation,
 } from './components/profile/AccountPanel'
 import { useCart } from './hooks/useCart'
-import { formatCurrency, parsePrice } from './utils/currency'
+import { formatCurrency } from './utils/currency'
 import {
   matchesProductQuery,
   normalizeSearchQuery,
@@ -34,8 +34,11 @@ import { sortCatalogProducts } from './utils/catalog'
 import { normalizeAddress } from './utils/address'
 import {
   emptyAccountState,
+  removeSavedAddress,
   mergeInitialGuestAccount,
   normalizeAccountState,
+  setDefaultSavedAddress,
+  upsertSavedAddress,
 } from './utils/accountState'
 import {
   CHECKOUT_PATH,
@@ -50,8 +53,6 @@ import {
   signOutUser,
 } from '../firebase/userAuth'
 import {
-  removeUserCartItem,
-  removeUserCartItems,
   saveUserAccount,
   subscribeToUserAccount,
   subscribeToUserOrders,
@@ -62,6 +63,13 @@ import {
   productHasVariants,
   variantCartKey,
 } from '../utils/productVariants'
+import {
+  checkoutItemRequest,
+  createBuyNowSelection,
+  normalizeCheckoutSelection,
+  removePurchasedItems,
+  resolveCheckoutSelection,
+} from './utils/checkoutSelection'
 
 const PRODUCT_HASH_PREFIX = '#product-'
 const PRODUCTS_HASH_PREFIX = '#products'
@@ -70,6 +78,7 @@ const CHECKOUT_HASH = '#checkout'
 const ORDER_SUCCESS_HASH = '#order-success'
 const ORDER_SUCCESS_SESSION_KEY = 'pride_last_successful_order'
 const INTENDED_ROUTE_SESSION_KEY = 'pride_intended_protected_route'
+const CHECKOUT_SELECTION_SESSION_KEY = 'pride_checkout_selection'
 const CONTENT_PAGE_HASHES = {
   privacy: '#privacy-policy',
   terms: '#terms-and-conditions',
@@ -143,6 +152,8 @@ function getSessionItems(key, fallback) {
 
 export default function UserApp({
   products = [],
+  productsLoading = false,
+  productsError = '',
   coupons = [],
   marketingSettings,
   shippingSettings,
@@ -173,6 +184,11 @@ export default function UserApp({
   const [authOpen, setAuthOpen] = useState(false)
   const [authInitialMode, setAuthInitialMode] = useState('login')
   const [checkoutOpen, setCheckoutOpen] = useState(false)
+  const [checkoutSelection, setCheckoutSelection] = useState(() =>
+    normalizeCheckoutSelection(
+      getSessionItems(CHECKOUT_SELECTION_SESSION_KEY, null),
+    ),
+  )
   const [checkoutCouponCode, setCheckoutCouponCode] = useState('')
   const [successfulOrder, setSuccessfulOrder] = useState(null)
   const [orderToViewId, setOrderToViewId] = useState(null)
@@ -183,6 +199,8 @@ export default function UserApp({
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [user, setUser] = useState(null)
   const [authStatus, setAuthStatus] = useState('loading')
+  const [accountReady, setAccountReady] = useState(false)
+  const [accountError, setAccountError] = useState('')
   const [localOrders, setOrders] = useState([])
   const [savedAddresses, setSavedAddresses] = useState([])
   const [savedPayments, setSavedPayments] = useState([])
@@ -195,6 +213,10 @@ export default function UserApp({
   const accountSaveTimer = useRef(null)
   const accountSnapshot = useRef('')
   const accountStateRef = useRef(emptyAccountState())
+  const remoteAccountRef = useRef(emptyAccountState())
+  const pendingAccountSnapshot = useRef('')
+  const accountSaveQueue = useRef(Promise.resolve())
+  const accountSaveRevision = useRef(0)
   const cartReturnSection = useRef(null)
   const cartHistoryActive = useRef(false)
   const productReturnSection = useRef(null)
@@ -205,6 +227,7 @@ export default function UserApp({
   const checkoutHistoryActive = useRef(false)
   const orderSuccessHistoryActive = useRef(false)
   const activeUserUid = useRef(null)
+  const historyRouteSynced = useRef(false)
 
   const rememberIntendedRoute = (path) => {
     const route = getProtectedRoute(path)
@@ -218,8 +241,12 @@ export default function UserApp({
     cartPersistenceRef.current = emptyAccountState()
     likedIdsRef.current = []
     accountStateRef.current = emptyAccountState()
+    remoteAccountRef.current = emptyAccountState()
+    pendingAccountSnapshot.current = ''
+    accountSaveRevision.current += 1
     activeUserUid.current = null
     sessionStorage.removeItem(ORDER_SUCCESS_SESSION_KEY)
+    sessionStorage.removeItem(CHECKOUT_SELECTION_SESSION_KEY)
     setOrders([])
     setUserReturns([])
     setLikedIds([])
@@ -229,6 +256,7 @@ export default function UserApp({
     setSuccessfulOrder(null)
     setOrderToViewId(null)
     setCheckoutOpen(false)
+    setCheckoutSelection(null)
     setAccountSection(null)
     setLogoutConfirmOpen(false)
     setPendingCheckout(false)
@@ -236,6 +264,8 @@ export default function UserApp({
     setPendingWishlistRequest(null)
     hydrateCart({})
     setUser(null)
+    setAccountReady(false)
+    setAccountError('')
   }, [hydrateCart])
   const orders = localOrders
   const returnRequests = userReturns
@@ -250,6 +280,13 @@ export default function UserApp({
       })),
     [couponUsage, coupons, customerEmail],
   )
+  const activeCheckoutItems = useMemo(
+    () =>
+      checkoutSelection
+        ? resolveCheckoutSelection(checkoutSelection, products)
+        : cart.items,
+    [cart.items, checkoutSelection, products],
+  )
 
   useEffect(() => {
     cartPersistenceRef.current = cartPersistence
@@ -263,7 +300,13 @@ export default function UserApp({
   }, [cartPersistence, likedIds, savedAddresses, savedPayments])
 
   useEffect(() => {
-    const handleHistoryBack = () => {
+    const handleHistoryBack = (event) => {
+      const shouldResetScroll =
+        event?.type === 'popstate' || !historyRouteSynced.current
+      historyRouteSynced.current = true
+      const resetScroll = () => {
+        if (shouldResetScroll) window.scrollTo({ top: 0, behavior: 'auto' })
+      }
       const protectedRoute = getProtectedRoute(window.location.pathname)
       if (protectedRoute && authStatus === 'loading') return
       if (protectedRoute && authStatus === 'unauthenticated') {
@@ -297,7 +340,7 @@ export default function UserApp({
           setOrderToViewId(null)
           setAccountSection(protectedRoute.section)
         }
-        window.scrollTo({ top: 0, behavior: 'auto' })
+        resetScroll()
         return
       }
       const protectedHash = [
@@ -340,7 +383,7 @@ export default function UserApp({
           )
           setCheckoutOpen(false)
           setAccountSection(null)
-          window.scrollTo({ top: 0, behavior: 'auto' })
+          resetScroll()
           return
         }
       }
@@ -352,7 +395,7 @@ export default function UserApp({
         checkoutHistoryActive.current = true
         setCheckoutOpen(true)
         setAccountSection(null)
-        window.scrollTo({ top: 0, behavior: 'auto' })
+        resetScroll()
         return
       }
       if (checkoutHistoryActive.current) {
@@ -369,7 +412,7 @@ export default function UserApp({
         setSelectedProduct(null)
         setReviewsOpen(false)
         setAccountSection(null)
-        window.scrollTo({ top: 0, behavior: 'auto' })
+        resetScroll()
         return
       }
       if (contentPageHistoryActive.current) {
@@ -394,7 +437,7 @@ export default function UserApp({
         setSelectedProduct(null)
         setReviewsOpen(false)
         setAccountSection(null)
-        window.scrollTo({ top: 0, behavior: 'auto' })
+        resetScroll()
         return
       }
       if (window.location.hash.startsWith(PRODUCT_HASH_PREFIX)) {
@@ -415,7 +458,7 @@ export default function UserApp({
           setSelectedProduct(historyProduct)
           setReviewsOpen(isReviewsPage)
           setAccountSection(null)
-          window.scrollTo({ top: 0, behavior: 'auto' })
+          resetScroll()
           return
         }
       }
@@ -473,6 +516,10 @@ export default function UserApp({
             if (previousUid && previousUid !== authenticatedUser.uid) {
               clearAuthenticatedState()
             }
+            if (previousUid !== authenticatedUser.uid) {
+              setAccountReady(false)
+              setAccountError('')
+            }
             activeUserUid.current = authenticatedUser.uid
             setUser(authenticatedUser)
             setAuthStatus('authenticated')
@@ -507,25 +554,47 @@ export default function UserApp({
       clearTimeout(toastTimer.current)
       toastTimer.current = setTimeout(() => setToast(''), 4200)
     }
+    const handleAccountError = () => {
+      setAccountError(
+        'Unable to load your saved cart and account data. Check your connection and try again.',
+      )
+      handleError()
+    }
     const unsubscribers = [
       subscribeToUserAccount(
         user.uid,
         (account) => {
           const remoteAccount = normalizeAccountState(account)
+          const remoteSnapshot = JSON.stringify(remoteAccount)
+          remoteAccountRef.current = remoteAccount
+          const keepPendingAccount =
+            pendingAccountSnapshot.current &&
+            pendingAccountSnapshot.current !== remoteSnapshot
+          if (pendingAccountSnapshot.current === remoteSnapshot) {
+            pendingAccountSnapshot.current = ''
+          }
+          const synchronizedAccount = keepPendingAccount
+            ? accountStateRef.current
+            : remoteAccount
           const nextAccount = accountHydrated.current
-            ? remoteAccount
-            : mergeInitialGuestAccount(remoteAccount, {
+            ? synchronizedAccount
+            : mergeInitialGuestAccount(synchronizedAccount, {
                 wishlistIds: likedIdsRef.current,
                 ...cartPersistenceRef.current,
               })
-          accountSnapshot.current = JSON.stringify(remoteAccount)
+          accountSnapshot.current = JSON.stringify(
+            accountHydrated.current ? nextAccount : remoteAccount,
+          )
+          accountStateRef.current = nextAccount
           setLikedIds(nextAccount.wishlistIds)
           setSavedAddresses(nextAccount.addresses)
           setSavedPayments(nextAccount.paymentMethods)
           hydrateCart(nextAccount)
           accountHydrated.current = true
+          setAccountReady(true)
+          setAccountError('')
         },
-        handleError,
+        handleAccountError,
       ),
       subscribeToUserOrders(user.uid, setOrders, handleError),
       subscribeToUserReturns(user.uid, setUserReturns, handleError),
@@ -563,14 +632,33 @@ export default function UserApp({
     const serializedAccount = JSON.stringify(account)
     if (serializedAccount === accountSnapshot.current) return undefined
     accountSnapshot.current = serializedAccount
+    pendingAccountSnapshot.current = serializedAccount
+    const revision = ++accountSaveRevision.current
+    const uid = user.uid
     clearTimeout(accountSaveTimer.current)
     accountSaveTimer.current = setTimeout(() => {
-      void saveUserAccount(user.uid, account).catch((error) => {
+      const save = accountSaveQueue.current
+        .catch(() => undefined)
+        .then(() => saveUserAccount(uid, account))
+      accountSaveQueue.current = save
+      void save.catch((error) => {
+        if (
+          revision !== accountSaveRevision.current ||
+          activeUserUid.current !== uid
+        ) return
+        pendingAccountSnapshot.current = ''
+        const rollbackAccount = remoteAccountRef.current
+        accountStateRef.current = rollbackAccount
+        accountSnapshot.current = JSON.stringify(rollbackAccount)
+        setLikedIds(rollbackAccount.wishlistIds)
+        setSavedAddresses(rollbackAccount.addresses)
+        setSavedPayments(rollbackAccount.paymentMethods)
+        hydrateCart(rollbackAccount)
         setToast(error.message)
       })
     }, 350)
     return () => clearTimeout(accountSaveTimer.current)
-  }, [cartPersistence, likedIds, savedAddresses, savedPayments, user?.uid])
+  }, [cartPersistence, hydrateCart, likedIds, savedAddresses, savedPayments, user?.uid])
 
   const filteredProducts = useMemo(() => {
     const matchingProducts = products
@@ -782,33 +870,42 @@ export default function UserApp({
     )
   }
 
+  const liveSelectedProduct = useMemo(
+    () =>
+      selectedProduct
+        ? products.find(
+            (product) => String(product.id) === String(selectedProduct.id),
+          ) || selectedProduct
+        : null,
+    [products, selectedProduct],
+  )
   const relatedProducts = useMemo(() => {
-    if (!selectedProduct) return []
+    if (!liveSelectedProduct) return []
     const sameCategory = products.filter(
       (product) =>
-        product.id !== selectedProduct.id &&
-        product.category === selectedProduct.category,
+        product.id !== liveSelectedProduct.id &&
+        product.category === liveSelectedProduct.category,
     )
     const otherRelevant = products
       .filter(
         (product) =>
-          product.id !== selectedProduct.id &&
-          product.category !== selectedProduct.category,
+          product.id !== liveSelectedProduct.id &&
+          product.category !== liveSelectedProduct.category,
       )
       .sort(
         (a, b) =>
           Number(b.featured) - Number(a.featured) || b.rating - a.rating,
       )
     return [...sameCategory, ...otherRelevant].slice(0, 4)
-  }, [products, selectedProduct])
+  }, [products, liveSelectedProduct])
   const selectedProductReviews = useMemo(
     () =>
-      selectedProduct
+      liveSelectedProduct
         ? reviews.filter(
-            (review) => String(review.productId) === String(selectedProduct.id),
+            (review) => String(review.productId) === String(liveSelectedProduct.id),
           )
         : [],
-    [reviews, selectedProduct],
+    [reviews, liveSelectedProduct],
   )
 
   const handleAdd = (product, quantity = 1) => {
@@ -849,11 +946,11 @@ export default function UserApp({
   }
 
   const navigateToReviews = () => {
-    if (!selectedProduct) return
-    const reviewsHash = `${PRODUCT_HASH_PREFIX}${encodeURIComponent(selectedProduct.id)}${REVIEWS_HASH_SUFFIX}`
+    if (!liveSelectedProduct) return
+    const reviewsHash = `${PRODUCT_HASH_PREFIX}${encodeURIComponent(liveSelectedProduct.id)}${REVIEWS_HASH_SUFFIX}`
     if (window.location.hash !== reviewsHash)
       window.history.pushState(
-        { prideProductReviews: selectedProduct.id },
+        { prideProductReviews: liveSelectedProduct.id },
         '',
         `/${reviewsHash}`,
       )
@@ -924,6 +1021,8 @@ export default function UserApp({
   }
 
   const closeCheckout = () => {
+    sessionStorage.removeItem(CHECKOUT_SELECTION_SESSION_KEY)
+    setCheckoutSelection(null)
     if (
       window.location.pathname === CHECKOUT_PATH &&
       window.history.state?.prideProtectedReturn
@@ -972,8 +1071,13 @@ export default function UserApp({
       notify(`${product.name} is currently out of stock`)
       return
     }
+    const selection = createBuyNowSelection(product, quantity)
+    if (!selection) {
+      notify('Unable to prepare this product for checkout')
+      return
+    }
     notify(`${product.name} is ready for checkout`)
-    handleCheckout({ skipCartValidation: true })
+    handleCheckout({ skipCartValidation: true, selection })
   }
 
   const handleAuthSuccess = (authenticatedUser, mode) => {
@@ -1045,51 +1149,81 @@ export default function UserApp({
     }
   }
 
-  const persistAddresses = (nextAddresses) => {
-    setSavedAddresses(nextAddresses)
+  const persistAddresses = (nextAddresses, successMessage) => {
+    const nextAccount = normalizeAccountState({
+      ...accountStateRef.current,
+      addresses: nextAddresses,
+    })
+    const serializedAccount = JSON.stringify(nextAccount)
+    const revision = ++accountSaveRevision.current
+    const uid = user?.uid
+    clearTimeout(accountSaveTimer.current)
+    pendingAccountSnapshot.current = serializedAccount
+    accountStateRef.current = nextAccount
+    accountSnapshot.current = serializedAccount
+    setSavedAddresses(nextAccount.addresses)
+
+    if (!uid) return nextAccount.addresses
+    const save = accountSaveQueue.current
+      .catch(() => undefined)
+      .then(() => saveUserAccount(uid, nextAccount))
+    accountSaveQueue.current = save
+    void save
+      .then(() => {
+        if (
+          revision === accountSaveRevision.current &&
+          activeUserUid.current === uid
+        ) notify(successMessage)
+      })
+      .catch((error) => {
+        if (
+          revision === accountSaveRevision.current &&
+          activeUserUid.current === uid
+        ) {
+          pendingAccountSnapshot.current = ''
+          const rollbackAccount = remoteAccountRef.current
+          accountStateRef.current = rollbackAccount
+          accountSnapshot.current = JSON.stringify(rollbackAccount)
+          setLikedIds(rollbackAccount.wishlistIds)
+          setSavedAddresses(rollbackAccount.addresses)
+          setSavedPayments(rollbackAccount.paymentMethods)
+          hydrateCart(rollbackAccount)
+          notify(error.message || 'Unable to save the address.')
+        }
+      })
+    return nextAccount.addresses
   }
 
   const handleSaveAddress = (address) => {
     const normalizedAddress = normalizeAddress(address)
-    const exists = savedAddresses.some((item) => item.id === normalizedAddress.id)
-    let next = exists
-      ? savedAddresses.map((item) =>
-          item.id === normalizedAddress.id ? normalizedAddress : item,
-        )
-      : [
-          ...savedAddresses,
-          { ...normalizedAddress, id: `address-${Date.now()}` },
-        ]
-    const savedAddress =
-      next.find((item) => item.id === normalizedAddress.id) || next[next.length - 1]
-    if (savedAddress.isDefault || next.length === 1)
-      next = next.map((item) => ({
-        ...item,
-        isDefault: item.id === savedAddress.id,
-      }))
-    persistAddresses(next)
-    notify(
-      exists ? 'Address updated successfully' : 'Address saved successfully',
+    const result = upsertSavedAddress(
+      accountStateRef.current.addresses,
+      normalizedAddress,
+      globalThis.crypto?.randomUUID?.() || `address-${Date.now()}`,
     )
-    return next.find((item) => item.id === savedAddress.id)
+    persistAddresses(
+      result.addresses,
+      result.existed ? 'Address updated successfully' : 'Address saved successfully',
+    )
+    return result.savedAddress
   }
 
   const handleDeleteAddress = (addressId) => {
-    const filtered = savedAddresses.filter((item) => item.id !== addressId)
-    if (filtered.length && !filtered.some((item) => item.isDefault))
-      filtered[0] = { ...filtered[0], isDefault: true }
-    persistAddresses(filtered)
-    notify('Address deleted')
+    const currentAddresses = accountStateRef.current.addresses
+    if (!currentAddresses.some((item) => String(item.id) === String(addressId))) return
+    persistAddresses(
+      removeSavedAddress(currentAddresses, addressId),
+      'Address deleted',
+    )
   }
 
   const handleDefaultAddress = (addressId) => {
+    const currentAddresses = accountStateRef.current.addresses
+    if (!currentAddresses.some((item) => String(item.id) === String(addressId))) return
     persistAddresses(
-      savedAddresses.map((item) => ({
-        ...item,
-        isDefault: item.id === addressId,
-      })),
+      setDefaultSavedAddress(currentAddresses, addressId),
+      'Default delivery address updated',
     )
-    notify('Default delivery address updated')
   }
 
   const persistPayments = (nextPayments) => {
@@ -1186,37 +1320,11 @@ export default function UserApp({
   }
 
   const handleRemoveCartItem = (itemKey) => {
-    const previousAccount = accountStateRef.current
-    const previousCart = cartPersistenceRef.current
-    const currentCart = cartPersistenceRef.current
-    const target = (currentCart.cartItems || []).find(
+    const target = (cartPersistenceRef.current.cartItems || []).find(
       (item) => variantCartKey(item.productId, item.variantId) === itemKey,
     )
     if (!target) return
-    const nextCart = {
-      ...currentCart,
-      cartItems: (currentCart.cartItems || []).filter(
-        (item) => variantCartKey(item.productId, item.variantId) !== itemKey,
-      ),
-    }
-    const nextAccount = normalizeAccountState({
-      ...accountStateRef.current,
-      ...nextCart,
-    })
-    clearTimeout(accountSaveTimer.current)
-    cartPersistenceRef.current = nextCart
-    accountStateRef.current = nextAccount
-    accountSnapshot.current = JSON.stringify(nextAccount)
     cart.remove(itemKey)
-    if (user?.uid) {
-      void removeUserCartItem(target.productId, target.variantId).catch((error) => {
-        cartPersistenceRef.current = previousCart
-        accountStateRef.current = previousAccount
-        accountSnapshot.current = JSON.stringify(previousAccount)
-        hydrateCart(previousAccount)
-        notify(error.message)
-      })
-    }
   }
 
   const handleAccountSectionChange = (nextSection) => {
@@ -1242,21 +1350,39 @@ export default function UserApp({
 
   const handleAccountCheckout = (checkoutOptions) => {
     setAccountSection(null)
-    handleCheckout(checkoutOptions)
+    handleCheckout({ ...checkoutOptions, selection: null })
   }
 
-  const handleCheckout = ({ couponCode = '', skipCartValidation = false } = {}) => {
+  const handleCheckout = ({
+    couponCode = '',
+    skipCartValidation = false,
+    selection = null,
+  } = {}) => {
+    const normalizedSelection = normalizeCheckoutSelection(selection)
+    const checkoutItems = normalizedSelection
+      ? resolveCheckoutSelection(normalizedSelection, products)
+      : cart.items
     setCheckoutCouponCode(couponCode)
     if (
       !skipCartValidation &&
       (
-      !cart.items.length ||
+      !checkoutItems.length ||
       cart.issues.hasOutOfStock ||
+      cart.issues.hasInvalidPrice ||
       cart.issues.removedProductCount > 0
       )
     ) {
       notify('Review unavailable or updated cart items before checkout')
       return
+    }
+    setCheckoutSelection(normalizedSelection)
+    if (normalizedSelection) {
+      sessionStorage.setItem(
+        CHECKOUT_SELECTION_SESSION_KEY,
+        JSON.stringify(normalizedSelection),
+      )
+    } else {
+      sessionStorage.removeItem(CHECKOUT_SELECTION_SESSION_KEY)
     }
     if (user) {
       navigateToCheckout()
@@ -1267,7 +1393,27 @@ export default function UserApp({
     notify('Please login or sign up to continue to checkout')
   }
 
+  const flushPendingAccountChanges = async () => {
+    if (!user?.uid) return
+    clearTimeout(accountSaveTimer.current)
+    if (!pendingAccountSnapshot.current) {
+      await accountSaveQueue.current
+      return
+    }
+    const account = accountStateRef.current
+    const uid = user.uid
+    const save = accountSaveQueue.current
+      .catch(() => undefined)
+      .then(() => saveUserAccount(uid, account))
+    accountSaveQueue.current = save
+    await save
+    if (pendingAccountSnapshot.current === JSON.stringify(account)) {
+      pendingAccountSnapshot.current = ''
+    }
+  }
+
   const handlePlaceOrder = async (checkoutDetails = {}) => {
+    await flushPendingAccountChanges()
     const verifiedPayment = checkoutDetails.verifiedPayment
     const verifiedAmount = Number(verifiedPayment?.amount)
     const gatewayLabel = adminSettings.payment.testMode
@@ -1292,7 +1438,10 @@ export default function UserApp({
       taxAmount: checkoutDetails.tax || 0,
       couponCode: checkoutDetails.couponCode || '',
       invoiceNumber: createInvoiceNumber(invoiceSettings, new Date()),
-      itemsCount: cart.count,
+      itemsCount: activeCheckoutItems.reduce(
+        (sum, item) => sum + item.quantity,
+        0,
+      ),
       status: 'Pending',
       orderTime: new Date().toLocaleTimeString('en-IN', {
         hour: 'numeric',
@@ -1329,26 +1478,7 @@ export default function UserApp({
         verifiedPayment?.orderId ||
         checkoutDetails.razorpay?.razorpay_order_id ||
         '',
-      items: cart.items.map(({ product, quantity }) => ({
-        productId: product.id,
-        ...(product.selectedVariantId ? { variantId: product.selectedVariantId } : {}),
-        sku: product.sku || `PE-${String(product.id).padStart(4, '0')}`,
-        productName: product.name,
-        variant: product.selectedVariantName || product.variant || product.specification || '',
-        variantModelNumber: product.modelNumber || '',
-        variantSpecifications: product.variantSnapshot?.technicalSpecifications || [],
-        image: product.image,
-        qty: quantity,
-        price: product.price,
-        unitPrice: product.originalPrice || product.price,
-        discount:
-          Math.max(
-            0,
-            parsePrice(product.originalPrice || product.price) -
-              parsePrice(product.price),
-          ) * quantity,
-        taxRate: product.taxRate ?? invoiceSettings.tax.defaultRate,
-      })),
+      items: activeCheckoutItems.map(checkoutItemRequest),
     }
     const savedOrder = (await onNewOrder?.(order)) || order
     setOrders((current) =>
@@ -1362,17 +1492,21 @@ export default function UserApp({
         [savedOrder.couponCode]: Number(current[savedOrder.couponCode] || 0) + 1,
       }))
     }
-    const clearedAccount = normalizeAccountState({
+    const remainingCartItems = removePurchasedItems(
+      cartPersistenceRef.current.cartItems,
+      savedOrder.items,
+    )
+    const updatedAccount = normalizeAccountState({
       ...accountStateRef.current,
-      cartItems: [],
+      cartItems: remainingCartItems,
     })
     clearTimeout(accountSaveTimer.current)
     cartPersistenceRef.current = {
       ...cartPersistenceRef.current,
-      cartItems: [],
+      cartItems: remainingCartItems,
     }
-    accountStateRef.current = clearedAccount
-    accountSnapshot.current = JSON.stringify(clearedAccount)
+    accountStateRef.current = updatedAccount
+    accountSnapshot.current = JSON.stringify(updatedAccount)
     sessionStorage.setItem(ORDER_SUCCESS_SESSION_KEY, JSON.stringify(savedOrder))
     orderSuccessHistoryActive.current = true
     window.history.replaceState(
@@ -1382,18 +1516,14 @@ export default function UserApp({
     )
     setSuccessfulOrder(savedOrder)
     setCheckoutOpen(false)
+    setCheckoutSelection(null)
+    sessionStorage.removeItem(CHECKOUT_SELECTION_SESSION_KEY)
     checkoutHistoryActive.current = false
-    cart.clear()
-    if (user?.uid) {
-      void removeUserCartItems(
-        savedOrder.items.map((item) => ({
-          productId: item.productId,
-          ...(item.variantId ? { variantId: item.variantId } : {}),
-        })),
-      ).catch((error) => {
-        notify(error.message)
-      })
-    }
+    cart.removeMany(
+      savedOrder.items.map((item) =>
+        variantCartKey(item.productId, item.variantId),
+      ),
+    )
     window.scrollTo({ top: 0, behavior: 'smooth' })
     notify(`Order ${savedOrder.id} placed successfully`)
     return savedOrder
@@ -1467,6 +1597,17 @@ export default function UserApp({
           window.location.hash,
         ),
     )
+  const protectedAccountDataOpen = checkoutOpen || Boolean(accountSection)
+  const catalogDataRequired =
+    checkoutOpen || ['cart', 'wishlist'].includes(accountSection)
+  const protectedDataPending =
+    protectedAccountDataOpen &&
+    authStatus === 'authenticated' &&
+    !accountError &&
+    (!accountReady || (catalogDataRequired && productsLoading))
+  const protectedDataError =
+    protectedAccountDataOpen &&
+    (accountError || (catalogDataRequired ? productsError : ''))
 
   return (
     <div className="min-h-screen overflow-x-clip bg-[#f7f8f5] pb-16 lg:pb-0">
@@ -1493,7 +1634,7 @@ export default function UserApp({
         onLogout={() => setLogoutConfirmOpen(true)}
       />
       <main>
-        {protectedAuthPending ? (
+        {protectedAuthPending || protectedDataPending ? (
           <section
             className="grid min-h-[55vh] place-items-center px-6 text-center"
             aria-live="polite"
@@ -1502,8 +1643,24 @@ export default function UserApp({
             <div>
               <span className="mx-auto block size-9 animate-spin rounded-full border-4 border-[#75916f]/25 border-t-[#536a50]" />
               <p className="mt-4 text-sm font-bold text-[#425443]">
-                Checking your account…
+                {protectedDataPending
+                  ? 'Loading your latest saved data from Firebase…'
+                  : 'Checking your account…'}
               </p>
+            </div>
+          </section>
+        ) : protectedDataError ? (
+          <section className="grid min-h-[55vh] place-items-center px-6 text-center">
+            <div className="max-w-md rounded-[28px] bg-white p-8 shadow-sm">
+              <h1 className="text-lg font-extrabold text-slate-900">
+                Account data is unavailable
+              </h1>
+              <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">
+                {protectedDataError}
+              </p>
+              <button type="button" onClick={closeCheckout} className="mt-5 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white">
+                Back to store
+              </button>
             </div>
           </section>
         ) : successfulOrder && authStatus === 'authenticated' && user ? (
@@ -1514,8 +1671,8 @@ export default function UserApp({
           />
         ) : checkoutOpen && authStatus === 'authenticated' && user ? (
           <CheckoutPage
-            key={`${savedAddresses.find((address) => address.isDefault)?.id || 'no-address'}-${savedPayments.find((payment) => payment.isDefault)?.id || 'no-payment'}`}
-            items={cart.items}
+            key={`${checkoutSelection?.mode || 'cart'}-${checkoutSelection?.items?.map((item) => variantCartKey(item.productId, item.variantId)).join('-') || 'all'}-${savedAddresses.find((address) => address.isDefault)?.id || 'no-address'}-${savedPayments.find((payment) => payment.isDefault)?.id || 'no-payment'}`}
+            items={activeCheckoutItems}
             initialCouponCode={checkoutCouponCode}
             coupons={customerCoupons}
             savedAddresses={savedAddresses}
@@ -1529,13 +1686,12 @@ export default function UserApp({
             paymentSettings={adminSettings.payment}
             storeName={adminSettings.store.name}
           />
-        ) : selectedProduct && reviewsOpen ? (
-          <ProductReviewsPage product={selectedProduct} reviews={selectedProductReviews} onBack={closeReviews} />
-        ) : selectedProduct ? (
+        ) : liveSelectedProduct && reviewsOpen ? (
+          <ProductReviewsPage product={liveSelectedProduct} reviews={selectedProductReviews} onBack={closeReviews} />
+        ) : liveSelectedProduct ? (
         <ProductDetailsPage
-          key={selectedProduct.id}
-            key={selectedProduct.id}
-            product={selectedProduct}
+            key={liveSelectedProduct.id}
+            product={liveSelectedProduct}
             relatedProducts={relatedProducts}
             deliveryAddress={
               savedAddresses.find((address) => address.isDefault) ||
@@ -1650,7 +1806,7 @@ export default function UserApp({
           }}
         />
       )}
-      {authStatus === 'authenticated' && user && (
+      {authStatus === 'authenticated' && user && accountReady && !protectedDataPending && !protectedDataError && (
         <AccountPanel
           key={orderToViewId || 'account-panel'}
           section={accountSection}

@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react'
-import { parsePrice } from '../utils/currency'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { hasValidPrice, parsePrice } from '../utils/currency'
 import {
   productForVariant,
   productHasVariants,
@@ -20,6 +20,10 @@ const productKey = (product) =>
   variantCartKey(product.id, product.selectedVariantId)
 
 export function useCart(initialProduct, liveProducts = null) {
+  const liveProductsRef = useRef(liveProducts)
+  useEffect(() => {
+    liveProductsRef.current = liveProducts
+  }, [liveProducts])
   const [storedItems, setStoredItems] = useState(
     initialProduct ? [{ product: initialProduct, quantity: 1 }] : [],
   )
@@ -30,8 +34,9 @@ export function useCart(initialProduct, liveProducts = null) {
       const liveProduct = resolveLiveProduct(item.product, liveProducts)
       if (!liveProduct) return []
       const stock = Math.max(0, Number(liveProduct.stock) || 0)
+      const purchaseLimit = Math.min(stock, 100)
       const quantity = stock > 0
-        ? Math.min(Math.max(1, item.quantity), stock)
+        ? Math.min(Math.max(1, item.quantity), purchaseLimit)
         : item.quantity
       return [{
         key: productKey(liveProduct),
@@ -71,18 +76,19 @@ export function useCart(initialProduct, liveProducts = null) {
     const liveProduct = resolveLiveProduct(product, liveProducts)
     if (!liveProduct) return false
     const stock = Math.max(0, Number(liveProduct.stock) || 0)
-    if (!stock) return false
+    if (!stock || !hasValidPrice(liveProduct.price)) return false
+    const purchaseLimit = Math.min(stock, 100)
     const key = productKey(liveProduct)
 
     setStoredItems((current) => {
       const exists = current.find((item) => productKey(item.product) === key)
       return exists
         ? current.map((item) => productKey(item.product) === key
-          ? { product: liveProduct, quantity: Math.min(item.quantity + quantity, stock) }
+          ? { product: liveProduct, quantity: Math.min(item.quantity + quantity, purchaseLimit) }
           : item)
         : [...current, {
             product: liveProduct,
-            quantity: Math.min(Math.max(1, quantity), stock),
+            quantity: Math.min(Math.max(1, quantity), purchaseLimit),
           }]
     })
     setStoredSavedItems((current) =>
@@ -97,11 +103,12 @@ export function useCart(initialProduct, liveProducts = null) {
         if (productKey(item.product) !== itemKey) return item
         const liveProduct = resolveLiveProduct(item.product, liveProducts) || item.product
         const stock = Math.max(0, Number(liveProduct.stock) || 0)
-        const currentQuantity = stock > 0 ? Math.min(item.quantity, stock) : item.quantity
+        const purchaseLimit = Math.min(stock, 100)
+        const currentQuantity = stock > 0 ? Math.min(item.quantity, purchaseLimit) : item.quantity
         const nextQuantity = currentQuantity + amount
         return {
           product: liveProduct,
-          quantity: stock > 0 ? Math.min(nextQuantity, stock) : nextQuantity,
+          quantity: stock > 0 ? Math.min(nextQuantity, purchaseLimit) : nextQuantity,
         }
       })
       .filter((item) => item.quantity > 0))
@@ -109,6 +116,13 @@ export function useCart(initialProduct, liveProducts = null) {
 
   const remove = (itemKey) =>
     setStoredItems((current) => current.filter((item) => productKey(item.product) !== itemKey))
+
+  const removeMany = (itemKeys) => {
+    const keys = new Set(itemKeys)
+    setStoredItems((current) =>
+      current.filter((item) => !keys.has(productKey(item.product))),
+    )
+  }
 
   const saveForLater = (itemKey) => {
     const item = items.find((entry) => entry.key === itemKey)
@@ -124,8 +138,7 @@ export function useCart(initialProduct, liveProducts = null) {
   const moveToCart = (itemKey) => {
     const item = savedItems.find((entry) => entry.key === itemKey)
     if (!item || Number(item.product.stock) <= 0) return false
-    add(item.product, 1)
-    return true
+    return add(item.product, 1)
   }
 
   const removeSaved = (itemKey) =>
@@ -139,8 +152,9 @@ export function useCart(initialProduct, liveProducts = null) {
   const clear = () => setStoredItems([])
 
   const hydrate = useCallback((account = {}) => {
+    const currentProducts = liveProductsRef.current
     const productFor = (productId, variantId = '') => {
-      const liveProduct = liveProducts?.find(
+      const liveProduct = currentProducts?.find(
         (product) => String(product.id) === String(productId),
       )
       if (!liveProduct) return { id: productId, selectedVariantId: variantId || '' }
@@ -156,7 +170,7 @@ export function useCart(initialProduct, liveProducts = null) {
     setStoredSavedItems((account.savedCartItems || []).map((item) => ({
       product: productFor(item.productId || item, item.variantId),
     })))
-  }, [liveProducts])
+  }, [])
 
   const persistence = useMemo(
     () => ({
@@ -188,6 +202,7 @@ export function useCart(initialProduct, liveProducts = null) {
     () => ({
       removedProductCount,
       hasOutOfStock: items.some(({ product }) => Number(product.stock) <= 0),
+      hasInvalidPrice: items.some(({ product }) => !hasValidPrice(product.price)),
       hasPriceChanges: items.some((item) => item.priceChanged),
       hasQuantityAdjustments: items.some((item) => item.quantityAdjusted),
     }),
@@ -203,6 +218,7 @@ export function useCart(initialProduct, liveProducts = null) {
     add,
     changeQuantity,
     remove,
+    removeMany,
     saveForLater,
     moveToCart,
     removeSaved,

@@ -227,5 +227,25 @@ export function getDisplaySpecifications(product = {}) {
   const custom = compactCustomSpecifications(product.customSpecifications).map(
     (item) => ({ ...item, value: cleanText(item.value) }),
   )
-  return [...technical, ...custom]
+  const legacy = (Array.isArray(product.specs) ? product.specs : [])
+    .map((item, index) => {
+      const text = cleanText(item)
+      const separator = text.indexOf(':')
+      const label = separator > 0 ? cleanText(text.slice(0, separator)) : 'Specification'
+      const value = separator > 0 ? cleanText(text.slice(separator + 1)) : text
+      return {
+        id: `legacy-${index + 1}`,
+        label,
+        value,
+      }
+    })
+    .filter(({ value }) => value)
+  return [
+    ...new Map(
+      [...technical, ...custom, ...legacy].map((item) => [
+        `${item.label.toLowerCase()}::${item.value.toLowerCase()}`,
+        item,
+      ]),
+    ).values(),
+  ]
 }

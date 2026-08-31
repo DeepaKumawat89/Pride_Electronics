@@ -98,14 +98,17 @@ export function calculateCartPricing(
   shippingSettings = {},
   taxSettings = {},
 ) {
-  const mrpSubtotal = roundMoney(items.reduce(
-    (sum, { product, quantity }) =>
-      sum + parsePrice(product.originalPrice || product.price) * Number(quantity || 0),
-    0,
-  ))
   const sellingSubtotal = roundMoney(items.reduce(
     (sum, { product, quantity }) =>
       sum + parsePrice(product.price) * Number(quantity || 0),
+    0,
+  ))
+  const mrpSubtotal = roundMoney(items.reduce(
+    (sum, { product, quantity }) => {
+      const sellingPrice = parsePrice(product.price)
+      const listPrice = parsePrice(product.originalPrice || product.price)
+      return sum + Math.max(sellingPrice, listPrice) * Number(quantity || 0)
+    },
     0,
   ))
   const selectedCoupon = coupons.find(

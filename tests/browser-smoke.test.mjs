@@ -163,18 +163,48 @@ test('storefront and admin render responsively without browser console errors', 
     assert.ok(catalog.cards > 0, 'The existing Firestore catalog did not render any product cards')
     assert.ok(catalog.scrollWidth <= catalog.width + 2, 'Catalog overflows horizontally')
     assert.doesNotMatch(catalog.text, /Unable to load|Something went wrong/i)
+    const catalogScrollTop = await client.evaluate(`(() => {
+      const top = Math.min(700, document.documentElement.scrollHeight - window.innerHeight)
+      window.scrollTo({ top, behavior: 'auto' })
+      return window.scrollY
+    })()`)
+    assert.ok(catalogScrollTop > 0, 'Catalog page is not vertically scrollable')
+    await delay(1_000)
+    assert.equal(
+      await client.evaluate('window.scrollY'),
+      catalogScrollTop,
+      'Catalog page jumped back to the top',
+    )
 
     if (catalog.cards > 0) {
+      const cardOutOfStock = await client.evaluate(`/Out of stock/i.test(
+        document.querySelector('button[aria-label^="View details for"]')?.closest('article')?.innerText || ''
+      )`)
       await client.evaluate(`document.querySelector('button[aria-label^="View details for"]').click()`)
       await delay(2_000)
       const details = await client.evaluate(`({
         text: document.body.innerText,
         hasHeading: Boolean(document.querySelector('h1')),
-        hasCartAction: [...document.querySelectorAll('button')].some((button) => /Add to cart|Select a variant/.test(button.innerText))
+        hasCartAction: [...document.querySelectorAll('button')].some((button) => /Add to cart|Select a variant/.test(button.innerText)),
+        summaryOutOfStock: /Currently unavailable|Out of stock/i.test(document.querySelector('h1')?.closest('section')?.innerText || '')
       })`)
       assert.equal(details.hasHeading, true)
       assert.equal(details.hasCartAction, true)
+      assert.equal(details.summaryOutOfStock, cardOutOfStock, 'Product stock status differs between catalog and details')
+      assert.doesNotMatch(details.text, /Features & Compatibility|Performance & Technology|Power & Battery/i)
       assert.doesNotMatch(details.text, /Unable to load|Something went wrong/i)
+      const detailsScrollTop = await client.evaluate(`(() => {
+        const top = Math.min(700, document.documentElement.scrollHeight - window.innerHeight)
+        window.scrollTo({ top, behavior: 'auto' })
+        return window.scrollY
+      })()`)
+      assert.ok(detailsScrollTop > 0, 'Product details page is not vertically scrollable')
+      await delay(1_000)
+      assert.equal(
+        await client.evaluate('window.scrollY'),
+        detailsScrollTop,
+        'Product details page jumped back to the top',
+      )
     }
 
     await client.send('Page.navigate', { url: `${baseUrl}/admin` })

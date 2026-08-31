@@ -44,7 +44,7 @@ function createRazorpayMiddleware({ keyId, keySecret }) {
 
       if (request.url === '/api/razorpay/orders') {
         const amount = Number(body.amount)
-        if (!Number.isInteger(amount) || amount < 100 || amount > 100_000_000) {
+        if (!Number.isInteger(amount) || amount < 100 || amount > 50_000_000) {
           return sendJson(response, 400, { error: 'Enter a valid payment amount.' })
         }
 

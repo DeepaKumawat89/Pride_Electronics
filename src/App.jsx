@@ -8,7 +8,6 @@ import { initialInvoiceSettings } from './data/invoice'
 import { initialAdminSettings } from './data/adminSettings'
 import {
   adjustProductStock,
-  getAvailableStock,
   transitionOrderInventory,
 } from './admin/utils/inventory'
 import { createRefundRecord } from './admin/utils/payments'
@@ -55,6 +54,7 @@ import {
   subcategoryForProduct,
 } from './utils/catalogTaxonomy'
 import { applyDefaultProductSpecificationTemplate } from './data/productSpecificationTemplates'
+import { productForStorefront } from './utils/productVariants'
 
 const getChangedProducts = (currentProducts, nextProducts) =>
   nextProducts.filter((nextProduct) => {
@@ -87,10 +87,12 @@ const prepareProductVariants = async (productId, variants = [], currentVariants 
         ...media,
         image: media.images[0] || '',
         stock: Math.max(0, Number(fields.stock) || 0),
-        reservedStock: Math.max(
-          Number(current?.reservedStock || 0),
-          Number(fields.reservedStock || 0),
-        ),
+        reservedStock: current
+          ? Math.max(
+              Number(current.reservedStock || 0),
+              Number(fields.reservedStock || 0),
+            )
+          : 0,
       })
     }
     const retainedIds = new Set(prepared.map((variant) => String(variant.id)))
@@ -927,8 +929,7 @@ function App() {
       },
     )
     .map((product) => ({
-      ...product,
-      stock: getAvailableStock(product),
+      ...productForStorefront(product),
       featured: configuredFeaturedProductIds.length
         ? configuredFeaturedProductIds.some(
             (productId) => String(productId) === String(product.id),
@@ -942,6 +943,8 @@ function App() {
       {activePortal === 'user' ? (
         <UserApp
           products={storefrontProducts}
+          productsLoading={productsLoading}
+          productsError={productsError}
           coupons={couponsList}
           marketingSettings={marketingSettings}
           shippingSettings={shippingSettings}

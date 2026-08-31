@@ -12,6 +12,7 @@ import {
   validateSpecificationValues,
 } from '../src/utils/productSpecifications.js'
 import { matchesProductQuery } from '../src/user/utils/productSearch.js'
+import { getProductDetailInformation } from '../src/user/utils/productDetails.js'
 
 const fields = normalizeSpecificationFields([
   { id: 'ram', label: 'RAM', type: 'select', required: true, unit: 'GB', options: ['8', '16'] },
@@ -150,7 +151,7 @@ test('formats and combines typed and custom storefront values', () => {
       { fieldId: 'colours', label: 'Colours', type: 'multi-select', value: ['Black', 'Blue'], unit: '' },
     ],
     customSpecifications: [{ id: 'material', label: 'Material', value: 'Aluminium' }],
-    specs: ['Legacy highlight remains separate'],
+    specs: ['Legacy field: Legacy value', 'Power: 65 W'],
   }
   assert.equal(formatSpecificationValue(product.technicalSpecifications[0]), '65 W')
   assert.deepEqual(getDisplaySpecifications(product).map(({ label, value }) => [label, value]), [
@@ -158,7 +159,22 @@ test('formats and combines typed and custom storefront values', () => {
     ['Bluetooth', 'No'],
     ['Colours', 'Black, Blue'],
     ['Material', 'Aluminium'],
+    ['Legacy field', 'Legacy value'],
   ])
   assert.equal(matchesProductQuery({ name: 'Adapter', category: 'Power', description: '', ...product }, 'aluminium'), true)
   assert.equal(matchesProductQuery({ name: 'Adapter', category: 'Power', description: '', ...product }, '65 w'), true)
+})
+
+test('product details expose only information supplied for the product', () => {
+  assert.deepEqual(getProductDetailInformation({ brand: 'Pride', sku: 'PE-1' }), {
+    highlights: [],
+    includedItems: [],
+    brand: 'Pride',
+    modelNumber: '',
+    sku: 'PE-1',
+    manufacturer: '',
+    countryOfOrigin: '',
+    warranty: '',
+    returnPolicy: '',
+  })
 })

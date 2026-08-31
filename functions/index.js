@@ -8,7 +8,9 @@ const { requireAdmin, requireUser } = require('./authz')
 const {
   calculateOrderQuote,
   itemSignature,
+  normalizePaymentConfiguration,
   normalizeRequestedItems,
+  razorpayEnvironmentForKey,
 } = require('./checkout')
 const {
   removePurchasedCartItems,
@@ -34,6 +36,9 @@ const paymentCallableOptions = {
 const PHONE_PATTERN = /^[6-9]\d{9}$/
 const PIN_CODE_PATTERN = /^[1-8]\d{5}$/
 const ORDER_REQUEST_PATTERN = /^[a-zA-Z0-9_-]{8,100}$/
+const RAZORPAY_ORDER_PATTERN = /^order_[a-zA-Z0-9]{6,100}$/
+const RAZORPAY_PAYMENT_PATTERN = /^pay_[a-zA-Z0-9]{6,100}$/
+const RAZORPAY_SIGNATURE_PATTERN = /^[a-fA-F0-9]{64}$/
 
 const cleanObject = (value) => JSON.parse(JSON.stringify(value || {}))
 
@@ -501,16 +506,44 @@ async function createRazorpayOrderHandler(request) {
   const billingAddress = request.data?.billingAddress
     ? validateShippingAddress(request.data.billingAddress)
     : shippingAddress
-  const quote = await loadCheckoutQuote(uid, request.data?.items, request.data)
+  const [quote, storefrontSettingsDocument] = await Promise.all([
+    loadCheckoutQuote(uid, request.data?.items, request.data),
+    db.doc('settings/storefront').get(),
+  ])
+  const paymentConfiguration = normalizePaymentConfiguration(
+    storefrontSettingsDocument.data()?.payment,
+  )
+  if (!paymentConfiguration.razorpayEnabled) {
+    throw new HttpsError('failed-precondition', 'Online payment is not available.')
+  }
+  if (![
+    paymentConfiguration.cardsEnabled,
+    paymentConfiguration.upiEnabled,
+    paymentConfiguration.netBankingEnabled,
+    paymentConfiguration.walletsEnabled,
+  ].some(Boolean)) {
+    throw new HttpsError(
+      'failed-precondition',
+      'No Razorpay payment method is currently available.',
+    )
+  }
   const amount = quote.totalPaise
-  if (!Number.isInteger(amount) || amount < 100 || amount > 100_000_000) {
+  if (!Number.isInteger(amount) || amount < 100 || amount > 50_000_000) {
     throw new HttpsError('invalid-argument', 'Enter a valid payment amount.')
   }
   const keyId = razorpayKeyId.value()
-  if (!keyId.startsWith('rzp_test_')) {
+  const environment = razorpayEnvironmentForKey(keyId)
+  if (!environment || !razorpayKeySecret.value()) {
     throw new HttpsError(
       'failed-precondition',
-      'Only Razorpay Test Mode credentials are enabled.',
+      'Razorpay credentials are not configured correctly.',
+    )
+  }
+  const configuredEnvironment = paymentConfiguration.testMode ? 'test' : 'live'
+  if (environment !== configuredEnvironment) {
+    throw new HttpsError(
+      'failed-precondition',
+      `Razorpay ${configuredEnvironment === 'test' ? 'Test' : 'Live'} Mode credentials are required.`,
     )
   }
   const receipt = String(request.data?.receipt || `pride_${Date.now()}`)
@@ -529,14 +562,22 @@ async function createRazorpayOrderHandler(request) {
         amount,
         currency: 'INR',
         receipt,
-        notes: { source: 'Pride Electronics Test Checkout', uid },
+        notes: {
+          source: `Pride Electronics ${environment === 'test' ? 'Test ' : ''}Checkout`,
+          uid,
+        },
       }),
     })
     order = await response.json()
   } catch {
     throw new HttpsError('unavailable', 'Unable to reach Razorpay. Please try again.')
   }
-  if (!response.ok || !order?.id) {
+  if (
+    !response.ok ||
+    !RAZORPAY_ORDER_PATTERN.test(String(order?.id || '')) ||
+    Number(order?.amount) !== amount ||
+    String(order?.currency) !== 'INR'
+  ) {
     throw new HttpsError(
       'internal',
       order?.error?.description || 'Unable to create Razorpay order.',
@@ -568,10 +609,13 @@ async function createRazorpayOrderHandler(request) {
     status: String(order.status || 'created'),
     verified: false,
     consumed: false,
+    autoCapture: paymentConfiguration.autoCapture,
+    environment,
     createdAt,
     updatedAt: createdAt,
   })
   return {
+    environment,
     keyId,
     quote,
     order: {
@@ -590,7 +634,11 @@ async function verifyRazorpayPaymentHandler(request) {
   const orderId = String(request.data?.razorpay_order_id || '').trim()
   const paymentId = String(request.data?.razorpay_payment_id || '').trim()
   const signature = String(request.data?.razorpay_signature || '').trim()
-  if (!orderId || !paymentId || !signature) {
+  if (
+    !RAZORPAY_ORDER_PATTERN.test(orderId) ||
+    !RAZORPAY_PAYMENT_PATTERN.test(paymentId) ||
+    !RAZORPAY_SIGNATURE_PATTERN.test(signature)
+  ) {
     throw new HttpsError('invalid-argument', 'Incomplete Razorpay payment response.')
   }
   const intentReference = db.doc(`paymentIntents/${orderId}`)
@@ -631,6 +679,50 @@ async function verifyRazorpayPaymentHandler(request) {
     String(payment.currency) !== String(intent.currency)
   ) {
     throw new HttpsError('data-loss', 'Razorpay returned mismatched payment details.')
+  }
+  if (String(payment.status) === 'authorized' && intent.autoCapture !== false) {
+    let captureResponse
+    let capturedPayment
+    try {
+      captureResponse = await fetch(
+        `https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}/capture`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: razorpayAuthorization(),
+          },
+          body: JSON.stringify({
+            amount: Number(intent.amount),
+            currency: String(intent.currency),
+          }),
+        },
+      )
+      capturedPayment = await captureResponse.json()
+    } catch {
+      throw new HttpsError('unavailable', 'Unable to capture the Razorpay payment.')
+    }
+    if (captureResponse.ok) {
+      payment = capturedPayment
+    } else {
+      try {
+        const refreshedResponse = await fetch(
+          `https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`,
+          { headers: { Authorization: razorpayAuthorization() } },
+        )
+        const refreshedPayment = await refreshedResponse.json()
+        if (refreshedResponse.ok && refreshedPayment.status === 'captured') {
+          payment = refreshedPayment
+        } else {
+          throw new Error('Payment is not captured.')
+        }
+      } catch {
+        throw new HttpsError(
+          'failed-precondition',
+          capturedPayment?.error?.description || 'The payment could not be captured.',
+        )
+      }
+    }
   }
   if (!['authorized', 'captured'].includes(String(payment.status))) {
     throw new HttpsError(
@@ -787,7 +879,9 @@ async function placeOrderHandler(request) {
         transaction.get(storefrontSettingsReference),
         transaction.get(userReference),
       ])
-    const paymentConfiguration = storefrontSettingsDocument.data()?.payment || {}
+    const paymentConfiguration = normalizePaymentConfiguration(
+      storefrontSettingsDocument.data()?.payment,
+    )
     const isCashOnDelivery = /cash|cod/i.test(submittedOrder.paymentMethod || '')
     if (isCashOnDelivery && paymentConfiguration.codEnabled !== true) {
       throw new HttpsError('failed-precondition', 'Cash on Delivery is not available.')
@@ -1014,9 +1108,12 @@ async function placeOrderHandler(request) {
       : verifiedPayment.status === 'captured'
         ? 'Paid'
         : 'Authorized'
+    const paymentEnvironment = paymentIntent?.environment === 'live'
+      ? 'Razorpay'
+      : 'Razorpay Test Mode'
     const paymentMethod = isCashOnDelivery
       ? 'Cash on Delivery'
-      : `${String(verifiedPayment.method || 'Online payment').toUpperCase()} via Razorpay Test Mode`
+      : `${String(verifiedPayment.method || 'Online payment').toUpperCase()} via ${paymentEnvironment}`
     const order = {
       id: orderReference.id,
       clientRequestId: requestId,
@@ -1057,7 +1154,7 @@ async function placeOrderHandler(request) {
       paymentStatus,
       paymentDate: isCashOnDelivery ? null : now,
       paymentMethod,
-      paymentEnvironment: isCashOnDelivery ? 'Cash on Delivery' : 'Razorpay Test Mode',
+      paymentEnvironment: isCashOnDelivery ? 'Cash on Delivery' : paymentEnvironment,
       razorpayPaymentId: isCashOnDelivery ? '' : String(paymentIntent.paymentId),
       razorpayOrderId: isCashOnDelivery ? '' : String(paymentIntent.id),
       createdAt: now,

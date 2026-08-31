@@ -11,7 +11,7 @@ import {
   Tag,
   Truck,
 } from 'lucide-react'
-import { formatCurrency, parsePrice } from '../../utils/currency'
+import { formatCurrency, hasValidPrice, parsePrice } from '../../utils/currency'
 import {
   calculateCartPricing,
   paymentAmountMatchesCheckout,
@@ -22,6 +22,10 @@ import {
   normalizeAddress,
 } from '../../utils/address'
 import { loadRazorpayCheckout, postRazorpayApi } from '../../utils/razorpay'
+import {
+  createRazorpayDisplayConfig,
+  preferredRazorpayMethod,
+} from '../../utils/razorpayOptions'
 import { initialShippingSettings } from '../../../data/shipping'
 import { initialInvoiceSettings } from '../../../data/invoice'
 import { initialAdminSettings } from '../../../data/adminSettings'
@@ -65,12 +69,6 @@ const createCheckoutAddress = (user, address = {}) => {
     longitude: normalizedAddress.longitude ?? null,
     isDefault: Boolean(normalizedAddress.isDefault),
   }
-}
-
-const razorpayMethodFor = (payment) => {
-  if (payment?.type === 'UPI') return 'upi'
-  if (payment?.type?.includes('Card')) return 'card'
-  return 'upi'
 }
 
 export default function CheckoutPage({ items = [], initialCouponCode = '', coupons = [], savedAddresses = [], savedPayments = [], user, onSaveAddress, onBack, onPlaceOrder, shippingSettings = initialShippingSettings, taxSettings = initialInvoiceSettings.tax, paymentSettings = initialAdminSettings.payment, storeName = initialAdminSettings.store.name }) {
@@ -157,7 +155,9 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
   ) / 100
   const hasUnavailableItems = items.some(
     ({ product, quantity }) =>
-      Number(product.stock) <= 0 || quantity > Number(product.stock),
+      !hasValidPrice(product.price) ||
+      Number(product.stock) <= 0 ||
+      quantity > Number(product.stock),
   )
 
   const applyCoupon = () => {
@@ -284,7 +284,7 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
       const loaded = await loadRazorpayCheckout()
       if (!loaded) throw new Error('Unable to load Razorpay Checkout. Check your connection and try again.')
 
-      const { keyId, order, quote } = await postRazorpayApi('orders', {
+      const { environment, keyId, order, quote } = await postRazorpayApi('orders', {
         amount: toRazorpayAmount(checkoutTotal),
         requestId: checkoutRequestId.current,
         items: items.map(({ product, quantity }) => ({
@@ -309,33 +309,27 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
         )
       }
 
-      const allowedMethods = [
-        paymentSettings.upiEnabled && 'upi',
-        paymentSettings.cardsEnabled && 'card',
-        paymentSettings.netBankingEnabled && 'netbanking',
-        paymentSettings.walletsEnabled && 'wallet',
-      ].filter(Boolean)
+      const preferredMethod = preferredRazorpayMethod(
+        selectedPayment,
+        paymentSettings,
+      )
       const razorpay = new window.Razorpay({
         key: keyId,
         amount: order.amount,
         currency: order.currency,
         name: storeName,
-        description: `Test payment for ${items.length} ${items.length === 1 ? 'product' : 'products'}`,
+        description: `${environment === 'test' ? 'Test payment' : 'Payment'} for ${items.length} ${items.length === 1 ? 'product' : 'products'}`,
         order_id: order.id,
         prefill: {
           name: user?.name || selectedAddress?.fullName || '',
           email: user?.email || '',
           contact: user?.mobile || selectedAddress?.phone || '',
         },
-        method: razorpayMethodFor(selectedPayment),
-        notes: { checkout: `${storeName} ${paymentSettings.testMode ? 'Test Mode' : 'Checkout'}` },
+        ...(preferredMethod ? { method: preferredMethod } : {}),
+        notes: { checkout: `${storeName} ${environment === 'test' ? 'Test Mode' : 'Checkout'}` },
         theme: { color: '#397a4a', backdrop_color: '#17251c' },
-        config: {
-          display: {
-            sequence: allowedMethods,
-            preferences: { show_default_blocks: true },
-          },
-        },
+        retry: { enabled: true },
+        config: createRazorpayDisplayConfig(paymentSettings),
         modal: {
           backdropclose: false,
           escape: true,
@@ -474,10 +468,20 @@ export default function CheckoutPage({ items = [], initialCouponCode = '', coupo
             </div>
 
             <div className="mt-5 max-h-64 space-y-3 overflow-y-auto pr-1">
+              {!items.length && (
+                <div className="rounded-2xl bg-amber-50 px-4 py-4 text-[10px] font-bold leading-5 text-amber-800">
+                  These products are no longer available. Return to your cart and select an available product.
+                </div>
+              )}
               {items.map(({ key, product, quantity }) => (
-                <article key={key} className="flex gap-3 rounded-2xl bg-[#f7f8f5] p-3"><img src={product.image} alt={product.name} className="size-16 shrink-0 rounded-xl object-cover" /><div className="min-w-0 flex-1"><p className="line-clamp-2 text-[10px] font-extrabold leading-4 text-slate-800">{product.name}</p>{product.selectedVariantName && <p className="mt-1 text-[8px] font-bold text-[#397a4a]">{product.selectedVariantName}{product.modelNumber ? ` · ${product.modelNumber}` : ''}</p>}<div className="mt-2 flex items-center justify-between gap-2"><span className="rounded-full bg-white px-2 py-1 text-[8px] font-bold text-slate-500">Qty {quantity}</span><strong className="text-[10px] text-slate-900">{formatCurrency(parsePrice(product.price) * quantity)}</strong></div></div></article>
+                <article key={key} className="flex gap-3 rounded-2xl bg-[#f7f8f5] p-3"><img src={product.image} alt={product.name} className="size-16 shrink-0 rounded-xl object-cover" /><div className="min-w-0 flex-1"><p className="line-clamp-2 text-[10px] font-extrabold leading-4 text-slate-800">{product.name}</p>{product.selectedVariantName && <p className="mt-1 text-[8px] font-bold text-[#397a4a]">{product.selectedVariantName}{product.modelNumber ? ` · ${product.modelNumber}` : ''}</p>}<div className="mt-2 flex items-center justify-between gap-2"><span className="rounded-full bg-white px-2 py-1 text-[8px] font-bold text-slate-500">Qty {quantity}</span><strong className="text-[10px] text-slate-900">{hasValidPrice(product.price) ? formatCurrency(parsePrice(product.price) * quantity) : 'Price unavailable'}</strong></div></div></article>
               ))}
             </div>
+            {hasUnavailableItems && (
+              <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-[10px] font-bold leading-5 text-red-700">
+                A product price or stock level changed. Return to your cart and review the latest availability before placing the order.
+              </div>
+            )}
 
             <div className="mt-5 rounded-[20px] bg-[#eaf3eb] p-4">
               <p className="flex items-center gap-2 text-[9px] font-extrabold uppercase tracking-wider text-[#536a50]"><Tag size={13} /> Coupon or discount</p>
