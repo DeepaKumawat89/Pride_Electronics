@@ -934,7 +934,7 @@ export default function UserApp({
     setSelectedProduct(product)
     setReviewsOpen(false)
     setAccountSection(null)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.scrollTo({ top: 0, behavior: 'auto' })
   }
 
   const closeProductDetails = () => {
@@ -1009,7 +1009,7 @@ export default function UserApp({
       setOrderToViewId(null)
       setAccountSection(route.section)
     }
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.scrollTo({ top: 0, behavior: 'auto' })
     return true
   }
 
@@ -1327,6 +1327,64 @@ export default function UserApp({
     cart.remove(itemKey)
   }
 
+  const handleCheckoutUpdateQuantity = (itemKey, delta) => {
+    if (checkoutSelection?.mode === 'buy-now') {
+      setCheckoutSelection((current) => {
+        if (!current?.items) return current
+        const nextItems = current.items
+          .map((item) => {
+            const key = variantCartKey(item.productId, item.variantId)
+            if (key !== itemKey) return item
+            const nextQty = item.quantity + delta
+            return nextQty > 0 ? { ...item, quantity: nextQty } : item
+          })
+          .filter((item) => item.quantity > 0)
+        if (!nextItems.length) {
+          closeCheckout()
+          return null
+        }
+        const nextSelection = { ...current, items: nextItems }
+        sessionStorage.setItem(
+          CHECKOUT_SELECTION_SESSION_KEY,
+          JSON.stringify(nextSelection),
+        )
+        return nextSelection
+      })
+    } else {
+      cart.changeQuantity(itemKey, delta)
+    }
+  }
+
+  const handleCheckoutRemoveItem = (itemKey) => {
+    if (checkoutSelection?.mode === 'buy-now') {
+      setCheckoutSelection((current) => {
+        if (!current?.items) return current
+        const nextItems = current.items.filter(
+          (item) => variantCartKey(item.productId, item.variantId) !== itemKey,
+        )
+        if (!nextItems.length) {
+          closeCheckout()
+          return null
+        }
+        const nextSelection = { ...current, items: nextItems }
+        sessionStorage.setItem(
+          CHECKOUT_SELECTION_SESSION_KEY,
+          JSON.stringify(nextSelection),
+        )
+        return nextSelection
+      })
+    } else {
+      cart.remove(itemKey)
+    }
+  }
+
+  const handleOpenPolicy = (policyKey) => {
+    const hash = CONTENT_PAGE_HASHES[policyKey]
+    if (hash) {
+      window.open(`/${hash}`, '_blank')
+    }
+  }
+
   const handleAccountSectionChange = (nextSection) => {
     setOrderToViewId(null)
     const path = getProtectedPathForSection(nextSection)
@@ -1459,6 +1517,7 @@ export default function UserApp({
       shippingAddress: checkoutDetails.address || null,
       billingAddress:
         checkoutDetails.billingAddress || checkoutDetails.address || null,
+      gstDetails: checkoutDetails.gstDetails || null,
       deliveryId: checkoutDetails.delivery?.id || 'standard',
       paymentMethod: checkoutDetails.cod
         ? 'Cash on Delivery'
@@ -1681,6 +1740,9 @@ export default function UserApp({
             onSaveAddress={handleSaveAddress}
             onBack={closeCheckout}
             onPlaceOrder={handlePlaceOrder}
+            onUpdateQuantity={handleCheckoutUpdateQuantity}
+            onRemoveItem={handleCheckoutRemoveItem}
+            onOpenPolicy={handleOpenPolicy}
             shippingSettings={shippingSettings}
             taxSettings={invoiceSettings.tax}
             paymentSettings={adminSettings.payment}

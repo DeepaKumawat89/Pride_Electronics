@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ArrowLeft,
   Check,
@@ -50,6 +50,10 @@ function TechnicalSpecificationsSection({ specifications }) {
 }
 
 export default function ProductDetailsPage({ product, relatedProducts = [], deliveryAddress, likedIds = [], reviews, onBack, onLike, onAdd, onBuyNow, onViewProduct, onViewAllReviews, shippingSettings = initialShippingSettings, taxSettings = initialInvoiceSettings.tax }) {
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [])
+
   const [activeImageIndex, setActiveImageIndex] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [selectedVariantId, setSelectedVariantId] = useState('')

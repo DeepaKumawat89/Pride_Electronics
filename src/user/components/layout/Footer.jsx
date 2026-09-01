@@ -4,7 +4,7 @@ import Brand from '../common/Brand'
 const columns = [
   { title: 'Shop', links: ['New arrivals', 'Audio', 'Wearables', 'PC components', 'Smart power'] },
   { title: 'Help', links: ['Order tracking', 'Shipping & delivery', 'Returns & refunds', 'Warranty', 'Contact us'] },
-  { title: 'Company', links: ['Our story', 'Journal', 'Careers', 'Pride+ rewards', 'Sell with us'] },
+  { title: 'Company', links: ['Sell with us'] },
 ]
 
 const pageLinks = {
