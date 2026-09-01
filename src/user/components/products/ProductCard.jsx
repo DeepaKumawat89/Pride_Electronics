@@ -32,7 +32,16 @@ export default function ProductCard({
         </div>
       </div>
       <div className="flex flex-1 flex-col px-1 pt-4">
-        <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400"><span>{product.category}</span><span className="flex items-center gap-1 text-slate-600"><Star size={11} className="fill-[#ffb000] text-[#ffb000]" /> {product.rating} <span className="font-medium text-slate-400">({product.reviewsCount})</span></span></div>
+        <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+          <span>{product.category}</span>
+          {product.reviewsCount > 0 ? (
+            <span className="flex items-center gap-1 text-slate-600">
+              <Star size={11} className="fill-[#ffb000] text-[#ffb000]" /> {Number(product.rating || 0).toFixed(1)} <span className="font-medium text-slate-400">({product.reviewsCount})</span>
+            </span>
+          ) : (
+            <span className="text-[9px] font-semibold text-slate-400">No reviews yet</span>
+          )}
+        </div>
         <button type="button" onClick={() => onView(product)} className="mt-2 min-h-12 text-left text-sm font-extrabold leading-6 text-slate-900 transition hover:text-[#ff5c35]">{product.name}</button>
         <div className="mt-3 flex items-end justify-between gap-3">
           <div><strong className="text-base font-extrabold text-slate-950">{priceAvailable ? formatCurrency(parsePrice(product.price)) : 'Price unavailable'}</strong>{priceAvailable && hasValidPrice(product.originalPrice) && <span className="ml-2 text-xs font-medium text-slate-400 line-through">{formatCurrency(parsePrice(product.originalPrice))}</span>}</div>

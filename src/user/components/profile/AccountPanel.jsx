@@ -916,11 +916,17 @@ function WishlistSection({ products, query, onRemove, onView, onAdd }) {
                 {product.name}
               </button>
               <div className="mt-1.5 flex items-center gap-1 text-[9px] font-bold text-slate-500">
-                <Star size={11} className="fill-[#ffb000] text-[#ffb000]" />
-                <span className="text-slate-700">{product.rating || 'New'}</span>
-                <span className="font-medium text-slate-400">
-                  ({product.reviewsCount || 0} reviews)
-                </span>
+                {product.reviewsCount > 0 ? (
+                  <>
+                    <Star size={11} className="fill-[#ffb000] text-[#ffb000]" />
+                    <span className="text-slate-700">{Number(product.rating || 0).toFixed(1)}</span>
+                    <span className="font-medium text-slate-400">
+                      ({product.reviewsCount} review{product.reviewsCount === 1 ? '' : 's'})
+                    </span>
+                  </>
+                ) : (
+                  <span className="font-semibold text-slate-400">No reviews yet</span>
+                )}
               </div>
               <div className="mt-3 flex items-baseline gap-2">
                 <strong className="text-base text-slate-950">

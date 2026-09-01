@@ -73,18 +73,18 @@ export function sortCatalogProducts(products, sortBy) {
     if (sortBy === 'newest') {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     }
-    if (sortBy === 'rating') return b.rating - a.rating
+    if (sortBy === 'rating') return (Number(b.rating) || 0) - (Number(a.rating) || 0)
     if (sortBy === 'discount') {
       return getDiscountPercent(b) - getDiscountPercent(a)
     }
     if (sortBy === 'recommended') {
       return (
         Number(b.featured) - Number(a.featured) ||
-        b.rating - a.rating ||
-        b.reviewsCount - a.reviewsCount
+        (Number(b.rating) || 0) - (Number(a.rating) || 0) ||
+        (Number(b.reviewsCount) || 0) - (Number(a.reviewsCount) || 0)
       )
     }
-    return b.reviewsCount - a.reviewsCount
+    return (Number(b.reviewsCount) || 0) - (Number(a.reviewsCount) || 0)
   })
 }
 
@@ -108,7 +108,7 @@ export function filterCatalogProducts(products, subcategory, filters) {
     if (subcategory !== 'All' && product.subcategory !== subcategory) return false
     if (filters.brand !== 'All' && product.brand !== filters.brand) return false
     if (!matchesPrice(product, filters.price)) return false
-    if (filters.rating !== 'all' && product.rating < Number(filters.rating)) {
+    if (filters.rating !== 'all' && (Number(product.rating) || 0) < Number(filters.rating)) {
       return false
     }
     if (

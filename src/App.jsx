@@ -21,6 +21,7 @@ import {
   saveProduct,
   saveProducts,
   subscribeToProducts,
+  updateProductRatingStats,
 } from './firebase/products'
 import {
   removeProductImages,
@@ -828,20 +829,33 @@ function App() {
   }
 
   const handleUpdateReview = (review) => {
-    setAdminReviews((current) =>
-      current.map((item) => (item.id === review.id ? review : item)),
+    const updatedReviews = adminReviews.map((item) =>
+      item.id === review.id ? review : item,
     )
-    void saveRecord('reviews', review, { merge: true }).catch((error) =>
-      setProductsError(error.message || 'Unable to update the review.'),
-    )
+    setAdminReviews(updatedReviews)
+    void saveRecord('reviews', review, { merge: true })
+      .then(() => {
+        if (review.productId) {
+          void updateProductRatingStats(review.productId, updatedReviews)
+        }
+      })
+      .catch((error) =>
+        setProductsError(error.message || 'Unable to update the review.'),
+      )
   }
   const handleDeleteReview = (reviewId) => {
-    setAdminReviews((current) =>
-      current.filter((review) => review.id !== reviewId),
-    )
-    void removeRecord('reviews', reviewId).catch((error) =>
-      setProductsError(error.message || 'Unable to delete the review.'),
-    )
+    const targetReview = adminReviews.find((r) => r.id === reviewId)
+    const updatedReviews = adminReviews.filter((review) => review.id !== reviewId)
+    setAdminReviews(updatedReviews)
+    void removeRecord('reviews', reviewId)
+      .then(() => {
+        if (targetReview?.productId) {
+          void updateProductRatingStats(targetReview.productId, updatedReviews)
+        }
+      })
+      .catch((error) =>
+        setProductsError(error.message || 'Unable to delete the review.'),
+      )
   }
 
   const handleUpdatePaymentStatus = (orderId, paymentStatus) => {
@@ -909,9 +923,34 @@ function App() {
         }),
       )
   const managedSubcategories = subcategoriesList
-  const catalogProducts = productsList.map((product) =>
-    normalizeProductTaxonomy(product, managedCategories, managedSubcategories),
+  const publishedReviewsList = (reviewsList || []).filter(
+    (review) => review.status === 'Published',
   )
+  const productRatingsMap = new Map()
+  publishedReviewsList.forEach((review) => {
+    if (!review.productId) return
+    const pid = String(review.productId)
+    const existing = productRatingsMap.get(pid) || { count: 0, sum: 0 }
+    existing.count += 1
+    existing.sum += Number(review.rating || 0)
+    productRatingsMap.set(pid, existing)
+  })
+
+  const catalogProducts = productsList.map((product) => {
+    const normalized = normalizeProductTaxonomy(
+      product,
+      managedCategories,
+      managedSubcategories,
+    )
+    const stats = productRatingsMap.get(String(product.id))
+    const count = stats ? stats.count : 0
+    const rating = count > 0 ? Math.round((stats.sum / count) * 10) / 10 : 0
+    return {
+      ...normalized,
+      rating,
+      reviewsCount: count,
+    }
+  })
   const storefrontProducts = catalogProducts
     .filter(
       (product) => {

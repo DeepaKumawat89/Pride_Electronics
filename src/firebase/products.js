@@ -80,3 +80,19 @@ export async function removeProduct(productId) {
   if (!productId) throw new Error('A Firestore product ID is required.')
   await deleteDoc(doc(productsCollection, String(productId)))
 }
+
+export async function updateProductRatingStats(productId, reviews = []) {
+  if (!productId) return
+  const published = reviews.filter(
+    (review) => String(review.productId) === String(productId) && review.status === 'Published',
+  )
+  const count = published.length
+  const sum = published.reduce((total, item) => total + (Number(item.rating) || 0), 0)
+  const average = count > 0 ? Math.round((sum / count) * 10) / 10 : 0
+  await saveProduct({
+    id: productId,
+    rating: average,
+    reviewsCount: count,
+  })
+}
+

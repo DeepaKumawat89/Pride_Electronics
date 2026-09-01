@@ -195,6 +195,7 @@ export default function OrderDetailsView({
   const [submittedFeedback, setSubmittedFeedback] = useState(
     order.feedback || null,
   )
+  const [isEditingReview, setIsEditingReview] = useState(false)
   const [activeAction, setActiveAction] = useState('')
   const [returnReason, setReturnReason] = useState('')
   const [returnSubmitted, setReturnSubmitted] = useState(false)
@@ -412,7 +413,7 @@ export default function OrderDetailsView({
         {delivered && (
           <section className="border-t border-slate-100 py-6">
             <SectionTitle icon={Star}>Rate your purchase</SectionTitle>
-            {submittedFeedback ? (
+            {submittedFeedback && !isEditingReview ? (
               <div className="mt-4">
                 <div className="flex items-center gap-1" aria-label={`${submittedFeedback.rating} out of 5 stars`}>
                   {[1, 2, 3, 4, 5].map((value) => (
@@ -420,16 +421,31 @@ export default function OrderDetailsView({
                   ))}
                 </div>
                 <p className="mt-3 max-w-3xl text-[11px] leading-5 text-slate-600">{submittedFeedback.review}</p>
-                <p className="mt-2 inline-flex items-center gap-1.5 text-[9px] font-bold text-emerald-700"><CheckCircle2 size={13} /> Feedback submitted</p>
+                <div className="mt-3 flex items-center gap-3">
+                  <p className="inline-flex items-center gap-1.5 text-[9px] font-bold text-emerald-700"><CheckCircle2 size={13} /> Feedback submitted</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRating(submittedFeedback.rating)
+                      setReview(submittedFeedback.review || '')
+                      setIsEditingReview(true)
+                    }}
+                    className="rounded-full bg-slate-100 px-3 py-1 text-[9px] font-extrabold text-slate-600 transition hover:bg-[#397a4a] hover:text-white"
+                  >
+                    Edit Review
+                  </button>
+                </div>
               </div>
             ) : (
               <form
-                onSubmit={(event) => {
+                onSubmit={async (event) => {
                   event.preventDefault()
                   if (rating && review.trim()) {
-                    const feedback = { rating, review: review.trim() }
+                    const productId = order.items?.[0]?.productId || ''
+                    const feedback = { rating, review: review.trim(), productId }
                     setSubmittedFeedback(feedback)
-                    onSubmitFeedback?.(order.id, feedback)
+                    setIsEditingReview(false)
+                    await onSubmitFeedback?.(order.id, feedback, productId)
                   }
                 }}
                 className="mt-4 max-w-3xl"
@@ -443,7 +459,16 @@ export default function OrderDetailsView({
                 </div>
                 <label className="mt-4 block text-[9px] font-extrabold uppercase tracking-wider text-slate-500">Write your feedback</label>
                 <textarea required value={review} onChange={(event) => setReview(event.target.value)} rows={4} placeholder="Tell us about the product and delivery experience..." className="mt-2 w-full resize-y rounded-xl border border-slate-200 p-3 text-xs outline-none transition focus:border-[#ff5c35] focus:ring-4 focus:ring-[#ff5c35]/10" />
-                <button disabled={!rating || !review.trim()} className="mt-3 rounded-full bg-[#253329] px-5 py-2.5 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-40">Submit Feedback</button>
+                <div className="mt-3 flex items-center gap-2">
+                  <button disabled={!rating || !review.trim()} className="rounded-full bg-[#253329] px-5 py-2.5 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-40">
+                    {isEditingReview ? 'Update Review' : 'Submit Feedback'}
+                  </button>
+                  {isEditingReview && (
+                    <button type="button" onClick={() => setIsEditingReview(false)} className="rounded-full border border-slate-200 px-4 py-2 text-[10px] font-extrabold text-slate-500 hover:bg-slate-100">
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </form>
             )}
           </section>

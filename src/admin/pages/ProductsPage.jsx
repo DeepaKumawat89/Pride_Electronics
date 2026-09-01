@@ -53,9 +53,6 @@ const blankProduct = {
   subcategory: '',
   price: '',
   originalPrice: '',
-  stock: 0,
-  rating: 0,
-  reviewsCount: 0,
   badge: '',
   discount: '',
   taxRate: 18,
@@ -362,14 +359,6 @@ export default function ProductsPage({
     )
       errors.lowStockThreshold =
         'Threshold must be a non-negative whole number.'
-    if (Number(form.rating) < 0 || Number(form.rating) > 5)
-      errors.rating = 'Rating must be between 0 and 5.'
-    if (
-      Number(form.reviewsCount) < 0 ||
-      !Number.isInteger(Number(form.reviewsCount))
-    )
-      errors.reviewsCount =
-        'Review count must be a non-negative whole number.'
     if (Number(form.taxRate) < 0 || Number(form.taxRate) > 100)
       errors.taxRate = 'Tax must be between 0 and 100.'
     const hasExistingImages = Boolean(
@@ -491,8 +480,8 @@ export default function ProductsPage({
       stock: Number(form.stock),
       lowStockThreshold: Number(form.lowStockThreshold),
       taxRate: Number(form.taxRate),
-      rating: Number(form.rating),
-      reviewsCount: Number(form.reviewsCount),
+      rating: editingProduct?.rating ?? 0,
+      reviewsCount: editingProduct?.reviewsCount ?? 0,
       sku: form.sku.trim() || createGeneratedSku(),
       specs: parseList(form.specs),
       technicalSpecifications: selectedSubcategory
@@ -868,21 +857,6 @@ export default function ProductsPage({
               <input required type="number" min="0" {...field('lowStockThreshold')} className={inputClass} />
             </FormField>
 
-            <FormField label="Rating">
-              <input
-                required
-                type="number"
-                min="0"
-                max="5"
-                step="0.1"
-                {...field('rating')}
-                className={inputClass}
-              />
-            </FormField>
-            <FormField label="Review count">
-              <input required type="number" min="0" {...field('reviewsCount')} className={inputClass} />
-            </FormField>
-
             <FormSectionTitle title="Images" />
             <FormField label="Product images" wide>
               <input
@@ -1095,13 +1069,17 @@ function ProductRow({ product, onEdit, onDuplicate, onToggle, onDelete }) {
         </div>
       </td>
       <td className="px-5 py-4">
-        <span className="flex items-center gap-1 text-[10px] font-extrabold text-slate-700">
-          <Star size={12} className="fill-amber-400 text-amber-400" />
-          {product.rating}
-          <small className="font-semibold text-slate-400">
-            ({product.reviewsCount})
-          </small>
-        </span>
+        {product.reviewsCount > 0 ? (
+          <span className="flex items-center gap-1 text-[10px] font-extrabold text-slate-700">
+            <Star size={12} className="fill-amber-400 text-amber-400" />
+            {Number(product.rating || 0).toFixed(1)}
+            <small className="font-semibold text-slate-400">
+              ({product.reviewsCount})
+            </small>
+          </span>
+        ) : (
+          <span className="text-[10px] font-semibold text-slate-400">No reviews</span>
+        )}
       </td>
       <td className="px-5 py-4">
         <div className="flex justify-end gap-2">
@@ -1146,10 +1124,14 @@ function ProductGridCard({ product, onEdit, onDuplicate, onToggle, onDelete }) {
         </h3>
         <div className="mt-3 flex items-center justify-between">
           <strong className="text-sm text-slate-950">{product.price}</strong>
-          <span className="flex items-center gap-1 text-[9px] font-bold">
-            <Star size={11} className="fill-amber-400 text-amber-400" />
-            {product.rating}
-          </span>
+          {product.reviewsCount > 0 ? (
+            <span className="flex items-center gap-1 text-[9px] font-bold">
+              <Star size={11} className="fill-amber-400 text-amber-400" />
+              {Number(product.rating || 0).toFixed(1)} ({product.reviewsCount})
+            </span>
+          ) : (
+            <span className="text-[9px] font-semibold text-slate-400">No reviews</span>
+          )}
         </div>
         <div className="mt-4 flex gap-2 border-t border-slate-100 pt-4">
           <button

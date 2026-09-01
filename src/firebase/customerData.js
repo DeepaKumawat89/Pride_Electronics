@@ -75,10 +75,11 @@ export async function cancelCustomerOrder(orderId) {
   }
 }
 
-export async function submitCustomerOrderFeedback(orderId, feedback) {
+export async function submitCustomerOrderFeedback(orderId, feedback, productId = '') {
   try {
     const result = await callOperation('submitOrderFeedback', {
       orderId,
+      productId: productId || feedback?.productId || '',
       feedback,
     })
     return result.data.review

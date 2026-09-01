@@ -176,11 +176,17 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                 </div>
               )}
 
-              <div className="mt-4 flex items-center gap-2 text-[11px] font-bold text-slate-600">
-                <span className="flex items-center gap-0.5">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} className="fill-[#ffb000] text-[#ffb000]" />)}</span>
-                <strong className="text-slate-900">{product.rating}</strong>
-                <span className="text-slate-400">{product.reviewsCount} ratings & reviews</span>
-              </div>
+              {product.reviewsCount > 0 ? (
+                <div className="mt-4 flex items-center gap-2 text-[11px] font-bold text-slate-600">
+                  <span className="flex items-center gap-0.5">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} className={star <= Math.round(Number(product.rating || 0)) ? 'fill-[#ffb000] text-[#ffb000]' : 'fill-slate-200 text-slate-200'} />)}</span>
+                  <strong className="text-slate-900">{Number(product.rating || 0).toFixed(1)}</strong>
+                  <span className="text-slate-400">{product.reviewsCount} {product.reviewsCount === 1 ? 'rating & review' : 'ratings & reviews'}</span>
+                </div>
+              ) : (
+                <div className="mt-4 flex items-center gap-2">
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-extrabold text-slate-500">No reviews yet</span>
+                </div>
+              )}
 
               <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-y border-slate-100 py-3.5">
                 <strong className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">{priceAvailable ? formatCurrency(parsePrice(displayProduct.price)) : 'Price unavailable'}</strong>

@@ -1,10 +1,12 @@
 import { ArrowRight, BadgeCheck, Star, ThumbsUp } from 'lucide-react'
 
 export function RatingSummary({ product, reviews = [], showTitle = false }) {
+  const hasReviews = reviews.length > 0 || product.reviewsCount > 0
   const average = reviews.length
     ? reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) /
       reviews.length
     : Number(product.rating || 0)
+
   const ratingBreakdown = [5, 4, 3, 2, 1].map((stars) => {
     const count = reviews.filter((review) => Number(review.rating) === stars).length
     return {
@@ -12,12 +14,25 @@ export function RatingSummary({ product, reviews = [], showTitle = false }) {
       percent: reviews.length ? Math.round((count / reviews.length) * 100) : 0,
     }
   })
+
+  if (!hasReviews) {
+    return (
+      <div className="flex h-full flex-col justify-center rounded-[24px] bg-[#183020] p-6 text-white sm:p-7">
+        {showTitle && <p className="mb-2 text-[9px] font-extrabold uppercase tracking-[0.18em] text-[#9bcaa6]">Product Rating</p>}
+        <h3 className="text-xl font-extrabold text-white">No reviews yet</h3>
+        <p className="mt-2 text-xs font-semibold text-white/70">
+          Be the first customer to share your thoughts and rate this product!
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-full flex-col rounded-[24px] bg-[#183020] p-6 text-white sm:p-7">
       {showTitle && <p className="mb-4 text-[9px] font-extrabold uppercase tracking-[0.18em] text-[#9bcaa6]">Average Rating</p>}
       <div className="flex items-end gap-2"><strong className="text-5xl font-extrabold tracking-tight">{average.toFixed(1)}</strong><span className="pb-1.5 text-sm font-bold text-white/45">/ 5</span></div>
-      <div className="mt-3 flex gap-1">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={16} className="fill-[#f8bd4f] text-[#f8bd4f]" />)}</div>
-      <p className="mt-2 text-[11px] font-semibold text-white/55">Excellent customer rating</p>
+      <div className="mt-3 flex gap-1">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={16} className={star <= Math.round(average) ? "fill-[#f8bd4f] text-[#f8bd4f]" : "fill-white/20 text-white/20"} />)}</div>
+      <p className="mt-2 text-[11px] font-semibold text-white/55">Based on {reviews.length || product.reviewsCount} customer review{(reviews.length || product.reviewsCount) === 1 ? '' : 's'}</p>
       <div className="mt-6 space-y-3 lg:mt-auto lg:pt-8">
         {ratingBreakdown.map((item) => (
           <div key={item.stars} className="grid grid-cols-[24px_1fr_30px] items-center gap-2 text-[10px] font-bold">
