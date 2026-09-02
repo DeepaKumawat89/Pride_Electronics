@@ -354,9 +354,14 @@ export default function OrderDetailsView({
                     {(item.variant || item.specification) && (
                       <p className="mt-1 text-[9px] text-slate-400">{item.variant || item.specification}</p>
                     )}
-                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[9px] text-slate-500">
+                    <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[9px] text-slate-500">
                       <span>Quantity: <strong className="text-slate-700">{quantity}</strong></span>
                       <span>Unit price: <strong className="text-slate-700">{formatCurrency(unitPrice)}</strong></span>
+                      {(item.appliedTier || item.tierLabel) && (
+                        <span className="inline-flex rounded bg-[#e4f1e7] px-2 py-0.5 text-[8px] font-extrabold text-[#366643]">
+                          Bulk Tier: {item.tierLabel || `${item.appliedTier?.minQty}+ units`} (@ {formatCurrency(item.appliedTier?.unitPrice || unitPrice)})
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="sm:text-right">

@@ -5,6 +5,7 @@ import {
   productHasVariants,
   variantCartKey,
 } from '../../utils/productVariants'
+import { calculateProductUnitPrice } from '../../utils/productPricing'
 
 const resolveLiveProduct = (storedProduct, liveProducts) => {
   if (!Array.isArray(liveProducts)) return storedProduct
@@ -193,7 +194,7 @@ export function useCart(initialProduct, liveProducts = null) {
   )
   const subtotal = useMemo(
     () => items.reduce(
-      (sum, item) => sum + parsePrice(item.product.price) * item.quantity,
+      (sum, item) => sum + calculateProductUnitPrice(item.product, item.quantity) * item.quantity,
       0,
     ),
     [items],

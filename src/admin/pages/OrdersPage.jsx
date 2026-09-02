@@ -373,7 +373,12 @@ export default function OrdersPage({
                         </p>
                       )}
                       <p className="mt-1 text-[8px] text-slate-400">
-                        Quantity: {item.qty}
+                        Quantity: {item.qty} · Unit: {typeof item.unitPrice === 'number' ? `₹${item.unitPrice}` : item.price || 'N/A'}
+                        {(item.appliedTier || item.tierLabel) && (
+                          <span className="ml-1.5 inline-block rounded bg-[#e4f1e7] px-1.5 py-0.5 text-[7px] font-extrabold text-[#366643]">
+                            Bulk ({item.tierLabel || `${item.appliedTier?.minQty}+`})
+                          </span>
+                        )}
                       </p>
                     </div>
                     <strong className="shrink-0 text-[10px] text-[#397a4a]">

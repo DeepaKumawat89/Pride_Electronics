@@ -32,6 +32,7 @@ import SelectMenu from '../../../components/ui/SelectMenu'
 import { useAnchoredPopover } from '../../../hooks/useAnchoredPopover'
 import { getInitials } from '../../../utils/text'
 import { formatCurrency, hasValidPrice, parsePrice } from '../../utils/currency'
+import { getApplicablePricingTier } from '../../../utils/productPricing'
 import { calculateCartPricing } from '../../utils/cart'
 import {
   getPinDeliveryAvailability,
@@ -1340,50 +1341,65 @@ function CartSection({
                       {product.modelNumber ? ` · ${product.modelNumber}` : ''}
                     </p>
                   )}
-                  <p className="mt-2 text-sm font-extrabold text-[#ff5c35]">
-                    {formatCurrency(parsePrice(product.price))}
-                  </p>
-                  {(priceChanged || quantityAdjusted || Number(product.stock) <= 0 || !hasValidPrice(product.price)) && (
-                    <div className="mt-2 space-y-1 text-[8px] font-extrabold">
-                      {priceChanged && <p className="text-[#397a4a]">Price updated to the latest catalog price</p>}
-                      {quantityAdjusted && <p className="text-amber-700">Quantity adjusted to available stock</p>}
-                      {Number(product.stock) <= 0 && <p className="text-red-600">Out of stock — remove or save this item for later</p>}
-                      {!hasValidPrice(product.price) && <p className="text-red-600">Current price unavailable — this item cannot be purchased</p>}
-                    </div>
-                  )}
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center rounded-full border border-slate-200 bg-white shadow-sm">
-                      <button
-                        type="button"
-                        disabled={quantity <= 1}
-                        onClick={() => onChangeQuantity(key, -1)}
-                        className="grid size-8 place-items-center hover:text-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-30"
-                      >
-                        <Minus size={12} />
-                      </button>
-                      <span className="w-8 text-center text-xs font-bold">
-                        {quantity}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={Number(product.stock) <= 0 || quantity >= Math.min(Number(product.stock), 100)}
-                        onClick={() => onChangeQuantity(key, 1)}
-                        className="grid size-8 place-items-center hover:text-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-30"
-                      >
-                        <Plus size={12} />
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button type="button" onClick={() => onSaveForLater(key)} className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 transition hover:text-[#397a4a]"><Bookmark size={13} /> Save for later</button>
-                      <button type="button" onClick={() => onRemove(key)} className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 transition hover:text-red-500"><Trash2 size={13} /> Remove</button>
-                    </div>
-                  </div>
+                  {(() => {
+                    const applicableTier = getApplicablePricingTier(product, quantity)
+                    const unitPrice = applicableTier.unitPrice
+                    return (
+                      <>
+                        <p className="mt-2 flex flex-wrap items-center gap-2 text-sm font-extrabold text-[#ff5c35]">
+                          {formatCurrency(unitPrice)} <span className="text-[10px] font-semibold text-slate-400">/ piece</span>
+                          {applicableTier.isBulkTier && (
+                            <span className="rounded-full bg-[#e4f1e7] px-2 py-0.5 text-[8px] font-extrabold text-[#366643]">
+                              Bulk Tier ({applicableTier.tierLabel})
+                            </span>
+                          )}
+                        </p>
+                        {(priceChanged || quantityAdjusted || Number(product.stock) <= 0 || !hasValidPrice(product.price)) && (
+                          <div className="mt-2 space-y-1 text-[8px] font-extrabold">
+                            {priceChanged && <p className="text-[#397a4a]">Price updated to the latest catalog price</p>}
+                            {quantityAdjusted && <p className="text-amber-700">Quantity adjusted to available stock</p>}
+                            {Number(product.stock) <= 0 && <p className="text-red-600">Out of stock — remove or save this item for later</p>}
+                            {!hasValidPrice(product.price) && <p className="text-red-600">Current price unavailable — this item cannot be purchased</p>}
+                          </div>
+                        )}
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center rounded-full border border-slate-200 bg-white shadow-sm">
+                            <button
+                              type="button"
+                              disabled={quantity <= 1}
+                              onClick={() => onChangeQuantity(key, -1)}
+                              className="grid size-8 place-items-center hover:text-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-30"
+                            >
+                              <Minus size={12} />
+                            </button>
+                            <span className="w-8 text-center text-xs font-bold">
+                              {quantity}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={Number(product.stock) <= 0 || quantity >= Math.min(Number(product.stock), 100)}
+                              onClick={() => onChangeQuantity(key, 1)}
+                              className="grid size-8 place-items-center hover:text-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-30"
+                            >
+                              <Plus size={12} />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <button type="button" onClick={() => onSaveForLater(key)} className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 transition hover:text-[#397a4a]"><Bookmark size={13} /> Save for later</button>
+                            <button type="button" onClick={() => onRemove(key)} className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 transition hover:text-red-500"><Trash2 size={13} /> Remove</button>
+                          </div>
+                        </div>
+                      </>
+                    )
+                  })()}
                 </div>
               </div>
               <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-                <span className="text-[10px] text-slate-400">Item total</span>
+                <span className="text-[10px] text-slate-400">
+                  Item total ({formatCurrency(getApplicablePricingTier(product, quantity).unitPrice)} × {quantity})
+                </span>
                 <strong className="text-sm">
-                  {formatCurrency(parsePrice(product.price) * quantity)}
+                  {formatCurrency(getApplicablePricingTier(product, quantity).unitPrice * quantity)}
                 </strong>
               </div>
             </article>

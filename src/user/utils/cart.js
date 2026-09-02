@@ -1,4 +1,5 @@
 import { parsePrice } from './currency.js'
+import { calculateProductUnitPrice } from '../../utils/productPricing.js'
 
 export const FREE_SHIPPING_THRESHOLD = 999
 export const STANDARD_SHIPPING_CHARGE = 99
@@ -100,12 +101,12 @@ export function calculateCartPricing(
 ) {
   const sellingSubtotal = roundMoney(items.reduce(
     (sum, { product, quantity }) =>
-      sum + parsePrice(product.price) * Number(quantity || 0),
+      sum + calculateProductUnitPrice(product, quantity) * Number(quantity || 0),
     0,
   ))
   const mrpSubtotal = roundMoney(items.reduce(
     (sum, { product, quantity }) => {
-      const sellingPrice = parsePrice(product.price)
+      const sellingPrice = calculateProductUnitPrice(product, quantity)
       const listPrice = parsePrice(product.originalPrice || product.price)
       return sum + Math.max(sellingPrice, listPrice) * Number(quantity || 0)
     },
@@ -118,7 +119,7 @@ export function calculateCartPricing(
     ? roundMoney(items.reduce(
         (sum, { product, quantity }) =>
           appliesToProduct(selectedCoupon, product)
-            ? sum + parsePrice(product.price) * Number(quantity || 0)
+            ? sum + calculateProductUnitPrice(product, quantity) * Number(quantity || 0)
             : sum,
         0,
       ))
@@ -148,7 +149,7 @@ export function calculateCartPricing(
     ? 0
     : roundMoney(
         items.reduce((sum, { product, quantity }) => {
-          const lineValue = parsePrice(product.price) * Number(quantity || 0)
+          const lineValue = calculateProductUnitPrice(product, quantity) * Number(quantity || 0)
           const couponShare = sellingSubtotal
             ? (coupon.discount * lineValue) / sellingSubtotal
             : 0

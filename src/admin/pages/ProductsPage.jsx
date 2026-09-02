@@ -42,6 +42,11 @@ import {
   getProductVariants,
   productForVariant,
 } from '../../utils/productVariants'
+import {
+  getDefaultSamplePricingTiers,
+  normalizePricingTiers,
+  validatePricingTiers,
+} from '../../utils/productPricing'
 
 const blankProduct = {
   name: '',
@@ -57,6 +62,8 @@ const blankProduct = {
   discount: '',
   taxRate: 18,
   lowStockThreshold: 10,
+  enableBulkPricing: false,
+  pricingTiers: [],
   enabled: true,
   image: '',
   description: '',
@@ -308,6 +315,10 @@ export default function ProductsPage({
     setForm({
       ...blankProduct,
       ...normalizedProduct,
+      enableBulkPricing: Boolean(product.enableBulkPricing),
+      pricingTiers: Array.isArray(product.pricingTiers)
+        ? product.pricingTiers.map((tier) => ({ minQty: tier.minQty, unitPrice: tier.unitPrice }))
+        : [],
       subcategoryId:
         normalizedProduct.subcategoryId ||
         (normalizedProduct.subcategory ? LEGACY_SUBCATEGORY_VALUE : ''),
@@ -455,6 +466,10 @@ export default function ProductsPage({
     if (Object.keys(nextVariantErrors).length) {
       errors.variants = 'Complete all variant details.'
     }
+    const bulkPricingError = validatePricingTiers(form.pricingTiers, form.enableBulkPricing)
+    if (bulkPricingError) {
+      errors.pricingTiers = bulkPricingError
+    }
     return errors
   }
   const submit = async (event) => {
@@ -479,6 +494,10 @@ export default function ProductsPage({
       originalPrice: formatCurrency(parsePrice(form.originalPrice)),
       stock: Number(form.stock),
       lowStockThreshold: Number(form.lowStockThreshold),
+      enableBulkPricing: Boolean(form.enableBulkPricing),
+      pricingTiers: form.enableBulkPricing
+        ? normalizePricingTiers(form.pricingTiers)
+        : [],
       taxRate: Number(form.taxRate),
       rating: editingProduct?.rating ?? 0,
       reviewsCount: editingProduct?.reviewsCount ?? 0,
@@ -856,6 +875,153 @@ export default function ProductsPage({
             <FormField label="Low stock threshold">
               <input required type="number" min="0" {...field('lowStockThreshold')} className={inputClass} />
             </FormField>
+
+            <div className="sm:col-span-2 rounded-2xl border border-slate-200 bg-[#fbfdfb] p-4 space-y-4">
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.enableBulkPricing)}
+                  onChange={(e) => {
+                    const checked = e.target.checked
+                    setForm((current) => {
+                      const currentTiers = current.pricingTiers || []
+                      const nextTiers = checked && currentTiers.length === 0
+                        ? getDefaultSamplePricingTiers(current.price)
+                        : currentTiers
+                      return {
+                        ...current,
+                        enableBulkPricing: checked,
+                        pricingTiers: nextTiers,
+                      }
+                    })
+                  }}
+                  className="size-5 rounded border-slate-300 text-[#397a4a] focus:ring-[#397a4a]"
+                />
+                <div>
+                  <strong className="block text-xs font-extrabold text-slate-900">
+                    Enable Bulk Pricing / Quantity Pricing
+                  </strong>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    Automatically lower unit price based on purchase quantity thresholds.
+                  </span>
+                </div>
+              </label>
+
+              {form.enableBulkPricing && (
+                <div className="mt-3 space-y-3 border-t border-slate-200/80 pt-3">
+                  {formErrors.pricingTiers && (
+                    <p className="rounded-xl bg-red-50 px-3 py-2 text-[10px] font-bold text-red-700">
+                      {formErrors.pricingTiers}
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                      Quantity Pricing Tiers
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm((current) => ({
+                          ...current,
+                          pricingTiers: getDefaultSamplePricingTiers(current.price),
+                        }))
+                      }
+                      className="text-[10px] font-bold text-[#397a4a] hover:underline"
+                    >
+                      Fill Example Tiers
+                    </button>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-100/70 text-[9px] font-extrabold uppercase text-slate-500">
+                          <th className="px-3 py-2">Minimum Qty</th>
+                          <th className="px-3 py-2">Unit Selling Price (₹)</th>
+                          <th className="px-3 py-2 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200/60 bg-white">
+                        {(form.pricingTiers || []).map((tier, index) => (
+                          <tr key={index}>
+                            <td className="p-2">
+                              <input
+                                type="number"
+                                min="1"
+                                value={tier.minQty}
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  setForm((current) => ({
+                                    ...current,
+                                    pricingTiers: current.pricingTiers.map((t, i) =>
+                                      i === index ? { ...t, minQty: val } : t,
+                                    ),
+                                  }))
+                                }}
+                                className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-[#75916f]"
+                                placeholder="Min quantity (e.g. 10)"
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                type="text"
+                                value={tier.unitPrice}
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  setForm((current) => ({
+                                    ...current,
+                                    pricingTiers: current.pricingTiers.map((t, i) =>
+                                      i === index ? { ...t, unitPrice: val } : t,
+                                    ),
+                                  }))
+                                }}
+                                className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-[#75916f]"
+                                placeholder="Unit price (e.g. 37.64)"
+                              />
+                            </td>
+                            <td className="p-2 text-right">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setForm((current) => ({
+                                    ...current,
+                                    pricingTiers: current.pricingTiers.filter((_, i) => i !== index),
+                                  }))
+                                }
+                                className="inline-flex size-8 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition"
+                                title="Delete tier"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm((current) => {
+                        const lastQty = Number(current.pricingTiers?.[current.pricingTiers.length - 1]?.minQty || 1)
+                        const nextQty = lastQty < 10 ? 10 : lastQty < 100 ? 100 : lastQty < 500 ? 500 : lastQty + 500
+                        return {
+                          ...current,
+                          pricingTiers: [
+                            ...(current.pricingTiers || []),
+                            { minQty: nextQty, unitPrice: '' },
+                          ],
+                        }
+                      })
+                    }
+                    className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-[10px] font-extrabold text-[#397a4a] hover:bg-[#e4f1e7] transition"
+                  >
+                    <Plus size={13} /> Add Price Tier
+                  </button>
+                </div>
+              )}
+            </div>
 
             <FormSectionTitle title="Images" />
             <FormField label="Product images" wide>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
   Check,
@@ -13,6 +13,7 @@ import {
   Sparkles,
   Star,
   Truck,
+  X,
   Zap,
 } from 'lucide-react'
 import { formatCurrency, hasValidPrice, parsePrice } from '../../utils/currency'
@@ -30,6 +31,10 @@ import {
   getProductVariants,
   productForVariant,
 } from '../../../utils/productVariants'
+import {
+  getApplicablePricingTier,
+  normalizePricingTiers,
+} from '../../../utils/productPricing'
 
 function TechnicalSpecificationsSection({ specifications }) {
   if (!specifications.length) return null
@@ -57,6 +62,27 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
   const [activeImageIndex, setActiveImageIndex] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [selectedVariantId, setSelectedVariantId] = useState('')
+  const [showBulkPopover, setShowBulkPopover] = useState(false)
+  const popoverRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (popoverRef.current && !popoverRef.current.contains(event.target)) {
+        setShowBulkPopover(false)
+      }
+    }
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') setShowBulkPopover(false)
+    }
+    if (showBulkPopover) {
+      document.addEventListener('mousedown', handleClickOutside)
+      document.addEventListener('keydown', handleKeyDown)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [showBulkPopover])
 
   const variants = getProductVariants(product)
   const requiresVariantSelection = variants.length > 0
@@ -66,7 +92,13 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
   const activeImage = images[activeImageIndex] || images[0]
   const stock = Math.max(0, Number(displayProduct.stock) || 0)
   const purchaseLimit = Math.min(stock, 100)
-  const priceAvailable = hasValidPrice(displayProduct.price)
+  
+  const applicableTier = getApplicablePricingTier(displayProduct, quantity)
+  const applicableUnitPrice = applicableTier.unitPrice
+  const priceAvailable = hasValidPrice(applicableUnitPrice)
+  const hasBulkPricing = Boolean(displayProduct.enableBulkPricing) && Array.isArray(displayProduct.pricingTiers) && displayProduct.pricingTiers.length > 0
+  const pricingTiers = normalizePricingTiers(displayProduct.pricingTiers)
+
   const liked = likedIds.includes(product.id)
   const detailInformation = getProductDetailInformation(displayProduct)
   const displaySpecifications = getDisplaySpecifications(displayProduct)
@@ -192,11 +224,117 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                 </div>
               )}
 
-              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-y border-slate-100 py-3.5">
-                <strong className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">{priceAvailable ? formatCurrency(parsePrice(displayProduct.price)) : 'Price unavailable'}</strong>
-                <span className="text-sm font-semibold text-slate-400 line-through">{formatCurrency(parsePrice(displayProduct.originalPrice))}</span>
-                {displayProduct.discount && <span className="rounded-full bg-[#e4f1e7] px-2.5 py-1 text-[10px] font-extrabold text-[#366643]">{displayProduct.discount}</span>}
-                <p className="w-full text-[10px] font-bold text-slate-400">{taxSettings.pricesIncludeTax ? 'Inclusive of all taxes' : 'Taxes calculated at checkout'}</p>
+              <div className="relative mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-y border-slate-100 py-3.5">
+                <strong className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">
+                  {priceAvailable ? `${formatCurrency(applicableUnitPrice)} / piece` : 'Price unavailable'}
+                </strong>
+                <span className="text-sm font-semibold text-slate-400 line-through">
+                  {formatCurrency(parsePrice(displayProduct.originalPrice))}
+                </span>
+                {displayProduct.discount && (
+                  <span className="rounded-full bg-[#e4f1e7] px-2.5 py-1 text-[10px] font-extrabold text-[#366643]">
+                    {displayProduct.discount}
+                  </span>
+                )}
+
+                {hasBulkPricing && (
+                  <button
+                    type="button"
+                    onClick={() => setShowBulkPopover((current) => !current)}
+                    className="inline-flex items-center gap-1 rounded-full bg-[#e4f1e7] px-2.5 py-1 text-[10px] font-extrabold text-[#366643] transition hover:bg-[#d5e7d8]"
+                  >
+                    Bulk Pricing · Buy more, save more →
+                  </button>
+                )}
+
+                {quantity > 1 && priceAvailable && (
+                  <p className="w-full text-xs font-extrabold text-[#397a4a]">
+                    Total: {formatCurrency(applicableUnitPrice * quantity)}{' '}
+                    <span className="font-semibold text-slate-500">
+                      ({formatCurrency(applicableUnitPrice)} × {quantity})
+                    </span>
+                    {applicableTier.isBulkTier && (
+                      <span className="ml-2 inline-flex rounded-full bg-[#e4f1e7] px-2 py-0.5 text-[9px] font-bold text-[#366643]">
+                        {applicableTier.tierLabel} applied
+                      </span>
+                    )}
+                  </p>
+                )}
+
+                <p className="w-full text-[10px] font-bold text-slate-400">
+                  {taxSettings.pricesIncludeTax ? 'Inclusive of all taxes' : 'Taxes calculated at checkout'}
+                </p>
+
+                {showBulkPopover && hasBulkPricing && (
+                  <div
+                    ref={popoverRef}
+                    className="absolute left-0 top-full z-30 mt-2 w-full max-w-xs rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:max-w-sm"
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <div>
+                        <strong className="block text-xs font-extrabold text-slate-900">
+                          Bulk Pricing
+                        </strong>
+                        <span className="text-[9px] font-medium text-slate-500">
+                          Buy more, save more
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowBulkPopover(false)}
+                        className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                        aria-label="Close bulk pricing details"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    <div className="mt-3 overflow-hidden rounded-xl border border-slate-100">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-[#f3f7f2] text-[9px] font-extrabold uppercase text-slate-500">
+                          <tr>
+                            <th className="px-3 py-2">Quantity</th>
+                            <th className="px-3 py-2 text-right">Price / Piece</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {pricingTiers.map((tier, idx) => {
+                            const isActive = applicableTier?.minQty === tier.minQty
+                            return (
+                              <tr
+                                key={idx}
+                                onClick={() => {
+                                  setQuantity(tier.minQty)
+                                  setShowBulkPopover(false)
+                                }}
+                                className={`cursor-pointer transition ${
+                                  isActive
+                                    ? 'bg-[#e4f1e7]/80 font-bold text-[#2b5936]'
+                                    : 'hover:bg-slate-50 text-slate-700'
+                                }`}
+                              >
+                                <td className="px-3 py-2">
+                                  {tier.minQty.toLocaleString('en-IN')}+
+                                  {isActive && (
+                                    <span className="ml-1.5 inline-block rounded-full bg-[#397a4a] px-1.5 py-0.2 text-[8px] font-extrabold text-white">
+                                      Active
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-right font-extrabold">
+                                  {formatCurrency(tier.unitPrice)}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="mt-2 text-center text-[9px] font-medium text-slate-400">
+                      Click any row to auto-select that quantity
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">

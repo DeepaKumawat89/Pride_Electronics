@@ -128,11 +128,30 @@ function calculateOrderQuote({
     }
     const variantListPrice = money(variant?.price)
     const variantDiscountPrice = money(variant?.discountPrice)
-    const price = variant
+    let price = variant
       ? variantDiscountPrice > 0 && variantDiscountPrice <= variantListPrice
         ? variantDiscountPrice
         : variantListPrice
       : money(product.price)
+
+    let appliedTier = null
+    const enableBulk = Boolean(product.enableBulkPricing || variant?.enableBulkPricing)
+    const rawTiers = Array.isArray(product.pricingTiers) ? product.pricingTiers : []
+    if (enableBulk && rawTiers.length > 0) {
+      const tiers = rawTiers
+        .map((tier) => ({ minQty: Math.max(1, Math.floor(Number(tier?.minQty) || 1)), unitPrice: money(tier?.unitPrice) }))
+        .filter((tier) => tier.minQty >= 1 && tier.unitPrice > 0)
+        .sort((a, b) => a.minQty - b.minQty)
+      for (let i = 0; i < tiers.length; i++) {
+        if (tiers[i].minQty <= qty) {
+          price = tiers[i].unitPrice
+          appliedTier = { minQty: tiers[i].minQty, unitPrice: tiers[i].unitPrice }
+        } else {
+          break
+        }
+      }
+    }
+
     const rawUnitPrice = variant
       ? variantListPrice || price
       : money(product.originalPrice || product.price)
@@ -157,7 +176,8 @@ function calculateOrderQuote({
       qty,
       price,
       unitPrice,
-      discount: roundMoney(Math.max(0, unitPrice - price) * qty),
+      appliedTier,
+      discount: roundMoney(Math.max(0, rawUnitPrice - price) * qty),
       taxRate: Number(product.taxRate ?? taxSettings.defaultRate ?? 0),
     }
   })

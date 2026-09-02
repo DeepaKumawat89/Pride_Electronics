@@ -1,4 +1,6 @@
 import { productForVariant, variantCartKey } from '../../utils/productVariants.js'
+import { getApplicablePricingTier } from '../../utils/productPricing.js'
+import { parsePrice } from './currency.js'
 
 const validId = (value) => /^[a-zA-Z0-9_-]{1,100}$/.test(String(value || ''))
 
@@ -68,13 +70,25 @@ export function resolveCheckoutSelection(selection, products = []) {
   })
 }
 
-export const checkoutItemRequest = ({ product, quantity }) => ({
-  productId: String(product.id),
-  ...(product.selectedVariantId
-    ? { variantId: String(product.selectedVariantId) }
-    : {}),
-  quantity: Math.floor(Number(quantity)),
-})
+export const checkoutItemRequest = ({ product, quantity }) => {
+  const qty = Math.floor(Number(quantity))
+  const tierInfo = getApplicablePricingTier(product, qty)
+  return {
+    productId: String(product.id),
+    ...(product.selectedVariantId
+      ? { variantId: String(product.selectedVariantId) }
+      : {}),
+    quantity: qty,
+    qty,
+    price: tierInfo.unitPrice,
+    unitPrice: tierInfo.unitPrice,
+    basePrice: parsePrice(product.price),
+    productName: String(product.name || ''),
+    image: String(product.image || ''),
+    variant: String(product.selectedVariantName || product.variant || ''),
+    ...(tierInfo.isBulkTier ? { appliedTier: tierInfo.appliedTier, tierLabel: tierInfo.tierLabel } : {}),
+  }
+}
 
 export function removePurchasedItems(items = [], purchasedItems = []) {
   const purchasedKeys = new Set(

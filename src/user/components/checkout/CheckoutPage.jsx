@@ -20,6 +20,7 @@ import {
   Truck,
 } from 'lucide-react'
 import { formatCurrency, hasValidPrice, parsePrice } from '../../utils/currency'
+import { getApplicablePricingTier } from '../../../utils/productPricing'
 import {
   calculateCartPricing,
   paymentAmountMatchesCheckout,
@@ -1125,8 +1126,9 @@ export default function CheckoutPage({
                 {items.map(({ key, product, quantity }) => {
                   const stock = Math.max(0, Number(product.stock) || 0)
                   const available = stock > 0
-                  const validPrice = hasValidPrice(product.price)
-                  const unitPrice = parsePrice(product.price)
+                  const applicableTier = getApplicablePricingTier(product, quantity)
+                  const unitPrice = applicableTier.unitPrice
+                  const validPrice = hasValidPrice(unitPrice)
                   const lineTotal = unitPrice * quantity
 
                   return (
@@ -1151,6 +1153,11 @@ export default function CheckoutPage({
                           )}
                           <p className="mt-0.5 text-[11px] font-bold text-slate-500">
                             Unit: {validPrice ? formatCurrency(unitPrice) : 'N/A'}
+                            {applicableTier.isBulkTier && (
+                              <span className="ml-1.5 rounded bg-[#e4f1e7] px-1.5 py-0.5 text-[9px] font-extrabold text-[#366643]">
+                                Bulk Tier ({applicableTier.tierLabel})
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>
