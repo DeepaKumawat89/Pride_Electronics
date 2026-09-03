@@ -53,7 +53,7 @@ service cloud.firestore {
           'role', 'createdAt', 'updatedAt', 'dob', 'gender', 'photo', 'status',
           'membershipRole', 'joinedDate', 'registrationDate', 'ordersCount',
           'totalSpentValue', 'lastOrderAt', 'wishlistIds', 'addresses',
-          'paymentMethods', 'cartItems', 'savedCartItems'
+          'paymentMethods', 'cartItems', 'savedCartItems', 'gstDetails'
         ]) &&
         data.uid == userId &&
         data.name is string && data.name.size() >= 2 && data.name.size() <= 80 &&

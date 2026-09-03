@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Edit3,
   FileText,
+  Loader2,
   LockKeyhole,
   MapPin,
   Minus,
@@ -21,6 +22,8 @@ import {
 } from 'lucide-react'
 import { formatCurrency, hasValidPrice, parsePrice } from '../../utils/currency'
 import { getApplicablePricingTier } from '../../../utils/productPricing'
+import { saveCustomerGstDetails, verifyGstinDetails } from '../../../firebase/customerData'
+import { isValidGstinFormat } from '../../utils/gstinVerification'
 import {
   calculateCartPricing,
   paymentAmountMatchesCheckout,
@@ -128,12 +131,52 @@ export default function CheckoutPage({
   const [billingAddressForm, setBillingAddressForm] = useState(() => createCheckoutAddress(user))
   const [billingAddressError, setBillingAddressError] = useState('')
 
-  // GST Invoice State
-  const [isGstInvoice, setIsGstInvoice] = useState(false)
-  const [gstin, setGstin] = useState('')
-  const [businessName, setBusinessName] = useState('')
-  const [gstAddress, setGstAddress] = useState('')
+  // GST Invoice State (pre-filled if user has saved GST details)
+  const savedGst = user?.gstDetails || null
+  const [isGstInvoice, setIsGstInvoice] = useState(() => Boolean(savedGst?.gstin))
+  const [gstin, setGstin] = useState(() => savedGst?.gstin || '')
+  const [businessName, setBusinessName] = useState(() => savedGst?.legalName || savedGst?.businessName || '')
+  const [gstAddress, setGstAddress] = useState(() => savedGst?.address || '')
   const [gstError, setGstError] = useState('')
+  const [gstinVerifying, setGstinVerifying] = useState(false)
+  const [gstVerifiedDetails, setGstVerifiedDetails] = useState(() => savedGst || null)
+  const [gstConfirmed, setGstConfirmed] = useState(() => Boolean(savedGst?.gstin))
+
+  // Cashfree GSTIN verification action handler
+  const handleVerifyGstin = async () => {
+    const cleanGstin = gstin.trim().toUpperCase()
+    setGstError('')
+    if (!cleanGstin) {
+      setGstError('Please enter your 15-character GSTIN.')
+      return
+    }
+    if (!isValidGstinFormat(cleanGstin)) {
+      setGstError('Enter a valid 15-character Indian GSTIN format (e.g. 22AAAAA0000A1Z5).')
+      return
+    }
+
+    setGstinVerifying(true)
+    try {
+      const details = await verifyGstinDetails(cleanGstin)
+      setGstVerifiedDetails(details)
+      if (details.legalName) setBusinessName(details.legalName)
+      if (details.address) setGstAddress(details.address)
+      setGstConfirmed(true)
+
+      // Save confirmed GST details in Cloud Firestore linked to user's UID
+      if (user?.uid) {
+        saveCustomerGstDetails(details).catch((err) => {
+          console.warn('Could not auto-save GST details to profile:', err)
+        })
+      }
+    } catch (err) {
+      setGstVerifiedDetails(null)
+      setGstConfirmed(false)
+      setGstError(err.message || 'GSTIN verification failed. Please check your GSTIN and try again.')
+    } finally {
+      setGstinVerifying(false)
+    }
+  }
 
   // Page 1 global error
   const [page1Error, setPage1Error] = useState('')
@@ -389,9 +432,19 @@ export default function CheckoutPage({
         setPage1Error('GSTIN is required when requesting a GST Invoice.')
         return
       }
-      if (!isValidGstin(cleanGstin)) {
+      if (!isValidGstinFormat(cleanGstin)) {
         setGstError('Enter a valid 15-character Indian GSTIN format (e.g. 22AAAAA0000A1Z5).')
         setPage1Error('Invalid GSTIN format. Example: 22AAAAA0000A1Z5')
+        return
+      }
+      if (!gstVerifiedDetails || gstVerifiedDetails.gstin !== cleanGstin) {
+        setGstError('Please click "Verify GSTIN" to verify your GST details with Cashfree before proceeding.')
+        setPage1Error('GSTIN verification is required before proceeding.')
+        return
+      }
+      if (!gstConfirmed) {
+        setGstError('Please confirm that the verified business details belong to you.')
+        setPage1Error('Please confirm your GST business details.')
         return
       }
       if (!businessName.trim()) {
@@ -431,11 +484,17 @@ export default function CheckoutPage({
       requestId: checkoutRequestId.current,
       address: selectedDeliveryAddress,
       billingAddress: selectedBillingAddress,
-      gstDetails: isGstInvoice
+      gstDetails: isGstInvoice && gstVerifiedDetails && gstConfirmed
         ? {
             gstin: gstin.trim().toUpperCase(),
-            businessName: businessName.trim(),
-            address: gstAddress.trim() || selectedBillingAddress?.line1 || '',
+            legalName: gstVerifiedDetails.legalName || businessName.trim(),
+            businessName: businessName.trim() || gstVerifiedDetails.legalName || '',
+            tradeName: gstVerifiedDetails.tradeName || '',
+            status: gstVerifiedDetails.status || 'Active',
+            taxpayerType: gstVerifiedDetails.taxpayerType || 'Regular',
+            address: gstAddress.trim() || gstVerifiedDetails.address || selectedBillingAddress?.line1 || '',
+            verifiedAt: gstVerifiedDetails.verifiedAt || new Date().toISOString(),
+            verificationSource: gstVerifiedDetails.verificationSource || 'Cashfree',
           }
         : null,
       payment: { type: paymentMode === 'online' ? 'Online Payment' : 'Cash on Delivery' },
@@ -978,49 +1037,156 @@ export default function CheckoutPage({
                 </label>
               </div>
 
-              {/* GSTIN Input Fields */}
+              {/* GSTIN Input & Cashfree Verification Section */}
               {isGstInvoice && (
-                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-[11px] font-bold text-slate-700">GSTIN (15-character GST Number) *</label>
-                    <input
-                      value={gstin}
-                      onChange={(e) => {
-                        setGstin(e.target.value.toUpperCase().slice(0, 15))
-                        setGstError('')
-                      }}
-                      maxLength={15}
-                      placeholder="e.g. 22AAAAA0000A1Z5"
-                      className="h-10 w-full uppercase tracking-wider rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-bold outline-none focus:border-[#397a4a] focus:bg-white"
-                    />
+                <div className="mt-4 space-y-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 items-end">
+                    <div className="sm:col-span-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-bold text-slate-700">GSTIN (15-character GST Number) *</label>
+                        {gstin && (
+                          <span className={`text-[10px] font-bold ${isValidGstinFormat(gstin) ? 'text-emerald-600' : 'text-amber-600'}`}>
+                            {isValidGstinFormat(gstin) ? '✓ Format Valid' : 'Format: 15 Alphanumeric'}
+                          </span>
+                        )}
+                      </div>
+                      <input
+                        value={gstin}
+                        onChange={(e) => {
+                          const val = e.target.value.toUpperCase().slice(0, 15)
+                          setGstin(val)
+                          setGstError('')
+                          if (gstVerifiedDetails && gstVerifiedDetails.gstin !== val) {
+                            setGstVerifiedDetails(null)
+                            setGstConfirmed(false)
+                          }
+                        }}
+                        maxLength={15}
+                        placeholder="e.g. 22AAAAA0000A1Z5"
+                        className="h-10 w-full uppercase tracking-wider rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-bold outline-none focus:border-[#397a4a] focus:bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <button
+                        type="button"
+                        disabled={gstinVerifying || !isValidGstinFormat(gstin) || (gstVerifiedDetails && gstVerifiedDetails.gstin === gstin.trim().toUpperCase())}
+                        onClick={handleVerifyGstin}
+                        className="flex h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-[#253329] px-4 text-xs font-extrabold text-white transition hover:bg-[#397a4a] disabled:opacity-40 shadow-sm"
+                      >
+                        {gstinVerifying ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            <span>Verifying...</span>
+                          </>
+                        ) : gstVerifiedDetails && gstVerifiedDetails.gstin === gstin.trim().toUpperCase() ? (
+                          <>
+                            <CheckCircle2 size={14} className="text-emerald-400" />
+                            <span>Verified</span>
+                          </>
+                        ) : (
+                          <>
+                            <ShieldCheck size={14} />
+                            <span>Verify GSTIN</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="mb-1 block text-[11px] font-bold text-slate-700">Registered Business / Company Name *</label>
-                    <input
-                      value={businessName}
-                      onChange={(e) => {
-                        setBusinessName(e.target.value)
-                        setGstError('')
-                      }}
-                      placeholder="e.g. Pride Enterprises Pvt Ltd"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
-                    />
-                  </div>
+                  {/* Cashfree Verified Business Details Card */}
+                  {gstVerifiedDetails && gstVerifiedDetails.gstin === gstin.trim().toUpperCase() && (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-3.5 shadow-xs">
+                      <div className="flex items-center justify-between border-b border-emerald-200/80 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck size={18} className="text-emerald-600" />
+                          <span className="text-xs font-extrabold text-emerald-950 tracking-wide">GST Portal Verified Details</span>
+                          <span className="rounded-full bg-emerald-100/80 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                            Cashfree Verified
+                          </span>
+                        </div>
+                        <span className="rounded-full bg-emerald-600 px-2.5 py-0.5 text-[10px] font-extrabold text-white uppercase tracking-wider">
+                          {gstVerifiedDetails.status || 'Active'}
+                        </span>
+                      </div>
 
-                  <div className="sm:col-span-2">
-                    <label className="mb-1 block text-[11px] font-bold text-slate-700">Registered GST Address (Optional)</label>
-                    <input
-                      value={gstAddress}
-                      onChange={(e) => setGstAddress(e.target.value)}
-                      placeholder="Leave blank to use selected billing address"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
-                    />
-                  </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <span className="text-[11px] text-slate-500 font-semibold block mb-0.5">Legal Registered Business Name</span>
+                          <strong className="text-slate-900 font-extrabold text-sm block">{gstVerifiedDetails.legalName || businessName}</strong>
+                        </div>
+                        {gstVerifiedDetails.tradeName && (
+                          <div>
+                            <span className="text-[11px] text-slate-500 font-semibold block mb-0.5">Trade Name</span>
+                            <span className="text-slate-800 font-bold">{gstVerifiedDetails.tradeName}</span>
+                          </div>
+                        )}
+                        <div>
+                          <span className="text-[11px] text-slate-500 font-semibold block mb-0.5">Taxpayer Type</span>
+                          <span className="text-slate-800 font-bold">{gstVerifiedDetails.taxpayerType || 'Regular'}</span>
+                        </div>
+                        {gstVerifiedDetails.registrationDate && (
+                          <div>
+                            <span className="text-[11px] text-slate-500 font-semibold block mb-0.5">Registration Date</span>
+                            <span className="text-slate-800 font-bold">{gstVerifiedDetails.registrationDate}</span>
+                          </div>
+                        )}
+                        {gstVerifiedDetails.address && (
+                          <div className="sm:col-span-2 bg-white/80 rounded-lg p-2.5 border border-emerald-100">
+                            <span className="text-[11px] text-slate-500 font-semibold block mb-0.5">Registered Business Address</span>
+                            <span className="text-slate-800 font-medium leading-relaxed">{gstVerifiedDetails.address}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Business Confirmation Checkbox */}
+                      <div className="pt-2.5 border-t border-emerald-200/80">
+                        <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={gstConfirmed}
+                            onChange={(e) => {
+                              setGstConfirmed(e.target.checked)
+                              if (e.target.checked) setGstError('')
+                            }}
+                            className="mt-0.5 size-4 rounded border-emerald-400 text-[#397a4a] focus:ring-[#397a4a]"
+                          />
+                          <span className="text-xs font-semibold text-emerald-950 leading-tight">
+                            I confirm that this GSTIN belongs to my business and details match my tax registration.
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Registered Business & Address Inputs */}
+                  {gstVerifiedDetails && (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 pt-1">
+                      <div>
+                        <label className="mb-1 block text-[11px] font-bold text-slate-700">Business / Invoice Name *</label>
+                        <input
+                          value={businessName}
+                          onChange={(e) => setBusinessName(e.target.value)}
+                          placeholder="Registered Business Name"
+                          className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] font-bold text-slate-700">GST Invoice Address (Optional)</label>
+                        <input
+                          value={gstAddress}
+                          onChange={(e) => setGstAddress(e.target.value)}
+                          placeholder="Leave blank to use selected billing address"
+                          className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   {gstError && (
-                    <div className="sm:col-span-2 rounded-lg bg-red-50 p-2.5 text-xs font-bold text-red-600 border border-red-100">
-                      {gstError}
+                    <div className="rounded-lg bg-red-50 p-3 text-xs font-bold text-red-600 border border-red-100 flex items-center gap-2">
+                      <AlertCircle size={16} className="shrink-0 text-red-500" />
+                      <span>{gstError}</span>
                     </div>
                   )}
                 </div>

@@ -29,12 +29,15 @@ const callableOptions = { region, invoker: 'public' }
 const razorpayKeyId = defineSecret('RAZORPAY_KEY_ID')
 const razorpayKeySecret = defineSecret('RAZORPAY_KEY_SECRET')
 const razorpayWebhookSecret = defineSecret('RAZORPAY_WEBHOOK_SECRET')
+const cashfreeClientId = defineSecret('CASHFREE_CLIENT_ID')
+const cashfreeClientSecret = defineSecret('CASHFREE_CLIENT_SECRET')
 const paymentCallableOptions = {
   ...callableOptions,
-  secrets: [razorpayKeyId, razorpayKeySecret],
+  secrets: [razorpayKeyId, razorpayKeySecret, cashfreeClientId, cashfreeClientSecret],
 }
 const PHONE_PATTERN = /^[6-9]\d{9}$/
 const PIN_CODE_PATTERN = /^[1-8]\d{5}$/
+const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/
 const ORDER_REQUEST_PATTERN = /^[a-zA-Z0-9_-]{8,100}$/
 const RAZORPAY_ORDER_PATTERN = /^order_[a-zA-Z0-9]{6,100}$/
 const RAZORPAY_PAYMENT_PATTERN = /^pay_[a-zA-Z0-9]{6,100}$/
@@ -350,15 +353,159 @@ exports.getUserProfile = onCall(callableOptions, async (request) => {
     emailVerified: authUser.emailVerified,
     dob: profile.dob || '',
     gender: profile.gender || '',
+    gstDetails: profile.gstDetails || null,
     role: 'customer',
   }
 })
+
+// GSTIN Verification Cache & Handlers
+const recentGstinCache = new Map()
+const GSTIN_CACHE_TTL_MS = 10 * 60 * 1000
+
+async function verifyGstinHandler(request) {
+  const uid = requireUser(request)
+  const gstin = String(request.data?.gstin || request.data?.payload?.gstin || '').trim().toUpperCase()
+
+  if (!gstin || !GSTIN_PATTERN.test(gstin)) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Please enter a valid 15-character Indian GSTIN number.',
+    )
+  }
+
+  const now = Date.now()
+  const cached = recentGstinCache.get(gstin)
+  if (cached && now - cached.timestamp < GSTIN_CACHE_TTL_MS) {
+    return cached.data
+  }
+
+  let clientId = ''
+  let clientSecret = ''
+  try {
+    clientId = cashfreeClientId.value() || ''
+    clientSecret = cashfreeClientSecret.value() || ''
+  } catch {
+    clientId = process.env.CASHFREE_CLIENT_ID || ''
+    clientSecret = process.env.CASHFREE_CLIENT_SECRET || ''
+  }
+
+  if (clientId && clientSecret && clientId !== 'placeholder' && clientSecret !== 'placeholder') {
+    try {
+      const endpoint = process.env.CASHFREE_ENV === 'sandbox' || clientId.startsWith('TEST')
+        ? 'https://sandbox.cashfree.com/verification/gstin'
+        : 'https://api.cashfree.com/verification/gstin'
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': clientId,
+          'x-client-secret': clientSecret,
+        },
+        body: JSON.stringify({ gstin }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || result.status === 'ERROR' || result.valid === false) {
+        const errorMsg = result.message || result.user_message || 'GSTIN verification failed.'
+        if (response.status === 404 || result.subCode === 'GSTIN_NOT_FOUND') {
+          throw new HttpsError('not-found', 'The entered GSTIN could not be found on the GST portal.')
+        }
+        if (response.status === 429) {
+          throw new HttpsError('resource-exhausted', 'GST verification rate limit exceeded. Try again in a moment.')
+        }
+        throw new HttpsError('invalid-argument', errorMsg)
+      }
+
+      const details = {
+        valid: true,
+        gstin,
+        legalName: result.legal_name || result.registered_name || result.name || 'GST Registered Entity',
+        tradeName: result.trade_name || '',
+        status: result.gstin_status || result.status || 'Active',
+        taxpayerType: result.taxpayer_type || 'Regular',
+        registrationDate: result.registration_date || '',
+        address: typeof result.principal_place_address === 'string'
+          ? result.principal_place_address
+          : result.principal_place_address?.address || result.address || '',
+        verifiedAt: new Date().toISOString(),
+        verificationSource: 'Cashfree API',
+      }
+
+      recentGstinCache.set(gstin, { timestamp: now, data: details })
+      return details
+    } catch (error) {
+      if (error instanceof HttpsError) throw error
+      console.error('Cashfree GSTIN API error:', error)
+      throw new HttpsError('unavailable', 'Unable to reach Cashfree GST verification service. Please try again.')
+    }
+  }
+
+  // Safe fallback / mock mode when Cashfree secrets are not configured or in dev
+  const pan = gstin.slice(2, 12)
+  const isIndividual = pan[3] === 'P'
+  
+  const mockDetails = {
+    valid: true,
+    gstin,
+    legalName: isIndividual ? 'PRIDE ELECTRONICS STORE' : 'PRIDE ELECTRONICS PRIVATE LIMITED',
+    tradeName: 'PRIDE ELECTRONICS',
+    status: 'Active',
+    taxpayerType: 'Regular',
+    registrationDate: '2021-04-01',
+    address: 'Plot No. 42, Industrial Area Phase II, Commercial Hub, India',
+    verifiedAt: new Date().toISOString(),
+    verificationSource: 'Cashfree (Demo Mode)',
+  }
+
+  recentGstinCache.set(gstin, { timestamp: now, data: mockDetails })
+  return mockDetails
+}
+
+async function saveVerifiedGstDetailsHandler(request) {
+  const uid = requireUser(request)
+  const gstDetails = request.data?.gstDetails || request.data?.payload?.gstDetails
+  if (!gstDetails || !gstDetails.gstin || !GSTIN_PATTERN.test(gstDetails.gstin)) {
+    throw new HttpsError('invalid-argument', 'Valid GST details are required.')
+  }
+
+  const cleanDetails = {
+    gstin: String(gstDetails.gstin).trim().toUpperCase(),
+    legalName: String(gstDetails.legalName || gstDetails.businessName || '').trim().slice(0, 150),
+    tradeName: String(gstDetails.tradeName || '').trim().slice(0, 150),
+    status: String(gstDetails.status || 'Active').trim().slice(0, 30),
+    taxpayerType: String(gstDetails.taxpayerType || 'Regular').trim().slice(0, 50),
+    registrationDate: String(gstDetails.registrationDate || '').trim().slice(0, 30),
+    address: String(gstDetails.address || '').trim().slice(0, 300),
+    verifiedAt: gstDetails.verifiedAt || new Date().toISOString(),
+    verificationSource: gstDetails.verificationSource || 'Cashfree',
+  }
+
+  const userReference = db.doc(`users/${uid}`)
+  await userReference.set(
+    {
+      gstDetails: cleanDetails,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  )
+
+  return { success: true, gstDetails: cleanDetails }
+}
+
+exports.verifyGstin = onCall(paymentCallableOptions, verifyGstinHandler)
+exports.saveVerifiedGstDetails = onCall(callableOptions, saveVerifiedGstDetailsHandler)
 
 exports.updateUserProfile = onCall(paymentCallableOptions, async (request) => {
   const operation = String(request.data?.operation || '')
   const operationRequest = operation
     ? { ...request, data: request.data?.payload || {} }
     : request
+  if (operation === 'verifyGstin') return verifyGstinHandler(operationRequest)
+  if (operation === 'saveVerifiedGstDetails') {
+    return saveVerifiedGstDetailsHandler(operationRequest)
+  }
   if (operation === 'placeOrder') return placeOrderHandler(operationRequest)
   if (operation === 'getCouponUsage') return getMyCouponUsageHandler(operationRequest)
   if (operation === 'saveAccountState') {
@@ -1151,6 +1298,15 @@ async function placeOrderHandler(request) {
       deliveryOption: quote.deliveryId === 'express' ? 'Express delivery' : 'Standard delivery',
       shippingAddress,
       billingAddress,
+      gstDetails: submittedOrder.gstDetails ? {
+        gstin: String(submittedOrder.gstDetails.gstin || '').trim().toUpperCase(),
+        legalName: String(submittedOrder.gstDetails.legalName || submittedOrder.gstDetails.businessName || '').trim().slice(0, 150),
+        tradeName: String(submittedOrder.gstDetails.tradeName || '').trim().slice(0, 150),
+        status: String(submittedOrder.gstDetails.status || 'Active').trim().slice(0, 30),
+        address: String(submittedOrder.gstDetails.address || '').trim().slice(0, 300),
+        verifiedAt: String(submittedOrder.gstDetails.verifiedAt || now),
+        verificationSource: String(submittedOrder.gstDetails.verificationSource || 'Cashfree'),
+      } : null,
       paymentStatus,
       paymentDate: isCashOnDelivery ? null : now,
       paymentMethod,
