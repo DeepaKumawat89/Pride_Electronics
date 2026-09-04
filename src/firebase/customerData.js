@@ -3,6 +3,7 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import { userAuth, userFunctions, userStorage } from './firebase'
 
 const operationGateway = httpsCallable(userFunctions, 'updateUserProfile')
+const placeOrderGateway = httpsCallable(userFunctions, 'placeOrder')
 const callOperation = (operation, payload = {}) =>
   operationGateway({ operation, payload })
 
@@ -30,7 +31,7 @@ const messageFor = (error, fallback) => {
 
 export async function placeCustomerOrder(order) {
   try {
-    const result = await callOperation('placeOrder', { order })
+    const result = await placeOrderGateway({ order })
     return result.data.order
   } catch (error) {
     throw messageFor(error, 'Unable to place the order. Please try again.')

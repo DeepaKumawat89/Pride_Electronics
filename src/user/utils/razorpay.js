@@ -3,13 +3,10 @@ import { userFunctions } from '../../firebase/firebase'
 
 let razorpayScriptPromise
 
-const paymentGateway = httpsCallable(userFunctions, 'updateUserProfile', {
-  timeout: 20000,
-})
-
 const operationFor = {
-  orders: 'createRazorpayOrder',
-  verify: 'verifyRazorpayPayment',
+  orders: httpsCallable(userFunctions, 'createRazorpayOrder', { timeout: 30000 }),
+  verify: httpsCallable(userFunctions, 'verifyRazorpayPayment', { timeout: 30000 }),
+  release: httpsCallable(userFunctions, 'releaseRazorpayReservation', { timeout: 10000 }),
 }
 
 export function loadRazorpayCheckout() {
@@ -37,10 +34,10 @@ export function loadRazorpayCheckout() {
 }
 
 export async function postRazorpayApi(path, payload) {
-  const operation = operationFor[path]
-  if (!operation) throw new Error('Unsupported Razorpay request.')
+  const paymentGateway = operationFor[path]
+  if (!paymentGateway) throw new Error('Unsupported Razorpay request.')
   try {
-    const response = await paymentGateway({ operation, payload })
+    const response = await paymentGateway(payload)
     const data = response.data || {}
     if (
       path === 'orders' &&
@@ -56,6 +53,7 @@ export async function postRazorpayApi(path, payload) {
     return data
   } catch (error) {
     const safeBackendCodes = new Set([
+      'functions/aborted',
       'functions/already-exists',
       'functions/failed-precondition',
       'functions/invalid-argument',

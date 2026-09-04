@@ -37,10 +37,39 @@ npm run set-admin -- admin@example.com "Store Administrator"
 
 Runtime collections are `products`, `categories`, `coupons`, `reviews`,
 `orders`, `returns`, `refunds`, `inventoryHistory`, `users`, and `admins`.
+Backend-only checkout state is stored in `stockReservations`, `paymentIntents`,
+`couponUsages`, and `_authPhoneIndex`; Firestore rules intentionally deny all
+client access to these collections.
 Store configuration uses `settings/marketing`, `settings/shipping`,
 `settings/invoice`, `settings/storefront`, and `settings/admin`. Existing values can be entered and
 saved from the corresponding admin screens; subsequent updates are persisted
 to Firestore rather than browser storage.
+
+## Production checkout deployment
+
+Online checkout reserves `products.reservedStock` in a Firestore transaction
+before a Razorpay order is created. Holds expire after 15 minutes. Checkout
+failure or dismissal releases them immediately, while the
+`releaseExpiredStockReservations` scheduled function is the offline/browser
+timeout backstop. Successful payment is confirmed only after the backend has
+verified the Razorpay signature, payment ID, order ID, amount, currency, and
+payment status. A captured payment that arrives after its hold was released is
+sent through the Razorpay refund API instead of creating an oversold order.
+
+Deploy the index and backend before deploying the updated browser bundle:
+
+```bash
+firebase deploy --only firestore:indexes
+firebase deploy --only functions:createRazorpayOrder,functions:verifyRazorpayPayment,functions:releaseRazorpayReservation,functions:razorpayWebhook,functions:releaseExpiredStockReservations,functions:placeOrder
+npm run build
+firebase deploy --only hosting
+```
+
+The scheduled cleanup requires a billing-enabled Firebase project and the
+Cloud Scheduler API. Configure `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and
+`RAZORPAY_WEBHOOK_SECRET` with Firebase Functions secrets. In the Razorpay
+Dashboard, point the webhook at the deployed `razorpayWebhook` URL and subscribe
+to `payment.authorized`, `payment.captured`, and `payment.failed`.
 
 ## Storefront structure
 

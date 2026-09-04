@@ -1,9 +1,10 @@
-const { createHmac, timingSafeEqual } = require('node:crypto')
+const { createHmac, randomUUID, timingSafeEqual } = require('node:crypto')
 const { initializeApp } = require('firebase-admin/app')
 const { getAuth } = require('firebase-admin/auth')
-const { FieldValue, getFirestore } = require('firebase-admin/firestore')
+const { FieldValue, Timestamp, getFirestore } = require('firebase-admin/firestore')
 const { defineSecret } = require('firebase-functions/params')
 const { HttpsError, onCall, onRequest } = require('firebase-functions/v2/https')
+const { onSchedule } = require('firebase-functions/v2/scheduler')
 const { requireAdmin, requireUser } = require('./authz')
 const {
   calculateOrderQuote,
@@ -29,11 +30,18 @@ const callableOptions = { region, invoker: 'public' }
 const razorpayKeyId = defineSecret('RAZORPAY_KEY_ID')
 const razorpayKeySecret = defineSecret('RAZORPAY_KEY_SECRET')
 const razorpayWebhookSecret = defineSecret('RAZORPAY_WEBHOOK_SECRET')
-const cashfreeClientId = defineSecret('CASHFREE_CLIENT_ID')
-const cashfreeClientSecret = defineSecret('CASHFREE_CLIENT_SECRET')
 const paymentCallableOptions = {
   ...callableOptions,
-  secrets: [razorpayKeyId, razorpayKeySecret, cashfreeClientId, cashfreeClientSecret],
+  secrets: [
+    razorpayKeyId,
+    razorpayKeySecret,
+    'CASHFREE_CLIENT_ID',
+    'CASHFREE_CLIENT_SECRET',
+  ],
+}
+const razorpayCallableOptions = {
+  ...callableOptions,
+  secrets: [razorpayKeyId, razorpayKeySecret],
 }
 const PHONE_PATTERN = /^[6-9]\d{9}$/
 const PIN_CODE_PATTERN = /^[1-8]\d{5}$/
@@ -42,6 +50,8 @@ const ORDER_REQUEST_PATTERN = /^[a-zA-Z0-9_-]{8,100}$/
 const RAZORPAY_ORDER_PATTERN = /^order_[a-zA-Z0-9]{6,100}$/
 const RAZORPAY_PAYMENT_PATTERN = /^pay_[a-zA-Z0-9]{6,100}$/
 const RAZORPAY_SIGNATURE_PATTERN = /^[a-fA-F0-9]{64}$/
+const STOCK_RESERVATION_TTL_MS = 15 * 60 * 1000
+const STOCK_RESERVATION_CLEANUP_LIMIT = 100
 
 const cleanObject = (value) => JSON.parse(JSON.stringify(value || {}))
 
@@ -72,6 +82,24 @@ const variantForItem = (product, item) =>
 
 const inventoryForItem = (product, item) =>
   item?.variantId ? variantForItem(product, item) : product
+
+const syncVariantReservedStock = (product) => {
+  if (!Array.isArray(product?.variants) || !product.variants.length) return product
+  product.reservedStock = product.variants.reduce(
+    (total, variant) => total + Number(variant.reservedStock || 0),
+    0,
+  )
+  return product
+}
+
+const timestampMillis = (value) => {
+  if (value && typeof value.toMillis === 'function') return value.toMillis()
+  const parsed = new Date(value || 0).getTime()
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const reservationReferenceFor = (uid, requestId) =>
+  db.doc(`stockReservations/${uid}_${requestId}`)
 
 const checkoutError = (error) => {
   if (error?.code === 'product-unavailable') {
@@ -147,44 +175,6 @@ const formatOrderTotal = (value) =>
     currency: 'INR',
     maximumFractionDigits: 2,
   }).format(Number(value) || 0)
-
-async function loadCheckoutQuote(uid, requestedItems, data = {}) {
-  const items = normalizeOrderItems(requestedItems)
-  const productReferences = items.map((item) => db.doc(`products/${item.productId}`))
-  const [productDocuments, shippingDocument, invoiceDocument] = await Promise.all([
-    db.getAll(...productReferences),
-    db.doc('settings/shipping').get(),
-    db.doc('settings/invoice').get(),
-  ])
-  const products = productDocuments.map((document) => ({
-    id: document.id,
-    ...(document.exists ? document.data() : {}),
-    enabled: document.exists && document.data().enabled !== false,
-  }))
-  const couponCode = String(data.couponCode || '').trim().toUpperCase()
-  let coupon = null
-  if (couponCode) {
-    const result = await db.collection('coupons').where('code', '==', couponCode).limit(1).get()
-    const couponDocument = result.docs[0]
-    if (!couponDocument) validateActiveCoupon(null)
-    coupon = { id: couponDocument.id, ...couponDocument.data() }
-    const usage = await db.doc(`couponUsages/${couponDocument.id}_${uid}`).get()
-    validateActiveCoupon(coupon, usage.data()?.count || 0)
-  }
-  try {
-    return calculateOrderQuote({
-      requestedItems: items,
-      products,
-      coupon,
-      couponCode,
-      shippingSettings: shippingDocument.data() || {},
-      taxSettings: invoiceDocument.data()?.tax || {},
-      deliveryId: data.deliveryId,
-    })
-  } catch (error) {
-    throw checkoutError(error)
-  }
-}
 
 const assertOwnedOrder = (snapshot, uid) => {
   if (!snapshot.exists) throw new HttpsError('not-found', 'Order not found.')
@@ -363,7 +353,7 @@ const recentGstinCache = new Map()
 const GSTIN_CACHE_TTL_MS = 10 * 60 * 1000
 
 async function verifyGstinHandler(request) {
-  const uid = requireUser(request)
+  requireUser(request)
   const gstin = String(request.data?.gstin || request.data?.payload?.gstin || '').trim().toUpperCase()
 
   if (!gstin || !GSTIN_PATTERN.test(gstin)) {
@@ -379,15 +369,8 @@ async function verifyGstinHandler(request) {
     return cached.data
   }
 
-  let clientId = ''
-  let clientSecret = ''
-  try {
-    clientId = cashfreeClientId.value() || ''
-    clientSecret = cashfreeClientSecret.value() || ''
-  } catch {
-    clientId = process.env.CASHFREE_CLIENT_ID || ''
-    clientSecret = process.env.CASHFREE_CLIENT_SECRET || ''
-  }
+  const clientId = process.env.CASHFREE_CLIENT_ID || ''
+  const clientSecret = process.env.CASHFREE_CLIENT_SECRET || ''
 
   if (clientId && clientSecret && clientId !== 'placeholder' && clientSecret !== 'placeholder') {
     try {
@@ -528,6 +511,9 @@ exports.updateUserProfile = onCall(paymentCallableOptions, async (request) => {
   if (operation === 'verifyRazorpayPayment') {
     return verifyRazorpayPaymentHandler(operationRequest)
   }
+  if (operation === 'releaseRazorpayReservation') {
+    return releaseRazorpayReservationHandler(operationRequest)
+  }
   if (operation) {
     throw new HttpsError('invalid-argument', 'Unsupported account operation.')
   }
@@ -643,8 +629,326 @@ exports.signInUserWithPhone = onCall(callableOptions, async (request) => {
   return { email: authUser.email }
 })
 
+async function reserveCheckoutStock({
+  uid,
+  requestId,
+  checkoutMode,
+  requestedItems,
+  requestData,
+  shippingAddress,
+  billingAddress,
+}) {
+  const items = normalizeOrderItems(requestedItems)
+  const reservationReference = reservationReferenceFor(uid, requestId)
+  const creationToken = randomUUID()
+  const nowMillis = Date.now()
+  const now = new Date(nowMillis).toISOString()
+  const expiresAt = Timestamp.fromMillis(nowMillis + STOCK_RESERVATION_TTL_MS)
+
+  return db.runTransaction(async (transaction) => {
+    const existingReservationDocument = await transaction.get(reservationReference)
+    if (existingReservationDocument.exists) {
+      const existing = existingReservationDocument.data()
+      if (
+        existing.userId !== uid ||
+        existing.requestId !== requestId ||
+        existing.itemSignature !== itemSignature(items)
+      ) {
+        throw new HttpsError(
+          'already-exists',
+          'This checkout request is already associated with different items.',
+        )
+      }
+      if (existing.status !== 'active' || timestampMillis(existing.expiresAt) <= nowMillis) {
+        throw new HttpsError(
+          'failed-precondition',
+          'This stock reservation has expired. Restart checkout and try again.',
+        )
+      }
+      if (existing.gatewayState === 'ready' && existing.gatewayOrder) {
+        return {
+          id: existingReservationDocument.id,
+          ...existing,
+          reused: true,
+        }
+      }
+      throw new HttpsError(
+        'aborted',
+        'Payment setup for this checkout is already in progress. Please wait a moment.',
+      )
+    }
+
+    const productReferences = [
+      ...new Map(
+        items.map((item) => [
+          item.productId,
+          db.doc(`products/${item.productId}`),
+        ]),
+      ).values(),
+    ]
+    const invoiceSettingsReference = db.doc('settings/invoice')
+    const shippingSettingsReference = db.doc('settings/shipping')
+    const [productDocuments, invoiceSettingsDocument, shippingSettingsDocument] =
+      await Promise.all([
+        Promise.all(productReferences.map((reference) => transaction.get(reference))),
+        transaction.get(invoiceSettingsReference),
+        transaction.get(shippingSettingsReference),
+      ])
+
+    const couponCode = String(requestData.couponCode || '').trim().toUpperCase()
+    let couponDocument = null
+    if (couponCode) {
+      const couponQuery = db.collection('coupons').where('code', '==', couponCode).limit(1)
+      const couponResult = await transaction.get(couponQuery)
+      couponDocument = couponResult.docs[0] || null
+      if (!couponDocument) validateActiveCoupon(null)
+      const couponUsageDocument = await transaction.get(
+        db.doc(`couponUsages/${couponDocument.id}_${uid}`),
+      )
+      validateActiveCoupon(
+        { id: couponDocument.id, ...couponDocument.data() },
+        couponUsageDocument.data()?.count || 0,
+      )
+    }
+
+    const products = productDocuments.map((document) => ({
+      id: document.id,
+      ...(document.exists ? document.data() : {}),
+      enabled: document.exists && document.data().enabled !== false,
+    }))
+    let quote
+    try {
+      quote = calculateOrderQuote({
+        requestedItems: items,
+        products,
+        coupon: couponDocument
+          ? { id: couponDocument.id, ...couponDocument.data() }
+          : null,
+        couponCode,
+        shippingSettings: shippingSettingsDocument.data() || {},
+        taxSettings: invoiceSettingsDocument.data()?.tax || {},
+        deliveryId: requestData.deliveryId,
+      })
+    } catch (error) {
+      throw checkoutError(error)
+    }
+
+    const productDocumentsById = new Map(
+      productDocuments.map((document) => [document.id, document]),
+    )
+    const inventoryUpdates = new Map()
+    quote.items.forEach((quotedItem) => {
+      const productDocument = productDocumentsById.get(quotedItem.productId)
+      const product = inventoryUpdates.get(quotedItem.productId) ||
+        cleanObject(productDocument?.data())
+      const inventory = inventoryForItem(product, quotedItem)
+      const reservedBefore = Number(inventory?.reservedStock || 0)
+      const stock = Number(inventory?.stock || 0)
+      if (!inventory || stock - reservedBefore < quotedItem.qty) {
+        throw new HttpsError(
+          'resource-exhausted',
+          'A product has insufficient stock.',
+        )
+      }
+      inventory.reservedStock = reservedBefore + quotedItem.qty
+      syncVariantReservedStock(product)
+      inventoryUpdates.set(quotedItem.productId, product)
+
+      const historyReference = db.collection('inventoryHistory').doc()
+      transaction.create(historyReference, {
+        productId: quotedItem.productId,
+        productName: product.name || quotedItem.productName || '',
+        variantId: quotedItem.variantId || '',
+        variantName: quotedItem.variant || '',
+        sku: quotedItem.sku || product.sku || '',
+        action: 'Checkout reserved',
+        quantity: quotedItem.qty,
+        stockBefore: stock,
+        stockAfter: stock,
+        reservedBefore,
+        reservedAfter: reservedBefore + quotedItem.qty,
+        availableBefore: Math.max(0, stock - reservedBefore),
+        availableAfter: Math.max(0, stock - reservedBefore - quotedItem.qty),
+        reference: reservationReference.id,
+        note: 'Atomic stock reservation before Razorpay checkout',
+        timestamp: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+    })
+
+    inventoryUpdates.forEach((product, productId) => {
+      transaction.update(db.doc(`products/${productId}`), {
+        ...(Array.isArray(product.variants) && product.variants.length
+          ? { variants: product.variants, reservedStock: product.reservedStock }
+          : { reservedStock: product.reservedStock }),
+        updatedAt: now,
+      })
+    })
+
+    const checkoutOrder = {
+      clientRequestId: requestId,
+      checkoutMode,
+      expectedTotalPaise: quote.totalPaise,
+      shippingAddress,
+      billingAddress,
+      deliveryId: quote.deliveryId,
+      deliveryDate: String(requestData.deliveryDate || 'Being scheduled').slice(0, 100),
+      paymentMethod: 'Online payment',
+      items: quote.items.map((item) => ({
+        productId: item.productId,
+        ...(item.variantId ? { variantId: item.variantId } : {}),
+        quantity: item.qty,
+      })),
+    }
+    const reservation = {
+      id: reservationReference.id,
+      userId: uid,
+      requestId,
+      itemSignature: quote.itemSignature,
+      items: checkoutOrder.items,
+      quote: cleanObject(quote),
+      checkoutOrder: cleanObject(checkoutOrder),
+      status: 'active',
+      gatewayState: 'creating',
+      creationToken,
+      expiresAt,
+      createdAt: Timestamp.fromMillis(nowMillis),
+      updatedAt: Timestamp.fromMillis(nowMillis),
+    }
+    transaction.create(reservationReference, reservation)
+    return { ...reservation, reused: false }
+  })
+}
+
+async function releaseStockReservation({
+  uid = '',
+  reservationId = '',
+  requestId = '',
+  reason = 'Checkout ended before payment confirmation',
+  expired = false,
+}) {
+  const reservationReference = reservationId
+    ? db.doc(`stockReservations/${reservationId}`)
+    : reservationReferenceFor(uid, requestId)
+  const now = new Date().toISOString()
+
+  return db.runTransaction(async (transaction) => {
+    const reservationDocument = await transaction.get(reservationReference)
+    if (!reservationDocument.exists) return { released: false, state: 'missing' }
+    const reservation = reservationDocument.data()
+    if (uid && reservation.userId !== uid) {
+      throw new HttpsError('permission-denied', 'This reservation belongs to another account.')
+    }
+    if (reservation.status !== 'active') {
+      return { released: false, state: reservation.status }
+    }
+
+    let paymentIntentDocument = null
+    if (reservation.paymentIntentId) {
+      paymentIntentDocument = await transaction.get(
+        db.doc(`paymentIntents/${reservation.paymentIntentId}`),
+      )
+      const intent = paymentIntentDocument.data()
+      if (intent?.verified === true || intent?.consumed === true) {
+        return { released: false, state: 'payment-verified' }
+      }
+    }
+
+    const items = normalizeOrderItems(reservation.items)
+    const productReferences = [
+      ...new Map(
+        items.map((item) => [item.productId, db.doc(`products/${item.productId}`)]),
+      ).values(),
+    ]
+    const productDocuments = await Promise.all(
+      productReferences.map((reference) => transaction.get(reference)),
+    )
+    const productDocumentsById = new Map(
+      productDocuments.map((document) => [document.id, document]),
+    )
+    const inventoryUpdates = new Map()
+
+    items.forEach((item) => {
+      const productDocument = productDocumentsById.get(item.productId)
+      if (!productDocument?.exists) return
+      const product = inventoryUpdates.get(item.productId) || cleanObject(productDocument.data())
+      const inventory = inventoryForItem(product, item)
+      if (!inventory) return
+      const stock = Number(inventory.stock || 0)
+      const reservedBefore = Number(inventory.reservedStock || 0)
+      const reservedAfter = Math.max(0, reservedBefore - item.qty)
+      inventory.reservedStock = reservedAfter
+      syncVariantReservedStock(product)
+      inventoryUpdates.set(item.productId, product)
+
+      transaction.create(db.collection('inventoryHistory').doc(), {
+        productId: item.productId,
+        productName: product.name || '',
+        variantId: item.variantId || '',
+        variantName: variantForItem(product, item)?.name || '',
+        sku: inventory.sku || product.sku || '',
+        action: expired ? 'Checkout reservation expired' : 'Checkout reservation released',
+        quantity: item.qty,
+        stockBefore: stock,
+        stockAfter: stock,
+        reservedBefore,
+        reservedAfter,
+        availableBefore: Math.max(0, stock - reservedBefore),
+        availableAfter: Math.max(0, stock - reservedAfter),
+        reference: reservationReference.id,
+        note: String(reason).slice(0, 300),
+        timestamp: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+    })
+
+    inventoryUpdates.forEach((product, productId) => {
+      transaction.update(db.doc(`products/${productId}`), {
+        ...(Array.isArray(product.variants) && product.variants.length
+          ? { variants: product.variants, reservedStock: product.reservedStock }
+          : { reservedStock: product.reservedStock }),
+        updatedAt: now,
+      })
+    })
+    transaction.update(reservationReference, {
+      status: expired ? 'expired' : 'released',
+      releaseReason: String(reason).slice(0, 300),
+      releasedAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    })
+    if (paymentIntentDocument?.exists) {
+      transaction.update(paymentIntentDocument.ref, {
+        reservationStatus: expired ? 'expired' : 'released',
+        updatedAt: now,
+      })
+    }
+    return { released: true, state: expired ? 'expired' : 'released' }
+  })
+}
+
+async function releaseRazorpayReservationHandler(request) {
+  const uid = requireUser(request)
+  const requestId = String(request.data?.requestId || '').trim()
+  if (!ORDER_REQUEST_PATTERN.test(requestId)) {
+    throw new HttpsError('invalid-argument', 'A valid checkout request is required.')
+  }
+  return releaseStockReservation({
+    uid,
+    requestId,
+    reason: String(
+      request.data?.reason || 'Customer ended checkout before payment confirmation',
+    ).slice(0, 300),
+  })
+}
+
 async function createRazorpayOrderHandler(request) {
   const uid = requireUser(request)
+  const authUser = await adminAuth.getUser(uid)
+  if (authUser.disabled) {
+    throw new HttpsError('permission-denied', 'This customer account is suspended.')
+  }
   const requestId = String(request.data?.requestId || '').trim()
   const checkoutMode = request.data?.checkoutMode === 'buy-now'
     ? 'buy-now'
@@ -656,10 +960,7 @@ async function createRazorpayOrderHandler(request) {
   const billingAddress = request.data?.billingAddress
     ? validateShippingAddress(request.data.billingAddress)
     : shippingAddress
-  const [quote, storefrontSettingsDocument] = await Promise.all([
-    loadCheckoutQuote(uid, request.data?.items, request.data),
-    db.doc('settings/storefront').get(),
-  ])
+  const storefrontSettingsDocument = await db.doc('settings/storefront').get()
   const paymentConfiguration = normalizePaymentConfiguration(
     storefrontSettingsDocument.data()?.payment,
   )
@@ -677,10 +978,6 @@ async function createRazorpayOrderHandler(request) {
       'No Razorpay payment method is currently available.',
     )
   }
-  const amount = quote.totalPaise
-  if (!Number.isInteger(amount) || amount < 100 || amount > 50_000_000) {
-    throw new HttpsError('invalid-argument', 'Enter a valid payment amount.')
-  }
   const keyId = razorpayKeyId.value()
   const environment = razorpayEnvironmentForKey(keyId)
   if (!environment || !razorpayKeySecret.value()) {
@@ -695,6 +992,37 @@ async function createRazorpayOrderHandler(request) {
       'failed-precondition',
       `Razorpay ${configuredEnvironment === 'test' ? 'Test' : 'Live'} Mode credentials are required.`,
     )
+  }
+  const reservation = await reserveCheckoutStock({
+    uid,
+    requestId,
+    checkoutMode,
+    requestedItems: request.data?.items,
+    requestData: request.data || {},
+    shippingAddress,
+    billingAddress,
+  })
+  const quote = reservation.quote
+  if (reservation.reused && reservation.gatewayOrder) {
+    return {
+      environment,
+      keyId,
+      quote,
+      reservation: {
+        id: reservation.id,
+        expiresAt: new Date(timestampMillis(reservation.expiresAt)).toISOString(),
+      },
+      order: reservation.gatewayOrder,
+    }
+  }
+  const amount = quote.totalPaise
+  if (!Number.isInteger(amount) || amount < 100 || amount > 50_000_000) {
+    await releaseStockReservation({
+      uid,
+      reservationId: reservation.id,
+      reason: 'Invalid payable amount',
+    })
+    throw new HttpsError('invalid-argument', 'Enter a valid payment amount.')
   }
   const receipt = String(request.data?.receipt || `pride_${Date.now()}`)
     .replace(/[^a-zA-Z0-9_-]/g, '')
@@ -715,11 +1043,17 @@ async function createRazorpayOrderHandler(request) {
         notes: {
           source: `Pride Electronics ${environment === 'test' ? 'Test ' : ''}Checkout`,
           uid,
+          reservation_id: reservation.id,
         },
       }),
     })
     order = await response.json()
   } catch {
+    await releaseStockReservation({
+      uid,
+      reservationId: reservation.id,
+      reason: 'Razorpay order creation failed',
+    })
     throw new HttpsError('unavailable', 'Unable to reach Razorpay. Please try again.')
   }
   if (
@@ -728,54 +1062,159 @@ async function createRazorpayOrderHandler(request) {
     Number(order?.amount) !== amount ||
     String(order?.currency) !== 'INR'
   ) {
+    await releaseStockReservation({
+      uid,
+      reservationId: reservation.id,
+      reason: 'Razorpay rejected the payment order',
+    })
     throw new HttpsError(
       'internal',
       order?.error?.description || 'Unable to create Razorpay order.',
     )
   }
   const createdAt = new Date().toISOString()
-  await db.doc(`paymentIntents/${order.id}`).set({
+  const gatewayOrder = {
     id: order.id,
-    userId: uid,
     amount: Number(order.amount),
     currency: String(order.currency || 'INR'),
-    receipt,
-    requestId,
-    quote,
-    checkoutOrder: {
-      clientRequestId: requestId,
-      checkoutMode,
-      expectedTotalPaise: quote.totalPaise,
-      shippingAddress,
-      billingAddress,
-      deliveryId: quote.deliveryId,
-      deliveryDate: String(request.data?.deliveryDate || 'Being scheduled').slice(0, 100),
-      paymentMethod: 'Online payment',
-      items: quote.items.map((item) => ({
-        productId: item.productId,
-        ...(item.variantId ? { variantId: item.variantId } : {}),
-        quantity: item.qty,
-      })),
-    },
     status: String(order.status || 'created'),
-    verified: false,
-    consumed: false,
-    autoCapture: paymentConfiguration.autoCapture,
-    environment,
-    createdAt,
-    updatedAt: createdAt,
-  })
+    receipt: String(order.receipt || receipt),
+  }
+  const paymentIntentReference = db.doc(`paymentIntents/${order.id}`)
+  try {
+    await db.runTransaction(async (transaction) => {
+      const reservationReference = db.doc(`stockReservations/${reservation.id}`)
+      const reservationDocument = await transaction.get(reservationReference)
+      const currentReservation = reservationDocument.data()
+      if (
+        !reservationDocument.exists ||
+        currentReservation.userId !== uid ||
+        currentReservation.status !== 'active' ||
+        currentReservation.creationToken !== reservation.creationToken ||
+        timestampMillis(currentReservation.expiresAt) <= Date.now()
+      ) {
+        throw new HttpsError(
+          'failed-precondition',
+          'The stock reservation expired before payment could begin.',
+        )
+      }
+      transaction.create(paymentIntentReference, {
+        id: order.id,
+        userId: uid,
+        amount: Number(order.amount),
+        currency: String(order.currency || 'INR'),
+        receipt,
+        requestId,
+        reservationId: reservation.id,
+        reservationStatus: 'active',
+        quote,
+        checkoutOrder: reservation.checkoutOrder,
+        status: String(order.status || 'created'),
+        verified: false,
+        consumed: false,
+        autoCapture: paymentConfiguration.autoCapture,
+        environment,
+        createdAt,
+        updatedAt: createdAt,
+      })
+      transaction.update(reservationReference, {
+        paymentIntentId: order.id,
+        gatewayState: 'ready',
+        gatewayOrder,
+        updatedAt: Timestamp.now(),
+      })
+    })
+  } catch (error) {
+    await releaseStockReservation({
+      uid,
+      reservationId: reservation.id,
+      reason: 'Payment order could not be attached to the stock reservation',
+    })
+    throw error
+  }
   return {
     environment,
     keyId,
     quote,
-    order: {
-      id: order.id,
-      amount: Number(order.amount),
-      currency: String(order.currency || 'INR'),
-      status: String(order.status || 'created'),
-      receipt: String(order.receipt || receipt),
+    reservation: {
+      id: reservation.id,
+      expiresAt: new Date(timestampMillis(reservation.expiresAt)).toISOString(),
     },
+    order: gatewayOrder,
+  }
+}
+
+async function refundCapturedRazorpayPayment(payment, intent, reason) {
+  if (
+    String(payment?.status) === 'refunded' ||
+    Number(payment?.amount_refunded || 0) >= Number(intent.amount)
+  ) {
+    return {
+      id: '',
+      amount: Number(intent.amount),
+      status: 'processed',
+      createdAt: null,
+    }
+  }
+  if (String(payment?.status) !== 'captured') return null
+  let response
+  let refund
+  try {
+    response = await fetch(
+      `https://api.razorpay.com/v1/payments/${encodeURIComponent(payment.id)}/refund`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: razorpayAuthorization(),
+        },
+        body: JSON.stringify({
+          amount: Number(intent.amount),
+          notes: {
+            reason: String(reason).slice(0, 200),
+            reservation_id: String(intent.reservationId || '').slice(0, 200),
+          },
+        }),
+      },
+    )
+    refund = await response.json()
+  } catch (error) {
+    throw new Error('Unable to reach Razorpay while refunding the late payment.', {
+      cause: error,
+    })
+  }
+  if (!response.ok) {
+    try {
+      const paymentResponse = await fetch(
+        `https://api.razorpay.com/v1/payments/${encodeURIComponent(payment.id)}`,
+        { headers: { Authorization: razorpayAuthorization() } },
+      )
+      const refreshedPayment = await paymentResponse.json()
+      if (
+        paymentResponse.ok &&
+        (
+          refreshedPayment.status === 'refunded' ||
+          Number(refreshedPayment.amount_refunded || 0) >= Number(intent.amount)
+        )
+      ) {
+        return {
+          id: '',
+          amount: Number(intent.amount),
+          status: 'processed',
+          createdAt: null,
+        }
+      }
+    } catch {
+      // Preserve the original refund error below; a webhook retry will
+      // reconcile the payment again.
+    }
+    throw new Error(refund?.error?.description || 'Razorpay rejected the refund.')
+  }
+  return {
+    id: String(refund.id || ''),
+    amount: Number(refund.amount || intent.amount),
+    status: String(refund.status || 'processed'),
+    createdAt: refund.created_at || null,
   }
 }
 
@@ -798,15 +1237,25 @@ async function verifyRazorpayPaymentHandler(request) {
     throw new HttpsError('permission-denied', 'This payment does not belong to your account.')
   }
   const intent = intentDocument.data()
-  if (intent.consumed && !allowConsumed) {
-    throw new HttpsError('already-exists', 'This payment has already been used for an order.')
-  }
   const expectedSignature = createHmac('sha256', razorpayKeySecret.value())
     .update(`${orderId}|${paymentId}`)
     .digest('hex')
   if (!secureCompare(signature, expectedSignature)) {
     throw new HttpsError('permission-denied', 'Payment signature verification failed.')
   }
+  if (intent.verified === true) {
+    if (intent.paymentId !== paymentId || !intent.payment) {
+      throw new HttpsError('failed-precondition', 'A different payment is already verified.')
+    }
+    return { verified: true, payment: intent.payment }
+  }
+  if (intent.consumed && !allowConsumed) {
+    throw new HttpsError('already-exists', 'This payment has already been used for an order.')
+  }
+  if (!intent.reservationId) {
+    throw new HttpsError('failed-precondition', 'This payment has no stock reservation.')
+  }
+
   let response
   let payment
   try {
@@ -831,6 +1280,51 @@ async function verifyRazorpayPaymentHandler(request) {
   ) {
     throw new HttpsError('data-loss', 'Razorpay returned mismatched payment details.')
   }
+
+  const reservationReference = db.doc(`stockReservations/${intent.reservationId}`)
+  const reservationDocument = await reservationReference.get()
+  const reservation = reservationDocument.data()
+  const paymentCreatedAt = Number(payment.created_at || 0) * 1000
+  const paymentWasInReservationWindow =
+    paymentCreatedAt > 0 && paymentCreatedAt <= timestampMillis(reservation?.expiresAt)
+  if (
+    !reservationDocument.exists ||
+    reservation.userId !== uid ||
+    reservation.status !== 'active' ||
+    !paymentWasInReservationWindow
+  ) {
+    let refund = null
+    let refundError = null
+    try {
+      refund = await refundCapturedRazorpayPayment(
+        payment,
+        intent,
+        'Payment completed after the stock reservation was unavailable',
+      )
+    } catch (error) {
+      refundError = error
+      console.error('Late Razorpay payment requires refund attention', {
+        orderId,
+        paymentId,
+        message: error.message,
+      })
+    }
+    await intentReference.set({
+      paymentId,
+      paymentStatus: String(payment.status || ''),
+      reservationStatus: reservation?.status || 'missing',
+      refundStatus: refund ? 'processed' : refundError ? 'attention-required' : 'not-captured',
+      ...(refund ? { refund } : {}),
+      updatedAt: new Date().toISOString(),
+    }, { merge: true })
+    throw new HttpsError(
+      'failed-precondition',
+      refund
+        ? 'The stock reservation expired, so the payment was refunded and no order was placed.'
+        : 'The stock reservation expired before payment confirmation. No order was placed.',
+    )
+  }
+
   if (String(payment.status) === 'authorized' && intent.autoCapture !== false) {
     let captureResponse
     let capturedPayment
@@ -892,16 +1386,96 @@ async function verifyRazorpayPaymentHandler(request) {
     wallet: String(payment.wallet || ''),
     createdAt: payment.created_at || null,
   }
-  await intentReference.update({
-    paymentId,
-    paymentStatus: savedPayment.status,
-    payment: savedPayment,
-    verified: true,
-    verifiedAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  })
+
+  try {
+    await db.runTransaction(async (transaction) => {
+      const [currentIntentDocument, currentReservationDocument] = await Promise.all([
+        transaction.get(intentReference),
+        transaction.get(reservationReference),
+      ])
+      const currentIntent = currentIntentDocument.data()
+      const currentReservation = currentReservationDocument.data()
+      if (
+        currentIntentDocument.exists &&
+        currentIntent.verified === true &&
+        currentIntent.paymentId === paymentId
+      ) {
+        return
+      }
+      if (
+        !currentIntentDocument.exists ||
+        currentIntent.userId !== uid ||
+        currentIntent.verified === true ||
+        !currentReservationDocument.exists ||
+        currentReservation.userId !== uid ||
+        currentReservation.status !== 'active' ||
+        paymentCreatedAt > timestampMillis(currentReservation.expiresAt)
+      ) {
+        throw new HttpsError(
+          'failed-precondition',
+          'The stock reservation is no longer available for this payment.',
+        )
+      }
+      const verifiedAt = new Date().toISOString()
+      transaction.update(intentReference, {
+        paymentId,
+        paymentStatus: savedPayment.status,
+        payment: savedPayment,
+        verified: true,
+        verifiedAt,
+        updatedAt: verifiedAt,
+      })
+      transaction.update(reservationReference, {
+        status: 'payment-verified',
+        paymentStatus: savedPayment.status,
+        paymentId,
+        verifiedAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      })
+    })
+  } catch (error) {
+    let refund = null
+    try {
+      refund = await refundCapturedRazorpayPayment(
+        payment,
+        intent,
+        'Stock reservation was released during payment verification',
+      )
+    } catch (refundError) {
+      console.error('Captured Razorpay payment requires refund attention', {
+        orderId,
+        paymentId,
+        message: refundError.message,
+      })
+    }
+    await intentReference.set({
+      paymentId,
+      paymentStatus: savedPayment.status,
+      refundStatus: refund
+        ? 'processed'
+        : savedPayment.status === 'captured'
+          ? 'attention-required'
+          : 'not-captured',
+      ...(refund ? { refund } : {}),
+      updatedAt: new Date().toISOString(),
+    }, { merge: true })
+    throw error
+  }
   return { verified: true, payment: savedPayment }
 }
+
+exports.createRazorpayOrder = onCall(
+  razorpayCallableOptions,
+  createRazorpayOrderHandler,
+)
+exports.verifyRazorpayPayment = onCall(
+  razorpayCallableOptions,
+  verifyRazorpayPaymentHandler,
+)
+exports.releaseRazorpayReservation = onCall(
+  callableOptions,
+  releaseRazorpayReservationHandler,
+)
 
 exports.razorpayWebhook = onRequest(
   {
@@ -923,19 +1497,39 @@ exports.razorpayWebhook = onRequest(
       return
     }
     const event = String(request.body?.event || '')
-    if (!['payment.authorized', 'payment.captured'].includes(event)) {
+    if (!['payment.authorized', 'payment.captured', 'payment.failed'].includes(event)) {
       response.status(200).json({ accepted: true })
       return
     }
     const payment = request.body?.payload?.payment?.entity || {}
     const orderId = String(payment.order_id || '').trim()
     const paymentId = String(payment.id || '').trim()
+    const intentReference = db.doc(`paymentIntents/${orderId}`)
     try {
-      const intentReference = db.doc(`paymentIntents/${orderId}`)
       const intentDocument = await intentReference.get()
       const intent = intentDocument.data()
       if (!intentDocument.exists || !intent?.userId || !intent?.checkoutOrder) {
         throw new Error('Payment intent not found.')
+      }
+      if (event === 'payment.failed') {
+        let releaseResult = { released: false }
+        if (intent.reservationId) {
+          releaseResult = await releaseStockReservation({
+            uid: intent.userId,
+            reservationId: intent.reservationId,
+            reason: 'Razorpay reported payment failure',
+          })
+        }
+        if (releaseResult.released) {
+          await intentReference.set({
+            paymentId,
+            paymentStatus: 'failed',
+            failedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }, { merge: true })
+        }
+        response.status(200).json({ accepted: true })
+        return
       }
       const verified = await verifyRazorpayPaymentHandler({
         auth: { uid: intent.userId },
@@ -975,7 +1569,56 @@ exports.razorpayWebhook = onRequest(
         paymentId,
         code: error?.code || 'unknown',
       })
+      let latestIntent = null
+      if (RAZORPAY_ORDER_PATTERN.test(orderId)) {
+        try {
+          latestIntent = (await intentReference.get()).data()
+        } catch {
+          latestIntent = null
+        }
+      }
+      if (
+        ['released', 'expired'].includes(latestIntent?.reservationStatus) &&
+        ['processed', 'not-captured'].includes(latestIntent?.refundStatus)
+      ) {
+        response.status(200).json({ accepted: true, orderPlaced: false })
+        return
+      }
       response.status(500).json({ accepted: false })
+    }
+  },
+)
+
+exports.releaseExpiredStockReservations = onSchedule(
+  {
+    schedule: 'every 5 minutes',
+    region,
+    timeZone: 'Asia/Kolkata',
+    retryCount: 3,
+  },
+  async () => {
+    const expiredReservations = await db
+      .collection('stockReservations')
+      .where('status', '==', 'active')
+      .where('expiresAt', '<=', Timestamp.now())
+      .limit(STOCK_RESERVATION_CLEANUP_LIMIT)
+      .get()
+    const results = await Promise.allSettled(
+      expiredReservations.docs.map((document) =>
+        releaseStockReservation({
+          reservationId: document.id,
+          reason: 'Payment was not verified before the reservation timeout',
+          expired: true,
+        }),
+      ),
+    )
+    const failures = results.filter((result) => result.status === 'rejected')
+    if (failures.length) {
+      console.error('Some expired stock reservations could not be released', {
+        attempted: results.length,
+        failed: failures.length,
+      })
+      throw new Error('Expired reservation cleanup was only partially successful.')
     }
   },
 )
@@ -983,10 +1626,13 @@ exports.razorpayWebhook = onRequest(
 async function placeOrderHandler(request) {
   const uid = requireUser(request)
   const authUser = await adminAuth.getUser(uid)
-  if (authUser.disabled) {
+  const submittedOrder = cleanObject(request.data?.order)
+  if (
+    authUser.disabled &&
+    /cash|cod/i.test(submittedOrder.paymentMethod || '')
+  ) {
     throw new HttpsError('permission-denied', 'This customer account is suspended.')
   }
-  const submittedOrder = cleanObject(request.data?.order)
   const items = normalizeOrderItems(submittedOrder.items)
   const requestId = String(submittedOrder.clientRequestId || '').trim()
   if (!ORDER_REQUEST_PATTERN.test(requestId)) {
@@ -1045,6 +1691,7 @@ async function placeOrderHandler(request) {
     }
     let paymentIntentReference = null
     let paymentIntent = null
+    let stockReservationReference = null
     if (!isCashOnDelivery) {
       const razorpayOrderId = String(submittedOrder.razorpayOrderId || '').trim()
       const razorpayPaymentId = String(submittedOrder.razorpayPaymentId || '').trim()
@@ -1065,6 +1712,29 @@ async function placeOrderHandler(request) {
       ) {
         throw new HttpsError('failed-precondition', 'The payment could not be verified for this order.')
       }
+      if (!paymentIntent.reservationId) {
+        throw new HttpsError('failed-precondition', 'The payment has no stock reservation.')
+      }
+      stockReservationReference = db.doc(
+        `stockReservations/${paymentIntent.reservationId}`,
+      )
+      const stockReservationDocument = await transaction.get(stockReservationReference)
+      const stockReservation = stockReservationDocument.data()
+      const paymentCreatedAt = Number(paymentIntent.payment?.createdAt || 0) * 1000
+      if (
+        !stockReservationDocument.exists ||
+        stockReservation.userId !== uid ||
+        stockReservation.requestId !== requestId ||
+        stockReservation.status !== 'payment-verified' ||
+        stockReservation.itemSignature !== itemSignature(items) ||
+        paymentCreatedAt <= 0 ||
+        paymentCreatedAt > timestampMillis(stockReservation.expiresAt)
+      ) {
+        throw new HttpsError(
+          'failed-precondition',
+          'The verified payment does not have an active stock reservation.',
+        )
+      }
       if (paymentIntent.checkoutOrder) {
         checkoutMode = paymentIntent.checkoutOrder.checkoutMode === 'buy-now'
           ? 'buy-now'
@@ -1078,8 +1748,8 @@ async function placeOrderHandler(request) {
       }
     }
 
-    let inventoryNeedsAttention = false
     productDocuments.forEach((productDocument, index) => {
+      if (!isCashOnDelivery) return
       const product = productDocument.data()
       const variants = Array.isArray(product?.variants) ? product.variants : []
       const variant = variantForItem(product, items[index])
@@ -1097,10 +1767,6 @@ async function placeOrderHandler(request) {
         (variants.length === 0 && items[index].variantId) ||
         available < items[index].qty
       if (!unavailable) return
-      if (!isCashOnDelivery) {
-        inventoryNeedsAttention = true
-        return
-      }
       if (!productDocument.exists || product.enabled === false) {
         throw new HttpsError('failed-precondition', 'A product is no longer available.')
       }
@@ -1176,52 +1842,39 @@ async function placeOrderHandler(request) {
     }
 
     const inventoryUpdates = new Map()
-    quote.items.forEach((quotedItem, index) => {
-      const productDocument = productDocuments[index]
-      const product = inventoryUpdates.get(productDocument.id) || cleanObject(productDocument.data())
-      const quantity = quotedItem.qty
-      const inventory = inventoryForItem(product, quotedItem) || product
-      const reservedBefore = Number(inventory.reservedStock || 0)
-      const stock = Number(inventory.stock || 0)
-      if (!inventoryNeedsAttention) inventory.reservedStock = reservedBefore + quantity
-      if (quotedItem.variantId) {
-        product.reservedStock = (product.variants || []).reduce(
-          (total, variant) => total + Number(variant.reservedStock || 0),
-          0,
-        )
-      }
-      inventoryUpdates.set(productDocument.id, product)
-      const historyReference = db.collection('inventoryHistory').doc()
-      transaction.create(historyReference, {
-        productId: productDocument.id,
-        productName: product.name || quotedItem.productName || '',
-        variantId: quotedItem.variantId || '',
-        variantName: quotedItem.variant || '',
-        sku: quotedItem.sku || product.sku || '',
-        action: inventoryNeedsAttention
-          ? 'Reservation attention required'
-          : 'Order reserved',
-        quantity,
-        stockBefore: stock,
-        stockAfter: stock,
-        reservedBefore,
-        reservedAfter: inventoryNeedsAttention
-          ? reservedBefore
-          : reservedBefore + quantity,
-        availableBefore: Math.max(0, stock - reservedBefore),
-        availableAfter: inventoryNeedsAttention
-          ? Math.max(0, stock - reservedBefore)
-          : Math.max(0, stock - reservedBefore - quantity),
-        reference: orderReference.id,
-        note: inventoryNeedsAttention
-          ? 'Product availability changed after verified payment; manual inventory review required'
-          : 'Stock reserved during Firebase order placement',
-        timestamp: now,
-        createdAt: now,
-        updatedAt: now,
+    if (isCashOnDelivery) {
+      quote.items.forEach((quotedItem, index) => {
+        const productDocument = productDocuments[index]
+        const product = inventoryUpdates.get(productDocument.id) || cleanObject(productDocument.data())
+        const quantity = quotedItem.qty
+        const inventory = inventoryForItem(product, quotedItem) || product
+        const reservedBefore = Number(inventory.reservedStock || 0)
+        const stock = Number(inventory.stock || 0)
+        inventory.reservedStock = reservedBefore + quantity
+        syncVariantReservedStock(product)
+        inventoryUpdates.set(productDocument.id, product)
+        const historyReference = db.collection('inventoryHistory').doc()
+        transaction.create(historyReference, {
+          productId: productDocument.id,
+          productName: product.name || quotedItem.productName || '',
+          variantId: quotedItem.variantId || '',
+          variantName: quotedItem.variant || '',
+          sku: quotedItem.sku || product.sku || '',
+          action: 'Order reserved',
+          quantity,
+          stockBefore: stock,
+          stockAfter: stock,
+          reservedBefore,
+          reservedAfter: reservedBefore + quantity,
+          availableBefore: Math.max(0, stock - reservedBefore),
+          availableAfter: Math.max(0, stock - reservedBefore - quantity),
+          reference: orderReference.id,
+          note: 'Stock reserved during Cash on Delivery order placement',
+          timestamp: now,
+          createdAt: now,
+          updatedAt: now,
+        })
       })
-    })
-    if (!inventoryNeedsAttention) {
       inventoryUpdates.forEach((product, productId) => {
         transaction.update(db.doc(`products/${productId}`), {
           ...(Array.isArray(product.variants) && product.variants.length
@@ -1256,6 +1909,14 @@ async function placeOrderHandler(request) {
         consumedByOrderId: orderReference.id,
         consumedAt: now,
         updatedAt: now,
+      })
+    }
+    if (stockReservationReference) {
+      transaction.update(stockReservationReference, {
+        status: 'consumed',
+        orderId: orderReference.id,
+        consumedAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
       })
     }
 
@@ -1297,10 +1958,8 @@ async function placeOrderHandler(request) {
             now,
           )
         : '',
-      inventoryState: inventoryNeedsAttention ? 'none' : 'reserved',
-      inventoryIssue: inventoryNeedsAttention
-        ? 'Product availability changed after verified payment.'
-        : '',
+      inventoryState: 'reserved',
+      inventoryIssue: '',
       orderTime: new Date().toLocaleTimeString('en-IN', {
         hour: 'numeric',
         minute: '2-digit',

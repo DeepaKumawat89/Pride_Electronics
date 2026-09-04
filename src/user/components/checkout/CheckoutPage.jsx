@@ -55,6 +55,13 @@ const createCheckoutRequestId = () =>
   globalThis.crypto?.randomUUID?.() ||
   `checkout_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`
 
+const reservationTimeoutSeconds = (expiresAt) => {
+  const remaining = Math.floor(
+    (new Date(expiresAt || 0).getTime() - Date.now()) / 1000,
+  )
+  return remaining >= 180 ? Math.min(900, remaining) : 0
+}
+
 const createEstimatedDeliveryDate = (days) => {
   const date = new Date()
   date.setDate(date.getDate() + days)
@@ -114,6 +121,21 @@ export default function CheckoutPage({
 
   const checkoutRequestId = useRef(createCheckoutRequestId())
   const paymentInFlight = useRef(false)
+
+  const releaseCheckoutReservation = async (
+    reason,
+    requestId = checkoutRequestId.current,
+  ) => {
+    if (checkoutRequestId.current === requestId) {
+      checkoutRequestId.current = createCheckoutRequestId()
+    }
+    try {
+      await postRazorpayApi('release', { requestId, reason })
+    } catch {
+      // The scheduled backend cleanup remains the backstop if this best-effort
+      // release cannot reach Firebase (for example, when the browser is offline).
+    }
+  }
 
   // 2 separate page view state ('address' = Page 1: Address & GST, 'summary' = Page 2: Order Summary)
   const [activePage, setActivePage] = useState('address')
@@ -535,7 +557,7 @@ export default function CheckoutPage({
         )
       }
 
-      const { environment, keyId, order, quote } = await postRazorpayApi('orders', {
+      const { environment, keyId, order, quote, reservation } = await postRazorpayApi('orders', {
         amount: toRazorpayAmount(checkoutTotal),
         requestId: checkoutRequestId.current,
         checkoutMode: checkoutMode === 'buy-now' ? 'buy-now' : 'cart',
@@ -561,6 +583,10 @@ export default function CheckoutPage({
           'Your cart total changed while checking out. Review the updated cart and try again.',
         )
       }
+      const checkoutTimeout = reservationTimeoutSeconds(reservation?.expiresAt)
+      if (!checkoutTimeout) {
+        throw new Error('The stock reservation expired before payment could begin. Try again.')
+      }
 
       const preferredMethod = preferredRazorpayMethod(
         defaultPayment,
@@ -581,7 +607,8 @@ export default function CheckoutPage({
         ...(preferredMethod ? { method: preferredMethod } : {}),
         notes: { checkout: `${storeName} ${environment === 'test' ? 'Test Mode' : 'Checkout'}` },
         theme: { color: '#253329', backdrop_color: '#17211d' },
-        retry: { enabled: true },
+        retry: { enabled: false },
+        timeout: checkoutTimeout,
         config: createRazorpayDisplayConfig(paymentSettings),
         modal: {
           backdropclose: false,
@@ -590,9 +617,14 @@ export default function CheckoutPage({
             setPaymentError('Payment was cancelled. Your order was not placed.')
             paymentInFlight.current = false
             setPaying(false)
+            void releaseCheckoutReservation(
+              'Customer dismissed Razorpay checkout',
+              checkoutDetails.requestId,
+            )
           },
         },
         handler: async (response) => {
+          let paymentVerified = false
           try {
             const verification = await postRazorpayApi('verify', response)
             if (!verification.verified) {
@@ -600,6 +632,7 @@ export default function CheckoutPage({
                 'Payment verification failed. Your order was not placed; contact support if an amount was debited.',
               )
             }
+            paymentVerified = true
             await onPlaceOrder({
               ...checkoutDetails,
               razorpay: response,
@@ -609,6 +642,12 @@ export default function CheckoutPage({
             setPaymentError(error.message)
             paymentInFlight.current = false
             setPaying(false)
+            if (!paymentVerified) {
+              void releaseCheckoutReservation(
+                'Payment verification did not complete',
+                checkoutDetails.requestId,
+              )
+            }
           }
         },
       })
@@ -617,9 +656,17 @@ export default function CheckoutPage({
         setPaymentError('Payment failed. No order was placed. Please try again.')
         paymentInFlight.current = false
         setPaying(false)
+        void releaseCheckoutReservation(
+          'Razorpay reported payment failure',
+          checkoutDetails.requestId,
+        )
       })
       razorpay.open()
     } catch (error) {
+      await releaseCheckoutReservation(
+        'Payment checkout could not be started',
+        checkoutDetails.requestId,
+      )
       setPaymentError(error.message || 'Unable to place the order.')
       paymentInFlight.current = false
       setPaying(false)

@@ -211,7 +211,12 @@ test('an admin custom claim authorizes privileged Firestore operations', async (
 
 test('payment and backend index collections are inaccessible to customers', async () => {
   const database = testEnvironment.authenticatedContext('UID_A').firestore()
-  for (const collectionName of ['paymentIntents', 'couponUsages', '_authPhoneIndex']) {
+  for (const collectionName of [
+    'paymentIntents',
+    'stockReservations',
+    'couponUsages',
+    '_authPhoneIndex',
+  ]) {
     await assertFails(getDoc(doc(database, collectionName, 'private-record')))
     await assertFails(
       setDoc(doc(database, collectionName, 'private-record'), { userId: 'UID_A' }),
