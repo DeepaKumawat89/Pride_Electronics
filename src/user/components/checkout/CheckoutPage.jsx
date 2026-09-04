@@ -456,7 +456,7 @@ export default function CheckoutPage({
 
     // Switch page view to Page 2: Order Summary
     setActivePage('summary')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.scrollTo({ top: 0, behavior: 'auto' })
   }
 
   // Submit Order (Page 2)

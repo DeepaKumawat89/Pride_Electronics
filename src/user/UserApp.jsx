@@ -740,7 +740,7 @@ export default function UserApp({
     setProductsOpen(false)
     setAccountSection(null)
     setContentPage(page)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.scrollTo({ top: 0, behavior: 'auto' })
   }
 
   const closeContentPage = () => {
@@ -955,7 +955,7 @@ export default function UserApp({
         `/${reviewsHash}`,
       )
     setReviewsOpen(true)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.scrollTo({ top: 0, behavior: 'auto' })
   }
 
   const closeReviews = () => {
