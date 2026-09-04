@@ -188,10 +188,7 @@ export function useCart(initialProduct, liveProducts = null) {
     [storedItems, storedSavedItems],
   )
 
-  const count = useMemo(
-    () => items.reduce((sum, item) => sum + item.quantity, 0),
-    [items],
-  )
+  const count = items.length
   const subtotal = useMemo(
     () => items.reduce(
       (sum, item) => sum + calculateProductUnitPrice(item.product, item.quantity) * item.quantity,
