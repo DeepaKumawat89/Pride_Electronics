@@ -156,7 +156,10 @@ function sanitizeAccountState(value = {}) {
   return { wishlistIds, addresses, paymentMethods, cartItems, savedCartItems }
 }
 
-function removePurchasedCartItems(cartItems, purchasedItems) {
+function removePurchasedCartItems(cartItems, purchasedItems, checkoutMode = 'cart') {
+  if (checkoutMode === 'buy-now') {
+    return Array.isArray(cartItems) ? cartItems : []
+  }
   const purchasedProductIds = new Set(
     (Array.isArray(purchasedItems) ? purchasedItems : []).map(cartKey),
   )

@@ -25,7 +25,7 @@ import AccountPanel, {
   LogoutConfirmation,
 } from './components/profile/AccountPanel'
 import { useCart } from './hooks/useCart'
-import { formatCurrency } from './utils/currency'
+import { formatCurrency, hasValidPrice } from './utils/currency'
 import {
   matchesProductQuery,
   normalizeSearchQuery,
@@ -1066,13 +1066,14 @@ export default function UserApp({
       notify(`Select a variant for ${product.name} before buying`)
       return
     }
-    const added = cart.add(product, quantity)
-    if (!added) {
-      notify(`${product.name} is currently out of stock`)
-      return
-    }
     const selection = createBuyNowSelection(product, quantity)
-    if (!selection) {
+    const [checkoutItem] = resolveCheckoutSelection(selection, products)
+    if (
+      !selection ||
+      !checkoutItem ||
+      !hasValidPrice(checkoutItem.product.price) ||
+      Number(checkoutItem.product.stock) < checkoutItem.quantity
+    ) {
       notify('Unable to prepare this product for checkout')
       return
     }
@@ -1420,15 +1421,17 @@ export default function UserApp({
     const checkoutItems = normalizedSelection
       ? resolveCheckoutSelection(normalizedSelection, products)
       : cart.items
+    const checkoutHasUnavailableItems = checkoutItems.some(
+      ({ product, quantity }) =>
+        !hasValidPrice(product.price) ||
+        Number(product.stock) <= 0 ||
+        quantity > Number(product.stock),
+    )
     setCheckoutCouponCode(couponCode)
     if (
-      !skipCartValidation &&
-      (
       !checkoutItems.length ||
-      cart.issues.hasOutOfStock ||
-      cart.issues.hasInvalidPrice ||
-      cart.issues.removedProductCount > 0
-      )
+      checkoutHasUnavailableItems ||
+      (!skipCartValidation && cart.issues.removedProductCount > 0)
     ) {
       notify('Review unavailable or updated cart items before checkout')
       return
@@ -1482,6 +1485,8 @@ export default function UserApp({
       : gatewayLabel
     const order = {
       clientRequestId: checkoutDetails.requestId,
+      checkoutMode:
+        checkoutSelection?.mode === 'buy-now' ? 'buy-now' : 'cart',
       expectedTotalPaise: checkoutDetails.expectedTotalPaise,
       customer: user?.name || 'Pride customer',
       email: user?.email || '',
@@ -1551,21 +1556,30 @@ export default function UserApp({
         [savedOrder.couponCode]: Number(current[savedOrder.couponCode] || 0) + 1,
       }))
     }
-    const remainingCartItems = removePurchasedItems(
-      cartPersistenceRef.current.cartItems,
-      savedOrder.items,
-    )
-    const updatedAccount = normalizeAccountState({
-      ...accountStateRef.current,
-      cartItems: remainingCartItems,
-    })
-    clearTimeout(accountSaveTimer.current)
-    cartPersistenceRef.current = {
-      ...cartPersistenceRef.current,
-      cartItems: remainingCartItems,
+    const placedCheckoutMode =
+      savedOrder.checkoutMode || order.checkoutMode
+    if (placedCheckoutMode === 'cart') {
+      const remainingCartItems = removePurchasedItems(
+        cartPersistenceRef.current.cartItems,
+        savedOrder.items,
+      )
+      const updatedAccount = normalizeAccountState({
+        ...accountStateRef.current,
+        cartItems: remainingCartItems,
+      })
+      clearTimeout(accountSaveTimer.current)
+      cartPersistenceRef.current = {
+        ...cartPersistenceRef.current,
+        cartItems: remainingCartItems,
+      }
+      accountStateRef.current = updatedAccount
+      accountSnapshot.current = JSON.stringify(updatedAccount)
+      cart.removeMany(
+        savedOrder.items.map((item) =>
+          variantCartKey(item.productId, item.variantId),
+        ),
+      )
     }
-    accountStateRef.current = updatedAccount
-    accountSnapshot.current = JSON.stringify(updatedAccount)
     sessionStorage.setItem(ORDER_SUCCESS_SESSION_KEY, JSON.stringify(savedOrder))
     orderSuccessHistoryActive.current = true
     window.history.replaceState(
@@ -1578,11 +1592,6 @@ export default function UserApp({
     setCheckoutSelection(null)
     sessionStorage.removeItem(CHECKOUT_SELECTION_SESSION_KEY)
     checkoutHistoryActive.current = false
-    cart.removeMany(
-      savedOrder.items.map((item) =>
-        variantCartKey(item.productId, item.variantId),
-      ),
-    )
     window.scrollTo({ top: 0, behavior: 'smooth' })
     notify(`Order ${savedOrder.id} placed successfully`)
     return savedOrder
@@ -1743,6 +1752,9 @@ export default function UserApp({
             onUpdateQuantity={handleCheckoutUpdateQuantity}
             onRemoveItem={handleCheckoutRemoveItem}
             onOpenPolicy={handleOpenPolicy}
+            checkoutMode={
+              checkoutSelection?.mode === 'buy-now' ? 'buy-now' : 'cart'
+            }
             shippingSettings={shippingSettings}
             taxSettings={invoiceSettings.tax}
             paymentSettings={adminSettings.payment}

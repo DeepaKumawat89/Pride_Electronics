@@ -7,14 +7,15 @@ const callOperation = (operation, payload = {}) =>
   operationGateway({ operation, payload })
 
 const messageFor = (error, fallback) => {
+  const backendMessage = String(error?.message || '').trim()
   const messages = {
     'functions/failed-precondition':
-      'The order could not be completed because product availability changed.',
+      backendMessage || 'The order requirements changed. Review your checkout and try again.',
     'functions/permission-denied': 'You do not have access to this order.',
     'functions/unauthenticated': 'Please sign in again to continue.',
     'functions/not-found': 'The requested order was not found.',
     'functions/resource-exhausted':
-      'One or more products no longer have enough stock.',
+      backendMessage || 'One or more products no longer have enough stock.',
     'functions/already-exists':
       'This request has already been completed.',
     'functions/unavailable':
@@ -134,4 +135,3 @@ export async function saveCustomerGstDetails(gstDetails) {
     throw messageFor(error, 'Unable to save GST details.')
   }
 }
-

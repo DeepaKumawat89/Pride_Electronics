@@ -90,7 +90,12 @@ export const checkoutItemRequest = ({ product, quantity }) => {
   }
 }
 
-export function removePurchasedItems(items = [], purchasedItems = []) {
+export function removePurchasedItems(
+  items = [],
+  purchasedItems = [],
+  checkoutMode = 'cart',
+) {
+  if (checkoutMode === 'buy-now') return items
   const purchasedKeys = new Set(
     purchasedItems.map((item) =>
       variantCartKey(item.productId, item.variantId),

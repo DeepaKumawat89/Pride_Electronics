@@ -102,6 +102,7 @@ export default function CheckoutPage({
   onUpdateQuantity,
   onRemoveItem,
   onOpenPolicy,
+  checkoutMode = 'cart',
   shippingSettings = initialShippingSettings,
   taxSettings = initialInvoiceSettings.tax,
   paymentSettings = initialAdminSettings.payment,
@@ -482,6 +483,7 @@ export default function CheckoutPage({
 
     const checkoutDetails = {
       requestId: checkoutRequestId.current,
+      checkoutMode: checkoutMode === 'buy-now' ? 'buy-now' : 'cart',
       address: selectedDeliveryAddress,
       billingAddress: selectedBillingAddress,
       gstDetails: isGstInvoice && gstVerifiedDetails && gstConfirmed
@@ -528,13 +530,15 @@ export default function CheckoutPage({
     try {
       const loaded = await loadRazorpayCheckout()
       if (!loaded) {
-        await onPlaceOrder({ ...checkoutDetails, cod: true })
-        return
+        throw new Error(
+          'Secure payment checkout could not be loaded. Check your connection or browser settings and try again.',
+        )
       }
 
       const { environment, keyId, order, quote } = await postRazorpayApi('orders', {
         amount: toRazorpayAmount(checkoutTotal),
         requestId: checkoutRequestId.current,
+        checkoutMode: checkoutMode === 'buy-now' ? 'buy-now' : 'cart',
         items: items.map(({ product, quantity }) => ({
           productId: product.id,
           ...(product.selectedVariantId ? { variantId: product.selectedVariantId } : {}),
@@ -616,13 +620,9 @@ export default function CheckoutPage({
       })
       razorpay.open()
     } catch (error) {
-      try {
-        await onPlaceOrder({ ...checkoutDetails, cod: true })
-      } catch (fallbackError) {
-        setPaymentError(fallbackError.message || error.message || 'Unable to place the order.')
-        paymentInFlight.current = false
-        setPaying(false)
-      }
+      setPaymentError(error.message || 'Unable to place the order.')
+      paymentInFlight.current = false
+      setPaying(false)
     }
   }
 

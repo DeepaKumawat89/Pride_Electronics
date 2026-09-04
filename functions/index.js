@@ -646,6 +646,9 @@ exports.signInUserWithPhone = onCall(callableOptions, async (request) => {
 async function createRazorpayOrderHandler(request) {
   const uid = requireUser(request)
   const requestId = String(request.data?.requestId || '').trim()
+  const checkoutMode = request.data?.checkoutMode === 'buy-now'
+    ? 'buy-now'
+    : 'cart'
   if (!ORDER_REQUEST_PATTERN.test(requestId)) {
     throw new HttpsError('invalid-argument', 'Restart checkout and try again.')
   }
@@ -741,6 +744,7 @@ async function createRazorpayOrderHandler(request) {
     quote,
     checkoutOrder: {
       clientRequestId: requestId,
+      checkoutMode,
       expectedTotalPaise: quote.totalPaise,
       shippingAddress,
       billingAddress,
@@ -992,6 +996,9 @@ async function placeOrderHandler(request) {
   let billingAddress = submittedOrder.billingAddress
     ? validateShippingAddress(submittedOrder.billingAddress)
     : shippingAddress
+  let checkoutMode = submittedOrder.checkoutMode === 'buy-now'
+    ? 'buy-now'
+    : 'cart'
   const orderReference = db.doc(`orders/${uid}_${requestId}`)
   const now = new Date().toISOString()
 
@@ -1059,6 +1066,9 @@ async function placeOrderHandler(request) {
         throw new HttpsError('failed-precondition', 'The payment could not be verified for this order.')
       }
       if (paymentIntent.checkoutOrder) {
+        checkoutMode = paymentIntent.checkoutOrder.checkoutMode === 'buy-now'
+          ? 'buy-now'
+          : 'cart'
         shippingAddress = validateShippingAddress(
           paymentIntent.checkoutOrder.shippingAddress,
         )
@@ -1264,6 +1274,7 @@ async function placeOrderHandler(request) {
     const order = {
       id: orderReference.id,
       clientRequestId: requestId,
+      checkoutMode,
       userId: uid,
       customer: authUser.displayName || 'Pride customer',
       email: String(authUser.email || '').toLowerCase(),
@@ -1337,6 +1348,7 @@ async function placeOrderHandler(request) {
     const remainingCartItems = removePurchasedCartItems(
       userDocument.data()?.cartItems,
       quote.items,
+      checkoutMode,
     )
     transaction.set(
       userReference,

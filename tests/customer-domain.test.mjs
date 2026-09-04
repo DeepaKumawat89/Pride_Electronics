@@ -91,18 +91,28 @@ test('buy-now selection resolves current Firebase product data and stays isolate
   const selection = createBuyNowSelection(product, 2)
   const updatedProduct = { ...product, price: 1350, stock: 3 }
   const checkoutItems = resolveCheckoutSelection(selection, [updatedProduct])
+  const existingCart = [
+    { productId: 'product-1', quantity: 5 },
+    { productId: 'keep-in-cart', quantity: 1 },
+  ]
+  const purchasedItems = [{ productId: 'product-1', qty: 2 }]
   assert.equal(checkoutItems.length, 1)
   assert.equal(checkoutItems[0].product.price, 1350)
   assert.equal(checkoutItems[0].quantity, 2)
   assert.deepEqual(
     removePurchasedClientItems(
-      [
-        { productId: 'product-1', quantity: 2 },
-        { productId: 'keep-in-cart', quantity: 1 },
-      ],
-      [{ productId: 'product-1', qty: 2 }],
+      existingCart,
+      purchasedItems,
     ),
     [{ productId: 'keep-in-cart', quantity: 1 }],
+  )
+  assert.deepEqual(
+    removePurchasedClientItems(existingCart, purchasedItems, 'buy-now'),
+    existingCart,
+  )
+  assert.deepEqual(
+    removePurchasedCartItems(existingCart, purchasedItems, 'buy-now'),
+    existingCart,
   )
 })
 
