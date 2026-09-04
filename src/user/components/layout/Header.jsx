@@ -244,36 +244,36 @@ function PhoneBottomNavigation({ items }) {
   const activeIndex = items.findIndex((item) => item.active)
 
   useEffect(() => {
-    let lastScrollY = Math.max(window.scrollY, 0)
-    let animationFrame = 0
+    const scrollAnchors = new WeakMap()
+    scrollAnchors.set(window, Math.max(window.scrollY, 0))
 
-    const updateForScrollDirection = () => {
-      animationFrame = 0
-      const nextScrollY = Math.max(window.scrollY, 0)
+    const handleScroll = (event) => {
+      const scrollSource = event.target === document ? window : event.target
+      const nextScrollY = Math.max(
+        scrollSource === window ? window.scrollY : scrollSource.scrollTop,
+        0,
+      )
+      const lastScrollY = scrollAnchors.get(scrollSource) ?? 0
       const distance = nextScrollY - lastScrollY
 
       if (nextScrollY <= 8) {
         setCompact(false)
-        lastScrollY = nextScrollY
+        scrollAnchors.set(scrollSource, nextScrollY)
       } else if (distance >= 6) {
         setCompact(true)
-        lastScrollY = nextScrollY
+        scrollAnchors.set(scrollSource, nextScrollY)
       } else if (distance <= -6) {
         setCompact(false)
-        lastScrollY = nextScrollY
+        scrollAnchors.set(scrollSource, nextScrollY)
       }
     }
 
-    const handleScroll = () => {
-      if (!animationFrame) {
-        animationFrame = window.requestAnimationFrame(updateForScrollDirection)
-      }
-    }
-
-    window.addEventListener('scroll', handleScroll, { passive: true })
+    window.addEventListener('scroll', handleScroll, {
+      capture: true,
+      passive: true,
+    })
     return () => {
-      window.removeEventListener('scroll', handleScroll)
-      if (animationFrame) window.cancelAnimationFrame(animationFrame)
+      window.removeEventListener('scroll', handleScroll, true)
     }
   }, [])
 
@@ -366,8 +366,8 @@ function PhoneBottomNavigation({ items }) {
       data-header-control
       data-compact={compact ? 'true' : 'false'}
       aria-label="Mobile navigation"
-      className="fixed bottom-[max(0.65rem,env(safe-area-inset-bottom))] left-1/2 z-40 grid w-[calc(100%-2rem)] max-w-sm origin-bottom grid-cols-4 overflow-hidden rounded-[34px] border border-white/80 bg-white/60 p-1 shadow-[0_16px_42px_rgba(23,33,29,0.18),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-2xl transition-transform duration-300 ease-out motion-reduce:transition-none sm:hidden"
-      style={{ transform: `translateX(-50%) scale(${compact ? 0.86 : 1})` }}
+      className="fixed bottom-[max(0.65rem,env(safe-area-inset-bottom))] left-1/2 z-[60] grid w-[calc(100%-2rem)] max-w-sm origin-bottom grid-cols-4 overflow-hidden rounded-[34px] border border-white/80 bg-white/60 p-1 shadow-[0_16px_42px_rgba(23,33,29,0.18),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-2xl transition-transform duration-300 ease-out motion-reduce:transition-none sm:hidden"
+      style={{ transform: `translateX(-50%) scale(${compact ? 0.88 : 1})` }}
     >
       <span aria-hidden="true" className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent" />
       <span aria-hidden="true" className="pointer-events-none absolute -left-7 -top-8 size-24 rounded-full bg-[#ff5c35]/15 blur-2xl" />

@@ -466,7 +466,7 @@ export default function AccountPanel({
                   viewport.scrollHeight > viewport.clientHeight + 1
                 setContentScrolled(hasMoreContent && viewport.scrollTop > 0)
               }}
-              className="flex-1 overflow-y-auto bg-transparent p-4 sm:bg-white sm:p-7 lg:p-9"
+              className="flex-1 overflow-y-auto bg-transparent p-4 pb-24 sm:bg-white sm:p-7 lg:p-9"
             >
               <div ref={contentRef}>
                 {section === 'profile' && (

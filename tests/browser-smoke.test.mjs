@@ -171,6 +171,40 @@ test('storefront and admin render responsively without browser console errors', 
           'Phone navigation did not expand while scrolling up',
         )
 
+        const nestedScrollResult = await client.evaluate(`(async () => {
+          const navigation = document.querySelector('nav[aria-label="Mobile navigation"]')
+          const scroller = document.createElement('div')
+          scroller.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:40px;overflow:auto'
+          scroller.innerHTML = '<div style="height:400px"></div>'
+          document.body.append(scroller)
+
+          scroller.scrollTop = 120
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+          const compact = navigation?.dataset.compact
+          scroller.scrollTop = 20
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+          const expanded = navigation?.dataset.compact
+          const zIndex = getComputedStyle(navigation).zIndex
+          scroller.remove()
+
+          return { compact, expanded, zIndex }
+        })()`)
+        assert.equal(
+          nestedScrollResult.compact,
+          'true',
+          'Phone navigation did not compact for a nested page scroller',
+        )
+        assert.equal(
+          nestedScrollResult.expanded,
+          'false',
+          'Phone navigation did not expand for a nested page scroller',
+        )
+        assert.equal(
+          nestedScrollResult.zIndex,
+          '60',
+          'Phone navigation is not layered above the account panel',
+        )
+
         const navItemCenters = await client.evaluate(`(() => {
           const buttons = [...document.querySelectorAll('nav[aria-label="Mobile navigation"] button')]
           return buttons.slice(0, 2).map((button) => {
