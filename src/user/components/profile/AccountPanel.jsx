@@ -312,6 +312,7 @@ export default function AccountPanel({
   invoiceSettings = initialInvoiceSettings,
 }) {
   const [logoutOpen, setLogoutOpen] = useState(false)
+  const [mobileProfileDetailsOpen, setMobileProfileDetailsOpen] = useState(false)
   const [contentScrolled, setContentScrolled] = useState(false)
   const [wishlistQuery, setWishlistQuery] = useState('')
   const [orderQuery, setOrderQuery] = useState('')
@@ -368,34 +369,48 @@ export default function AccountPanel({
 
   if (!section) return null
   const [title, subtitle, SectionIcon] = sectionMeta[section]
+  const mobileAccountHomeOpen =
+    section === 'profile' && !mobileProfileDetailsOpen
 
   return (
-    <div className="fixed inset-0 z-50 isolate overflow-hidden bg-[#dcebdd]">
-      <div className="pointer-events-none absolute -right-32 -top-48 -z-10 size-[600px] rounded-full bg-[#9bcaa6]/35 blur-3xl" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-[62%] bg-gradient-to-t from-[#aacfb3]/45 to-transparent" />
+    <div className="fixed inset-0 z-50 isolate overflow-hidden bg-[#f7f8f5] sm:bg-[#dcebdd]">
+      <div className="pointer-events-none absolute -right-32 -top-48 -z-10 hidden size-[600px] rounded-full bg-[#9bcaa6]/35 blur-3xl sm:block" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 hidden h-[62%] bg-gradient-to-t from-[#aacfb3]/45 to-transparent sm:block" />
 
-      <div className="relative z-10 flex h-full flex-col gap-3 p-3 sm:gap-4 sm:p-4 md:flex-row md:gap-5 md:p-5 lg:gap-7 lg:px-8 lg:py-7 xl:px-10 xl:py-8">
+      <div className="relative z-10 flex h-full flex-col gap-0 p-0 sm:gap-4 sm:p-4 md:flex-row md:gap-5 md:p-5 lg:gap-7 lg:px-8 lg:py-7 xl:px-10 xl:py-8">
         <AccountNavigation
           section={section}
           user={user}
           onSectionChange={(nextSection) => {
             setOrderDetailsOpen(false)
+            setMobileProfileDetailsOpen(false)
             onSectionChange(nextSection)
           }}
           onClose={() => {
             setOrderDetailsOpen(false)
             onClose()
           }}
+          onMobileBack={() => {
+            setOrderDetailsOpen(false)
+            if (mobileAccountHomeOpen) {
+              onClose()
+              return
+            }
+            setMobileProfileDetailsOpen(false)
+            contentViewportRef.current?.scrollTo({ top: 0 })
+            if (section !== 'profile') onSectionChange('profile')
+          }}
+          mobileAccountHomeOpen={mobileAccountHomeOpen}
           onLogout={() => setLogoutOpen(true)}
         />
 
         <main className="min-h-0 min-w-0 flex-1">
-          <div className="flex h-full flex-col overflow-hidden rounded-[24px] bg-white shadow-[0_24px_70px_rgba(40,68,48,0.14)] md:rounded-[30px]">
+          <div className="flex h-full flex-col overflow-hidden bg-[#f7f8f5] sm:rounded-[24px] sm:bg-white sm:shadow-[0_24px_70px_rgba(40,68,48,0.14)] md:rounded-[30px]">
             {!(section === 'orders' && orderDetailsOpen) && (
               <header
-                className={`flex shrink-0 flex-wrap items-center gap-3 border-b px-5 py-4 transition-colors duration-300 sm:px-7 sm:py-5 lg:px-9 ${contentScrolled ? 'border-[#dce7d5] bg-[#eef4e8]' : 'border-slate-100 bg-white'}`}
+                className={`${['orders', 'wishlist'].includes(section) ? 'flex' : 'hidden sm:flex'} shrink-0 flex-wrap items-center gap-3 border-b px-4 py-3 transition-colors duration-300 sm:px-7 sm:py-5 lg:px-9 ${contentScrolled ? 'border-[#dce7d5] bg-[#eef4e8]' : 'border-slate-100 bg-[#f7f8f5] sm:bg-white'}`}
               >
-              <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div className="hidden min-w-0 flex-1 items-center gap-3 sm:flex">
                 <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#eff3e7] text-[#536a50]">
                   <SectionIcon size={20} />
                 </span>
@@ -451,11 +466,24 @@ export default function AccountPanel({
                   viewport.scrollHeight > viewport.clientHeight + 1
                 setContentScrolled(hasMoreContent && viewport.scrollTop > 0)
               }}
-              className="flex-1 overflow-y-auto bg-white p-5 sm:p-7 lg:p-9"
+              className="flex-1 overflow-y-auto bg-transparent p-4 sm:bg-white sm:p-7 lg:p-9"
             >
               <div ref={contentRef}>
                 {section === 'profile' && (
-                  <ProfileSection user={user} onUpdateUser={onUpdateUser} />
+                  <ProfileSection
+                    user={user}
+                    onUpdateUser={onUpdateUser}
+                    mobileAccountHomeOpen={mobileAccountHomeOpen}
+                    onOpenProfile={() => {
+                      setMobileProfileDetailsOpen(true)
+                      contentViewportRef.current?.scrollTo({ top: 0 })
+                    }}
+                    onSectionChange={(nextSection) => {
+                      setMobileProfileDetailsOpen(false)
+                      onSectionChange(nextSection)
+                    }}
+                    onLogout={() => setLogoutOpen(true)}
+                  />
                 )}
                 {section === 'wishlist' && (
                   <WishlistSection
@@ -552,20 +580,37 @@ function AccountNavigation({
   user,
   onSectionChange,
   onClose,
+  onMobileBack,
+  mobileAccountHomeOpen,
   onLogout,
 }) {
+  const mobileTitle = section === 'profile' && mobileAccountHomeOpen
+    ? 'Account'
+    : sectionMeta[section]?.[0] || 'Your account'
+
   return (
-    <aside className="shrink-0 rounded-[24px] bg-white/30 shadow-[0_16px_45px_rgba(40,68,48,0.08)] backdrop-blur-md md:w-64 md:rounded-[28px] lg:w-72">
-      <div className="flex h-14 items-center gap-3 px-3 sm:px-4 md:h-20 md:px-5">
+    <aside className="shrink-0 bg-[#f7f8f5] sm:rounded-[24px] sm:bg-white/30 sm:shadow-[0_16px_45px_rgba(40,68,48,0.08)] sm:backdrop-blur-md md:w-64 md:rounded-[28px] lg:w-72">
+      <div className="relative flex h-16 items-center justify-center gap-3 px-3 sm:h-14 sm:justify-start sm:px-4 md:h-20 md:px-5">
+        <button
+          type="button"
+          onClick={onMobileBack}
+          className="absolute left-3 grid size-10 shrink-0 place-items-center rounded-full bg-white/80 text-[#253329] shadow-sm transition active:-translate-x-0.5 sm:hidden"
+          aria-label={mobileAccountHomeOpen ? 'Back to store' : 'Back to account'}
+        >
+          <ArrowLeft size={19} />
+        </button>
         <button
           type="button"
           onClick={onClose}
-          className="grid size-10 shrink-0 place-items-center rounded-full bg-white/80 text-[#253329] shadow-sm transition hover:-translate-x-0.5 hover:bg-white"
+          className="hidden size-10 shrink-0 place-items-center rounded-full bg-white/80 text-[#253329] shadow-sm transition hover:-translate-x-0.5 hover:bg-white sm:grid"
           aria-label="Back to store"
         >
           <ArrowLeft size={19} />
         </button>
-        <div className="min-w-0">
+        <p className="max-w-[60%] truncate text-sm font-extrabold text-[#253329] sm:hidden">
+          {mobileTitle}
+        </p>
+        <div className="hidden min-w-0 sm:block">
           <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-[#5d705e]">
             Your account
           </p>
@@ -616,7 +661,7 @@ function AccountNavigation({
           </button>
         </nav>
       </div>
-      <nav className="flex gap-2 overflow-x-auto px-3 pb-3 sm:px-4 md:hidden">
+      <nav className="hidden gap-2 overflow-x-auto px-3 pb-3 sm:flex sm:px-4 md:hidden">
         {accountMenuItems.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -641,7 +686,14 @@ function AccountNavigation({
   )
 }
 
-function ProfileSection({ user, onUpdateUser }) {
+function ProfileSection({
+  user,
+  onUpdateUser,
+  mobileAccountHomeOpen,
+  onOpenProfile,
+  onSectionChange,
+  onLogout,
+}) {
   const [editing, setEditing] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -653,6 +705,12 @@ function ProfileSection({ user, onUpdateUser }) {
     gender: user.gender || '',
   })
   const fileRef = useRef(null)
+  const mobileShortcuts = accountMenuItems.filter(({ id }) =>
+    ['orders', 'wishlist', 'cart', 'coupons'].includes(id),
+  )
+  const mobileAccountLinks = accountMenuItems.filter(({ id }) =>
+    ['profile', 'address', 'payment'].includes(id),
+  )
 
   const handlePhoto = (event) => {
     const file = event.target.files?.[0]
@@ -681,9 +739,11 @@ function ProfileSection({ user, onUpdateUser }) {
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
-      <div className="relative isolate overflow-hidden rounded-[28px] bg-[#e5ecd6] p-6 sm:p-8">
+      <div className="relative isolate overflow-hidden rounded-[28px] bg-white p-6 pb-12 shadow-sm ring-1 ring-[#dce7d5] sm:bg-[#e5ecd6] sm:p-8 sm:shadow-none sm:ring-0">
         <div className="absolute -right-14 -top-20 -z-10 size-64 rounded-full bg-[#9bcaa6]/35 blur-3xl" />
-        <div className="flex flex-col items-center gap-5 text-center sm:flex-row sm:text-left">
+        <div className="absolute -bottom-16 -left-[12%] h-24 w-[125%] -rotate-2 rounded-[50%] bg-[#397a4a] sm:hidden" />
+        <div className="absolute -bottom-[4.6rem] -left-[10%] h-24 w-[125%] rotate-2 rounded-[50%] bg-[#ff5c35] sm:hidden" />
+        <div className="relative z-10 flex flex-col items-center gap-5 text-center sm:flex-row sm:text-left">
           <div className="relative">
             <Avatar user={user} size="size-28" textSize="text-3xl" />
             <button
@@ -721,13 +781,90 @@ function ProfileSection({ user, onUpdateUser }) {
           </div>
           <button
             type="button"
+            onClick={() => {
+              if (mobileAccountHomeOpen) {
+                setEditing(true)
+                onOpenProfile()
+                return
+              }
+              setEditing((current) => !current)
+            }}
+            className="inline-flex items-center gap-2 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white transition active:bg-[#ff5c35] sm:hidden"
+          >
+            <Pencil size={14} />
+            {mobileAccountHomeOpen || !editing ? 'Edit profile' : 'Cancel editing'}
+          </button>
+          <button
+            type="button"
             onClick={() => setEditing((current) => !current)}
-            className="inline-flex items-center gap-2 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white transition hover:bg-[#ff5c35]"
+            className="hidden items-center gap-2 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white transition hover:bg-[#ff5c35] sm:inline-flex"
           >
             <Pencil size={14} />
             {editing ? 'Cancel editing' : 'Edit profile'}
           </button>
         </div>
+      </div>
+
+      <div className={`${mobileAccountHomeOpen ? 'block' : 'hidden'} overflow-hidden sm:hidden`}>
+        <div className="px-5 pb-5 pt-6">
+          <h3 className="text-base font-extrabold tracking-tight text-slate-950">
+            My account
+          </h3>
+          <div className="mt-5 grid grid-cols-4 gap-2">
+            {mobileShortcuts.map(({ id, label, icon: Icon }, index) => {
+              const shortcutStyle = [
+                'bg-[#eef4e8] text-[#397a4a]',
+                'bg-[#fff0eb] text-[#e64b28]',
+                'bg-[#fff7df] text-[#b97700]',
+                'bg-[#edf3ea] text-[#536a50]',
+              ][index]
+
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onSectionChange(id)}
+                  className="group flex min-w-0 flex-col items-center gap-2 text-center"
+                >
+                  <span className={`grid size-12 place-items-center rounded-2xl transition group-active:scale-95 ${shortcutStyle}`}>
+                    <Icon size={20} />
+                  </span>
+                  <span className="w-full truncate text-[9px] font-bold text-slate-600">
+                    {label}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 px-3 py-2">
+          {mobileAccountLinks.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => id === 'profile' ? onOpenProfile() : onSectionChange(id)}
+              className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition active:bg-[#f4f7ef]"
+            >
+              <span className="grid size-9 place-items-center rounded-xl bg-[#f4f7ef] text-[#647765]">
+                <Icon size={16} />
+              </span>
+              <span className="flex-1 text-xs font-extrabold text-slate-700">
+                {label}
+              </span>
+              <ChevronRight size={15} className="text-slate-300" />
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={onLogout}
+          className="flex w-full items-center justify-center gap-2 border-t border-slate-100 px-5 py-4 text-xs font-extrabold text-red-600 transition active:bg-red-50"
+        >
+          <LogOut size={15} />
+          Logout
+        </button>
       </div>
       {error && (
         <p className="rounded-2xl bg-red-50 px-4 py-3 text-xs font-semibold text-red-600">
@@ -742,7 +879,7 @@ function ProfileSection({ user, onUpdateUser }) {
       )}
       <form
         onSubmit={saveProfile}
-        className="rounded-[26px] border border-slate-100 bg-[#fafbf8] p-5 sm:p-7"
+        className={`${mobileAccountHomeOpen ? 'hidden sm:block' : ''} rounded-[26px] border border-slate-100 bg-[#fafbf8] p-5 sm:p-7`}
       >
         <div className="mb-5 flex items-center justify-between">
           <div>

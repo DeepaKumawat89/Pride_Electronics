@@ -147,6 +147,69 @@ test('storefront and admin render responsively without browser console errors', 
       assert.ok(layout.scrollWidth <= width + 2, `${width}px layout overflows horizontally`)
       assert.match(layout.text, /Pride|Power your|Shop collection/i)
       assert.doesNotMatch(layout.text, /Unable to load|Something went wrong/i)
+
+      if (width === 390) {
+        const scrollTarget = await client.evaluate(`Math.min(
+          600,
+          document.documentElement.scrollHeight - window.innerHeight
+        )`)
+        assert.ok(scrollTarget > 20, 'Phone storefront is not vertically scrollable')
+
+        await client.evaluate(`window.scrollTo({ top: ${scrollTarget}, behavior: 'auto' })`)
+        await delay(500)
+        assert.equal(
+          await client.evaluate(`document.querySelector('nav[aria-label="Mobile navigation"]')?.dataset.compact`),
+          'true',
+          'Phone navigation did not compact while scrolling down',
+        )
+
+        await client.evaluate(`window.scrollTo({ top: Math.max(0, window.scrollY - 100), behavior: 'auto' })`)
+        await delay(500)
+        assert.equal(
+          await client.evaluate(`document.querySelector('nav[aria-label="Mobile navigation"]')?.dataset.compact`),
+          'false',
+          'Phone navigation did not expand while scrolling up',
+        )
+
+        const navItemCenters = await client.evaluate(`(() => {
+          const buttons = [...document.querySelectorAll('nav[aria-label="Mobile navigation"] button')]
+          return buttons.slice(0, 2).map((button) => {
+            const bounds = button.getBoundingClientRect()
+            return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 }
+          })
+        })()`)
+        assert.equal(navItemCenters.length, 2, 'Phone navigation items did not render')
+
+        await client.send('Input.dispatchMouseEvent', {
+          type: 'mousePressed',
+          x: navItemCenters[0].x,
+          y: navItemCenters[0].y,
+          button: 'left',
+          buttons: 1,
+          clickCount: 1,
+        })
+        await client.send('Input.dispatchMouseEvent', {
+          type: 'mouseMoved',
+          x: navItemCenters[1].x,
+          y: navItemCenters[1].y,
+          button: 'left',
+          buttons: 1,
+        })
+        await client.send('Input.dispatchMouseEvent', {
+          type: 'mouseReleased',
+          x: navItemCenters[1].x,
+          y: navItemCenters[1].y,
+          button: 'left',
+          buttons: 0,
+          clickCount: 1,
+        })
+        await delay(500)
+        assert.match(
+          await client.evaluate('window.location.hash'),
+          /^#products/,
+          'Dragging the active phone navigation indicator did not open Products',
+        )
+      }
     }
 
     await client.send('Page.navigate', { url: `${baseUrl}/#products` })

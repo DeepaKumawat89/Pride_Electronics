@@ -1669,7 +1669,7 @@ export default function UserApp({
     (accountError || (catalogDataRequired ? productsError : ''))
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-[#f7f8f5] pb-16 lg:pb-0">
+    <div className="min-h-screen overflow-x-clip bg-[#f7f8f5] pb-20 sm:pb-16 lg:pb-0">
       <AnnouncementBar shippingSettings={shippingSettings} />
       <Header
         products={products}
@@ -1923,7 +1923,7 @@ export default function UserApp({
       )}
 
       {toast && (
-        <div className="fixed bottom-5 left-1/2 z-[60] flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-full bg-slate-950 px-5 py-3.5 text-xs font-bold text-white shadow-2xl">
+        <div className="fixed bottom-20 left-1/2 z-[60] flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-full bg-slate-950 px-5 py-3.5 text-xs font-bold text-white shadow-2xl sm:bottom-5">
           <CheckCircle2 size={17} className="shrink-0 text-[#8fd0a4]" />
           <span className="flex-1 truncate">{toast}</span>
           <button type="button" onClick={() => setToast('')}>

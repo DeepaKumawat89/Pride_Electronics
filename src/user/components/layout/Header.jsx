@@ -5,6 +5,7 @@ import {
   ShoppingBag,
   UserRound,
 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import Brand from '../common/Brand'
 import ProfileMenu from '../profile/ProfileMenu'
 import ProductSearch from './ProductSearch'
@@ -43,6 +44,36 @@ export default function Header({
     if (user) onProfileSelect('profile')
     else onAuthOpen()
   }
+
+  const navigationItems = [
+    {
+      icon: Home,
+      label: 'Home',
+      active: !accountSection && !productsOpen && !contentPageOpen,
+      onClick: goHome,
+    },
+    {
+      icon: Grid2X2,
+      label: 'Products',
+      active: productsOpen && !accountSection,
+      onClick: onProductsOpen,
+    },
+    {
+      icon: ShoppingBag,
+      label: 'Cart',
+      count: cartCount,
+      active: accountSection === 'cart',
+      onClick: openCart,
+      disabled: authStatus === 'loading',
+    },
+    {
+      icon: UserRound,
+      label: 'Account',
+      active: Boolean(accountSection && accountSection !== 'cart'),
+      onClick: openAccount,
+      disabled: authStatus === 'loading',
+    },
+  ]
 
   return (
     <>
@@ -148,38 +179,16 @@ export default function Header({
         </div>
       </header>
 
+      <PhoneBottomNavigation items={navigationItems} />
+
       <nav
         data-header-control
-        aria-label="Mobile navigation"
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-slate-200 bg-white/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl lg:hidden"
+        aria-label="Tablet navigation"
+        className="fixed inset-x-0 bottom-0 z-40 hidden grid-cols-4 border-t border-slate-200 bg-white/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:grid lg:hidden"
       >
-        <MobileNavItem
-          icon={Home}
-          label="Home"
-          active={!accountSection && !productsOpen && !contentPageOpen}
-          onClick={goHome}
-        />
-        <MobileNavItem
-          icon={Grid2X2}
-          label="Products"
-          active={productsOpen && !accountSection}
-          onClick={onProductsOpen}
-        />
-        <MobileNavItem
-          icon={ShoppingBag}
-          label="Cart"
-          count={cartCount}
-          active={accountSection === 'cart'}
-          onClick={openCart}
-          disabled={authStatus === 'loading'}
-        />
-        <MobileNavItem
-          icon={UserRound}
-          label="Account"
-          active={Boolean(accountSection && accountSection !== 'cart')}
-          onClick={openAccount}
-          disabled={authStatus === 'loading'}
-        />
+        {navigationItems.map((item) => (
+          <MobileNavItem key={item.label} {...item} />
+        ))}
       </nav>
     </>
   )
@@ -221,6 +230,205 @@ function MobileNavItem({ icon: Icon, label, onClick, active = false, count = 0, 
         )}
       </span>
       <span className="truncate">{label}</span>
+    </button>
+  )
+}
+
+function PhoneBottomNavigation({ items }) {
+  const navRef = useRef(null)
+  const dragRef = useRef(null)
+  const suppressClickRef = useRef(false)
+  const [compact, setCompact] = useState(false)
+  const [dragPosition, setDragPosition] = useState(null)
+  const [dragging, setDragging] = useState(false)
+  const activeIndex = items.findIndex((item) => item.active)
+
+  useEffect(() => {
+    let lastScrollY = Math.max(window.scrollY, 0)
+    let animationFrame = 0
+
+    const updateForScrollDirection = () => {
+      animationFrame = 0
+      const nextScrollY = Math.max(window.scrollY, 0)
+      const distance = nextScrollY - lastScrollY
+
+      if (nextScrollY <= 8) {
+        setCompact(false)
+        lastScrollY = nextScrollY
+      } else if (distance >= 6) {
+        setCompact(true)
+        lastScrollY = nextScrollY
+      } else if (distance <= -6) {
+        setCompact(false)
+        lastScrollY = nextScrollY
+      }
+    }
+
+    const handleScroll = () => {
+      if (!animationFrame) {
+        animationFrame = window.requestAnimationFrame(updateForScrollDirection)
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      if (animationFrame) window.cancelAnimationFrame(animationFrame)
+    }
+  }, [])
+
+  const getDragPosition = (clientX) => {
+    const nav = navRef.current
+    if (!nav) return activeIndex
+
+    const bounds = nav.getBoundingClientRect()
+    const renderedScale = bounds.width / nav.offsetWidth || 1
+    const localX = (clientX - bounds.left) / renderedScale
+    const itemWidth = nav.clientWidth / items.length
+    const position = localX / itemWidth - 0.5
+    return Math.min(items.length - 1, Math.max(0, position))
+  }
+
+  const handlePointerDown = (event, index) => {
+    if (index !== activeIndex || items[index].disabled) return
+
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    }
+    suppressClickRef.current = false
+    setDragging(false)
+    setDragPosition(index)
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const handlePointerMove = (event) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+
+    const horizontalDistance = event.clientX - drag.startX
+    const verticalDistance = event.clientY - drag.startY
+
+    if (!drag.moved) {
+      if (Math.abs(horizontalDistance) < 6) return
+      if (Math.abs(verticalDistance) > Math.abs(horizontalDistance) * 1.25) return
+      drag.moved = true
+      setDragging(true)
+    }
+
+    event.preventDefault()
+    setDragPosition(getDragPosition(event.clientX))
+  }
+
+  const finishDrag = (event, cancelled = false) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+
+    dragRef.current = null
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    if (!cancelled && drag.moved) {
+      const nextIndex = Math.round(getDragPosition(event.clientX))
+      const nextItem = items[nextIndex]
+
+      suppressClickRef.current = true
+      window.setTimeout(() => {
+        suppressClickRef.current = false
+      }, 0)
+
+      if (nextIndex !== activeIndex && !nextItem.disabled) {
+        nextItem.onClick()
+      }
+    }
+
+    setDragging(false)
+    setDragPosition(null)
+  }
+
+  const handleItemClick = (event, item) => {
+    if (suppressClickRef.current) {
+      event.preventDefault()
+      return
+    }
+    item.onClick()
+  }
+
+  const indicatorPosition = dragPosition ?? activeIndex
+
+  return (
+    <nav
+      ref={navRef}
+      data-header-control
+      data-compact={compact ? 'true' : 'false'}
+      aria-label="Mobile navigation"
+      className="fixed bottom-[max(0.65rem,env(safe-area-inset-bottom))] left-1/2 z-40 grid w-[calc(100%-2rem)] max-w-sm origin-bottom grid-cols-4 overflow-hidden rounded-[34px] border border-white/80 bg-white/60 p-1 shadow-[0_16px_42px_rgba(23,33,29,0.18),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-2xl transition-transform duration-300 ease-out motion-reduce:transition-none sm:hidden"
+      style={{ transform: `translateX(-50%) scale(${compact ? 0.86 : 1})` }}
+    >
+      <span aria-hidden="true" className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent" />
+      <span aria-hidden="true" className="pointer-events-none absolute -left-7 -top-8 size-24 rounded-full bg-[#ff5c35]/15 blur-2xl" />
+      <span aria-hidden="true" className="pointer-events-none absolute -bottom-10 right-2 size-28 rounded-full bg-[#9bcaa6]/25 blur-2xl" />
+      {activeIndex >= 0 && (
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute bottom-1 left-1 top-1 w-[calc((100%-0.5rem)/4)] rounded-[30px] border border-white/80 bg-white/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_5px_16px_rgba(23,33,29,0.1)] backdrop-blur-xl will-change-transform motion-reduce:transition-none ${dragging ? 'duration-75' : 'transition-transform duration-300 ease-out'}`}
+          style={{ transform: `translate3d(${indicatorPosition * 100}%, 0, 0)` }}
+        />
+      )}
+      {items.map((item, index) => (
+        <PhoneNavItem
+          key={item.label}
+          {...item}
+          dragging={dragging && index === activeIndex}
+          onClick={(event) => handleItemClick(event, item)}
+          onPointerDown={(event) => handlePointerDown(event, index)}
+          onPointerMove={handlePointerMove}
+          onPointerUp={(event) => finishDrag(event)}
+          onPointerCancel={(event) => finishDrag(event, true)}
+        />
+      ))}
+    </nav>
+  )
+}
+
+function PhoneNavItem({
+  icon: Icon,
+  label,
+  onClick,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+  active = false,
+  count = 0,
+  disabled = false,
+  dragging = false,
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      aria-current={active ? 'page' : undefined}
+      className={`relative z-10 flex h-14 min-w-0 touch-pan-y flex-col items-center justify-center gap-0.5 rounded-[34px] border border-transparent px-1 text-[8px] font-extrabold transition-colors duration-300 disabled:cursor-wait disabled:opacity-50 ${active ? `${dragging ? 'cursor-grabbing' : 'cursor-grab'} text-slate-900` : 'text-slate-500 active:text-slate-950'}`}
+    >
+      <span className="relative z-10">
+        <Icon size={18} strokeWidth={active ? 2.5 : 2} />
+        {count > 0 && (
+          <span className="absolute -right-3 -top-2 grid min-w-3.5 place-items-center rounded-full bg-[#ff5c35] px-1 text-[7px] font-extrabold leading-3.5 text-white shadow-sm ring-2 ring-white/80">
+            {count}
+          </span>
+        )}
+      </span>
+      <span className="relative z-10 max-w-full truncate">{label}</span>
     </button>
   )
 }
