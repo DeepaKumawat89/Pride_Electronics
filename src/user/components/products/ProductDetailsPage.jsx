@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
   Check,
+  ChevronDown,
   ChevronRight,
   Heart,
   Minus,
@@ -37,19 +38,68 @@ import {
 } from '../../../utils/productPricing'
 
 function TechnicalSpecificationsSection({ specifications }) {
+  const [mobileExpanded, setMobileExpanded] = useState(false)
+
   if (!specifications.length) return null
 
+  const mobilePreviewCount = 5
+  const hasMoreMobileSpecifications = specifications.length > mobilePreviewCount
+  const mobileSpecificationsExpanded =
+    mobileExpanded || !hasMoreMobileSpecifications
+  const mobileSpecifications = mobileSpecificationsExpanded
+    ? specifications
+    : specifications.slice(0, mobilePreviewCount)
+
   return (
-    <section className="mt-6 border-b border-slate-100 pb-6" aria-labelledby="technical-specifications-heading">
-      <h3 id="technical-specifications-heading" className="text-sm font-extrabold text-slate-900">Technical Specifications</h3>
-      <dl className="mt-4 grid gap-px overflow-hidden rounded-[22px] border border-[#dcebdd] bg-[#dcebdd] sm:grid-cols-2">
-        {specifications.map((specification, index) => (
-          <div key={`${specification.id}-${index}`} className="grid grid-cols-[minmax(100px,0.8fr)_minmax(0,1.2fr)] gap-3 bg-[#f8faf7] px-4 py-3 text-xs sm:px-5">
-            <dt className="font-semibold text-slate-400">{specification.label}</dt>
-            <dd className="min-w-0 break-words font-bold text-slate-700">{specification.value}</dd>
-          </div>
-        ))}
-      </dl>
+    <section className="mt-6 border-b border-slate-100 pb-6" aria-label="Product specifications">
+      <div className="sm:hidden">
+        <button
+          type="button"
+          disabled={!hasMoreMobileSpecifications}
+          onClick={() => setMobileExpanded((current) => !current)}
+          aria-expanded={mobileSpecificationsExpanded}
+          aria-controls="mobile-product-specifications"
+          className="flex w-full items-center justify-between gap-4 text-left text-slate-900 disabled:cursor-default"
+        >
+          <h3 className="text-sm font-extrabold">Product Specifications</h3>
+          <span className="flex shrink-0 items-center gap-1.5 text-[9px] font-extrabold text-[#397a4a]">
+            {hasMoreMobileSpecifications && (
+              <span>
+                {mobileSpecificationsExpanded
+                  ? 'Show less'
+                  : `View all ${specifications.length}`}
+              </span>
+            )}
+            <ChevronDown
+              size={17}
+              className={`transition-transform duration-300 ${mobileSpecificationsExpanded ? 'rotate-180' : ''} ${hasMoreMobileSpecifications ? '' : 'opacity-50'}`}
+            />
+          </span>
+        </button>
+        <dl
+          id="mobile-product-specifications"
+          className="mt-4 grid gap-px overflow-hidden rounded-[22px] border border-[#dcebdd] bg-[#dcebdd]"
+        >
+          {mobileSpecifications.map((specification, index) => (
+            <div key={`${specification.id}-${index}`} className="grid grid-cols-[minmax(100px,0.8fr)_minmax(0,1.2fr)] gap-3 bg-[#f8faf7] px-4 py-3 text-xs">
+              <dt className="font-semibold text-slate-400">{specification.label}</dt>
+              <dd className="min-w-0 break-words font-bold text-slate-700">{specification.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      <div className="hidden sm:block">
+        <h3 className="text-sm font-extrabold text-slate-900">Technical Specifications</h3>
+        <dl className="mt-4 grid gap-px overflow-hidden rounded-[22px] border border-[#dcebdd] bg-[#dcebdd] sm:grid-cols-2">
+          {specifications.map((specification, index) => (
+            <div key={`${specification.id}-${index}`} className="grid grid-cols-[minmax(100px,0.8fr)_minmax(0,1.2fr)] gap-3 bg-[#f8faf7] px-4 py-3 text-xs sm:px-5">
+              <dt className="font-semibold text-slate-400">{specification.label}</dt>
+              <dd className="min-w-0 break-words font-bold text-slate-700">{specification.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
     </section>
   )
 }
@@ -63,6 +113,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
   const [quantity, setQuantity] = useState(1)
   const [selectedVariantId, setSelectedVariantId] = useState('')
   const [showBulkPopover, setShowBulkPopover] = useState(false)
+  const [mobileDescriptionExpanded, setMobileDescriptionExpanded] = useState(false)
   const popoverRef = useRef(null)
 
   useEffect(() => {
@@ -189,8 +240,25 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
             <div className="flex flex-col justify-center p-5 sm:p-7 lg:p-8">
               <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#ff5c35]">{product.category}</span>
 
-              <h1 className="mt-3 text-3xl font-extrabold leading-[1.1] tracking-[-0.045em] text-slate-950 sm:text-4xl">{product.name}</h1>
-              <p className="mt-3 text-sm leading-6 text-slate-600">{product.description}</p>
+              <h1 className="mt-3 max-w-full break-words text-3xl font-extrabold leading-[1.1] tracking-[-0.045em] text-slate-950 sm:max-w-none sm:break-normal sm:text-4xl">{product.name}</h1>
+              <div className="mt-3 sm:hidden">
+                <p
+                  id="mobile-product-description"
+                  className={`break-words text-sm leading-6 text-slate-600 ${mobileDescriptionExpanded ? '' : 'line-clamp-3'}`}
+                >
+                  {product.description}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setMobileDescriptionExpanded((current) => !current)}
+                  aria-expanded={mobileDescriptionExpanded}
+                  aria-controls="mobile-product-description"
+                  className="mt-1.5 text-xs font-extrabold text-[#397a4a] transition hover:text-[#ff5c35]"
+                >
+                  {mobileDescriptionExpanded ? 'Less' : 'More'}
+                </button>
+              </div>
+              <p className="mt-3 hidden text-sm leading-6 text-slate-600 sm:block">{product.description}</p>
 
               {requiresVariantSelection && (
                 <div className="mt-4">

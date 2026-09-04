@@ -77,38 +77,24 @@ export default function ProductsPage({
   return (
     <div className="min-h-[70vh]">
       <section className="mx-auto max-w-[1440px] px-4 pt-5 sm:px-6 sm:pt-7 lg:px-10 lg:pt-9">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-xs font-extrabold text-slate-700 transition hover:border-[#ff5c35] hover:text-[#ff5c35]"
-        >
-          <ArrowLeft size={15} />
-          Back
-        </button>
-
-        <div className="relative mt-4 overflow-visible rounded-[28px] bg-[#dcebdd] px-5 py-7 sm:px-8 sm:py-9 lg:px-12 lg:py-11">
-          <div className="pointer-events-none absolute -right-20 -top-28 size-72 rounded-full bg-[#9bcaa6]/35 blur-3xl" />
-          <div className="relative z-10 max-w-3xl">
-            <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#397a4a] sm:text-xs">
-              Browse the complete collection
-            </p>
-            <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.05em] text-[#17211d] sm:text-4xl lg:text-5xl">
-              Find the right tech for you.
-            </h1>
-            <p className="mt-3 max-w-2xl text-xs font-medium leading-6 text-[#526559] sm:text-sm">
-              Search all products or browse category-wise using the same live
-              catalog managed in Firebase.
-            </p>
-            <div className="mt-6 max-w-2xl">
-              <ProductSearch
-                products={products}
-                value={query}
-                onChange={onQueryChange}
-                onSubmitQuery={onSearchSubmit}
-                onSelect={onProductSelect}
-                placeholder="Search products, brands, features..."
-              />
-            </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-xs font-extrabold text-slate-700 transition hover:border-[#ff5c35] hover:text-[#ff5c35]"
+          >
+            <ArrowLeft size={15} />
+            Back
+          </button>
+          <div className="ml-auto min-w-0 w-full max-w-xl">
+            <ProductSearch
+              products={products}
+              value={query}
+              onChange={onQueryChange}
+              onSubmitQuery={onSearchSubmit}
+              onSelect={onProductSelect}
+              placeholder="Search products, brands, features..."
+            />
           </div>
         </div>
       </section>

@@ -137,12 +137,16 @@ test('storefront and admin render responsively without browser console errors', 
         mobile: width < 600,
       })
       await client.send('Page.navigate', { url: baseUrl })
-      await delay(4_000)
-      const layout = await client.evaluate(`({
-        width: window.innerWidth,
-        scrollWidth: document.documentElement.scrollWidth,
-        text: document.body.innerText.slice(0, 3000)
-      })`)
+      let layout
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        await delay(250)
+        layout = await client.evaluate(`({
+          width: window.innerWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+          text: document.body.innerText.slice(0, 3000)
+        })`)
+        if (layout.text.trim()) break
+      }
       assert.equal(layout.width, width)
       assert.ok(layout.scrollWidth <= width + 2, `${width}px layout overflows horizontally`)
       assert.match(layout.text, /Pride|Power your|Shop collection/i)
@@ -302,6 +306,86 @@ test('storefront and admin render responsively without browser console errors', 
         detailsScrollTop,
         'Product details page jumped back to the top',
       )
+
+      await client.send('Emulation.setDeviceMetricsOverride', {
+        width: 390,
+        height: 844,
+        deviceScaleFactor: 1,
+        mobile: true,
+      })
+      await client.send('Page.reload')
+      await delay(4_000)
+
+      const mobileDetails = await client.evaluate(`(() => {
+        const heading = document.querySelector('h1')
+        const description = document.querySelector('#mobile-product-description')
+        const descriptionToggle = document.querySelector('button[aria-controls="mobile-product-description"]')
+        const specificationList = document.querySelector('#mobile-product-specifications')
+        const specificationSection = specificationList?.closest('section')
+        const allSpecificationList = specificationSection?.querySelectorAll('dl')[1]
+
+        return {
+          headingFits: heading.scrollWidth <= heading.clientWidth + 1,
+          lineClamp: getComputedStyle(description).webkitLineClamp,
+          descriptionToggle: descriptionToggle?.innerText,
+          mobileSpecificationRows: specificationList?.children.length || 0,
+          allSpecificationRows: allSpecificationList?.children.length || 0,
+        }
+      })()`)
+      assert.equal(mobileDetails.headingFits, true, 'Mobile product name does not wrap within its container')
+      assert.equal(mobileDetails.lineClamp, '3', 'Mobile product description is not initially limited to three lines')
+      assert.equal(mobileDetails.descriptionToggle, 'More', 'Mobile product description does not offer a More control')
+
+      await client.evaluate(`document.querySelector('button[aria-controls="mobile-product-description"]')?.click()`)
+      await delay(200)
+      assert.equal(
+        await client.evaluate(`document.querySelector('button[aria-controls="mobile-product-description"]')?.innerText`),
+        'Less',
+        'Mobile product description did not expand',
+      )
+
+      if (mobileDetails.allSpecificationRows > 0) {
+        assert.equal(
+          mobileDetails.mobileSpecificationRows,
+          Math.min(5, mobileDetails.allSpecificationRows),
+          'Mobile specification preview does not show the first five rows',
+        )
+        if (mobileDetails.allSpecificationRows > 5) {
+          await client.evaluate(`document.querySelector('button[aria-controls="mobile-product-specifications"]')?.click()`)
+          await delay(200)
+          assert.equal(
+            await client.evaluate(`document.querySelector('#mobile-product-specifications')?.children.length`),
+            mobileDetails.allSpecificationRows,
+            'Mobile specification section did not expand to all rows',
+          )
+        }
+      }
+
+      await client.send('Emulation.setDeviceMetricsOverride', {
+        width: 820,
+        height: 1180,
+        deviceScaleFactor: 1,
+        mobile: false,
+      })
+      await delay(200)
+      const tabletDetails = await client.evaluate(`(() => {
+        const mobileDescription = document.querySelector('#mobile-product-description')
+        const desktopDescription = mobileDescription?.parentElement.nextElementSibling
+        const mobileSpecifications = document.querySelector('#mobile-product-specifications')
+        const desktopSpecifications = mobileSpecifications?.parentElement.nextElementSibling
+        return {
+          mobileDescriptionHidden: getComputedStyle(mobileDescription.parentElement).display === 'none',
+          desktopDescriptionVisible: getComputedStyle(desktopDescription).display !== 'none',
+          mobileSpecificationsHidden: !mobileSpecifications || getComputedStyle(mobileSpecifications.parentElement).display === 'none',
+          desktopSpecificationsVisible: !desktopSpecifications || getComputedStyle(desktopSpecifications).display !== 'none',
+        }
+      })()`)
+      assert.deepEqual(tabletDetails, {
+        mobileDescriptionHidden: true,
+        desktopDescriptionVisible: true,
+        mobileSpecificationsHidden: true,
+        desktopSpecificationsVisible: true,
+      }, 'Phone-only product details controls leaked into the tablet layout')
     }
 
     await client.send('Page.navigate', { url: `${baseUrl}/admin` })

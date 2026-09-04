@@ -780,7 +780,7 @@ export default function UserApp({
     setQuery(nextQuery)
     setCategory(nextCategory)
     setProductsOpen(true)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.scrollTo({ top: 0, behavior: 'auto' })
   }
 
   const closeProducts = () => {
