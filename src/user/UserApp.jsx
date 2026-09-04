@@ -1592,7 +1592,7 @@ export default function UserApp({
     setCheckoutSelection(null)
     sessionStorage.removeItem(CHECKOUT_SELECTION_SESSION_KEY)
     checkoutHistoryActive.current = false
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.scrollTo({ top: 0, behavior: 'auto' })
     notify(`Order ${savedOrder.id} placed successfully`)
     return savedOrder
   }
