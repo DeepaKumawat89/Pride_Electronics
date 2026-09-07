@@ -45,7 +45,6 @@ import { initialInvoiceSettings } from '../../../data/invoice'
 import {
   AddressAutocompleteInput,
   CitySelectionInput,
-  CurrentLocationControl,
   PincodeAutocompleteInput,
   StateSelectionInput,
 } from '../address/AddressAssist'
@@ -1680,9 +1679,6 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
     city: '',
     state: '',
     pincode: '',
-    coordinates: null,
-    latitude: null,
-    longitude: null,
     isDefault: false,
   }
   const [formOpen, setFormOpen] = useState(false)
@@ -1718,10 +1714,14 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
       setFormError('Select a state and city before saving this address.')
       return
     }
+    if (!addressAssist.isPincodeVerified) {
+      setFormError(addressAssist.getPincodeValidationMessage())
+      return
+    }
     if (
       !permission ||
       !deliveryAvailability.available ||
-      addressAssist.pincodeLookup.invalid
+      !addressAssist.isPincodeVerified
     ) return
     onSave(normalizeAddress(form))
     closeForm()
@@ -1820,10 +1820,6 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
                 className={fieldClass}
               />
             </Field>
-            <CurrentLocationControl
-              assist={addressAssist}
-              className="sm:col-span-2"
-            />
             <Field label="House / Flat">
               <input
                 required
@@ -1879,7 +1875,7 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
               />
             </Field>
             <div className="sm:col-span-2">
-              {formError && (!form.state || !form.city) && (
+              {formError && (
                 <p className="mb-3 text-[10px] font-bold text-red-600">
                   {formError}
                 </p>
@@ -1916,7 +1912,7 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
               Cancel
             </button>
             <button
-              disabled={!permission || !deliveryAvailability.available || addressAssist.pincodeLookup.invalid}
+              disabled={!permission || !deliveryAvailability.available || !addressAssist.isPincodeVerified}
               className="rounded-full bg-[#253329] px-5 py-2.5 text-xs font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {form.id ? 'Update address' : 'Save address'}

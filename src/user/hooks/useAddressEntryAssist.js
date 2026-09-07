@@ -1,86 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  getBrowserCoordinates,
-  isGeoapifyConfigured,
-  lookupIndianPincode,
-  reverseGeocodeIndianCoordinates,
-  searchIndianAddresses,
-} from '../services/addressLookup'
-import {
-  getCanonicalIndianState,
-  getIndianCities,
-  INDIAN_STATES,
-  isCityInIndianState,
-} from '../utils/indianLocations'
+import { useEffect, useState } from 'react'
+import { lookupIndianPincode } from '../services/addressLookup'
+import { getCanonicalIndianState } from '../utils/indianLocations'
 
 const idleState = { status: 'idle', message: '', suggestions: [] }
 
 const isCancelledRequest = (error) => error?.name === 'AbortError'
 
 export function useAddressEntryAssist(form, setForm, enabled = true) {
-  const [addressLookup, setAddressLookup] = useState(idleState)
   const [pincodeLookup, setPincodeLookup] = useState(idleState)
-  const [locationLookup, setLocationLookup] = useState({
-    status: 'idle',
-    message: '',
-  })
-  const skipAddressLookup = useRef('')
-  const locationController = useRef(null)
-  const canonicalState = getCanonicalIndianState(form.state)
-  const cityOptions = useMemo(
-    () => getIndianCities(canonicalState),
-    [canonicalState],
-  )
-
-  useEffect(
-    () => () => {
-      locationController.current?.abort()
-    },
-    [],
-  )
-
-  useEffect(() => {
-    if (!enabled) return undefined
-    const query = String(form.street || '').trim()
-    if (skipAddressLookup.current === query) {
-      skipAddressLookup.current = ''
-      return undefined
-    }
-    if (query.length < 3) {
-      return undefined
-    }
-
-    const controller = new AbortController()
-    const timer = window.setTimeout(() => {
-      setAddressLookup({ status: 'loading', message: '', suggestions: [] })
-      searchIndianAddresses(query, {
-        signal: controller.signal,
-        bias: form.coordinates,
-      })
-        .then((suggestions) => {
-          setAddressLookup({
-            status: suggestions.length ? 'success' : 'empty',
-            message: suggestions.length
-              ? ''
-              : 'No matching Indian addresses found.',
-            suggestions,
-          })
-        })
-        .catch((error) => {
-          if (isCancelledRequest(error)) return
-          setAddressLookup({
-            status: 'error',
-            message: error.message,
-            suggestions: [],
-          })
-        })
-    }, 350)
-
-    return () => {
-      window.clearTimeout(timer)
-      controller.abort()
-    }
-  }, [enabled, form.coordinates, form.street])
 
   useEffect(() => {
     if (!enabled) return undefined
@@ -93,13 +20,25 @@ export function useAddressEntryAssist(form, setForm, enabled = true) {
     const timer = window.setTimeout(() => {
       setPincodeLookup({ status: 'loading', message: '', suggestions: [] })
       lookupIndianPincode(pincode, { signal: controller.signal })
-        .then((suggestions) => {
+        .then((result) => {
+          const state = getCanonicalIndianState(result.state) || result.state
+          setForm((current) => {
+            if (String(current.pincode || '').trim() !== result.pincode) {
+              return current
+            }
+            return {
+              ...current,
+              city: result.city,
+              state,
+              line1: '',
+            }
+          })
           setPincodeLookup({
-            status: suggestions.length ? 'success' : 'empty',
-            message: suggestions.length
-              ? ''
-              : 'No post offices were found for this PIN code.',
-            suggestions,
+            status: 'success',
+            message: `PIN code verified for ${result.city}, ${state}.`,
+            suggestions: [],
+            result: { ...result, state },
+            invalid: false,
           })
         })
         .catch((error) => {
@@ -108,9 +47,7 @@ export function useAddressEntryAssist(form, setForm, enabled = true) {
             status: 'error',
             message: error.message,
             suggestions: [],
-            invalid:
-              error.code === 'invalid_pincode' ||
-              error.code === 'pincode_not_found',
+            invalid: true,
           })
         })
     }, 150)
@@ -122,14 +59,10 @@ export function useAddressEntryAssist(form, setForm, enabled = true) {
   }, [enabled, form.pincode])
 
   const updateStreet = (street) => {
-    setAddressLookup(idleState)
     setForm((current) => ({
       ...current,
       street,
       line1: '',
-      coordinates: null,
-      latitude: null,
-      longitude: null,
     }))
   }
 
@@ -138,169 +71,47 @@ export function useAddressEntryAssist(form, setForm, enabled = true) {
     setForm((current) => ({
       ...current,
       pincode,
-      coordinates: null,
-      latitude: null,
-      longitude: null,
+      city: '',
+      state: '',
     }))
   }
 
-  const selectAddress = (suggestion) => {
-    skipAddressLookup.current = suggestion.street
-    setForm((current) => ({
-      ...current,
-      houseFlat: suggestion.houseFlat || current.houseFlat,
-      street: suggestion.street || current.street,
-      area: suggestion.area || current.area,
-      city: suggestion.city || current.city,
-      state: suggestion.state
-        ? getCanonicalIndianState(suggestion.state)
-        : current.state,
-      pincode: suggestion.pincode || current.pincode,
-      line1: '',
-      coordinates: suggestion.coordinates,
-      latitude: suggestion.coordinates?.latitude ?? current.latitude ?? null,
-      longitude: suggestion.coordinates?.longitude ?? current.longitude ?? null,
-    }))
-    setAddressLookup(idleState)
-    setPincodeLookup(idleState)
-  }
+  const verifiedPincode = pincodeLookup.result
+  const isPincodeVerified = Boolean(
+    pincodeLookup.status === 'success' &&
+      verifiedPincode &&
+      String(form.pincode || '').trim() === verifiedPincode.pincode &&
+      String(form.city || '').trim().toLowerCase() ===
+        verifiedPincode.city.toLowerCase() &&
+      getCanonicalIndianState(form.state).toLowerCase() ===
+        getCanonicalIndianState(verifiedPincode.state).toLowerCase(),
+  )
 
-  const selectPincode = (suggestion) => {
-    setForm((current) => ({
-      ...current,
-      area: suggestion.locality || current.area,
-      city: suggestion.city || current.city,
-      state: suggestion.state
-        ? getCanonicalIndianState(suggestion.state)
-        : current.state,
-      pincode: suggestion.pincode,
-      line1: '',
-    }))
-    setPincodeLookup(idleState)
-  }
-
-  const selectState = (state) => {
-    const nextState = getCanonicalIndianState(state)
-    setForm((current) => {
-      const stateChanged =
-        getCanonicalIndianState(current.state) !== nextState
-      return {
-        ...current,
-        state: nextState,
-        city:
-          !stateChanged || isCityInIndianState(current.city, nextState)
-            ? current.city
-            : '',
-        pincode: stateChanged ? '' : current.pincode,
-        line1: '',
-        coordinates: stateChanged ? null : current.coordinates,
-        latitude: stateChanged ? null : current.latitude,
-        longitude: stateChanged ? null : current.longitude,
-      }
-    })
-    setPincodeLookup(idleState)
-  }
-
-  const selectCity = (city) => {
-    setForm((current) => {
-      const cityChanged = current.city !== city
-      return {
-        ...current,
-        city,
-        pincode: cityChanged ? '' : current.pincode,
-        line1: '',
-        coordinates: cityChanged ? null : current.coordinates,
-        latitude: cityChanged ? null : current.latitude,
-        longitude: cityChanged ? null : current.longitude,
-      }
-    })
-    setPincodeLookup(idleState)
-  }
-
-  const useCurrentLocation = async () => {
-    if (!isGeoapifyConfigured()) {
-      setLocationLookup({
-        status: 'error',
-        message:
-          'Current-location address lookup is not configured. Please enter the address manually.',
-      })
-      return
+  const getPincodeValidationMessage = () => {
+    const pincode = String(form.pincode || '').trim()
+    if (!/^[1-8]\d{5}$/.test(pincode)) {
+      return 'Enter a valid 6-digit Indian PIN code.'
     }
-    locationController.current?.abort()
-    const controller = new AbortController()
-    locationController.current = controller
-    setLocationLookup({ status: 'loading', message: '' })
-    try {
-      const coordinates = await getBrowserCoordinates()
-      if (controller.signal.aborted) return
-      const suggestion = await reverseGeocodeIndianCoordinates(
-        coordinates.latitude,
-        coordinates.longitude,
-        { signal: controller.signal },
-      )
-      if (controller.signal.aborted) return
-      const resolvedCoordinates = {
-        latitude: coordinates.latitude,
-        longitude: coordinates.longitude,
-        accuracy: coordinates.accuracy,
-      }
-      skipAddressLookup.current = suggestion.street
-      setForm((current) => ({
-        ...current,
-        houseFlat: suggestion.houseFlat || current.houseFlat,
-        street: suggestion.street || current.street,
-        area: suggestion.area || current.area,
-        city: suggestion.city || current.city,
-        state: suggestion.state
-          ? getCanonicalIndianState(suggestion.state)
-          : current.state,
-        pincode: suggestion.pincode || current.pincode,
-        line1: '',
-        coordinates: resolvedCoordinates,
-        latitude: coordinates.latitude,
-        longitude: coordinates.longitude,
-      }))
-      setAddressLookup(idleState)
-      setPincodeLookup(idleState)
-      setLocationLookup({
-        status: 'success',
-        message: 'Current location added. Please verify the address details.',
-      })
-    } catch (error) {
-      if (controller.signal.aborted || isCancelledRequest(error)) return
-      setLocationLookup({ status: 'error', message: error.message })
-    } finally {
-      if (locationController.current === controller) {
-        locationController.current = null
-      }
+    if (pincodeLookup.status === 'loading') {
+      return 'Please wait while the PIN code is being verified.'
     }
+    if (pincodeLookup.status === 'error') return pincodeLookup.message
+    if (!isPincodeVerified) {
+      return 'The PIN code, city, and state do not match. Enter the PIN code again to fetch the correct city and state.'
+    }
+    return ''
   }
 
   const reset = () => {
-    locationController.current?.abort()
-    locationController.current = null
-    skipAddressLookup.current = ''
-    setAddressLookup(idleState)
     setPincodeLookup(idleState)
-    setLocationLookup({ status: 'idle', message: '' })
   }
 
   return {
-    addressLookup,
     pincodeLookup,
-    locationLookup,
+    isPincodeVerified,
+    getPincodeValidationMessage,
     updateStreet,
     updatePincode,
-    selectAddress,
-    selectPincode,
-    selectState,
-    selectCity,
-    locationOptions: {
-      states: INDIAN_STATES,
-      cities: cityOptions,
-      hasSelectedState: INDIAN_STATES.includes(canonicalState),
-    },
-    useCurrentLocation,
     reset,
   }
 }

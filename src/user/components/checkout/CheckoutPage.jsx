@@ -42,7 +42,6 @@ import { initialAdminSettings } from '../../../data/adminSettings'
 import {
   AddressAutocompleteInput,
   CitySelectionInput,
-  CurrentLocationControl,
   PincodeAutocompleteInput,
   StateSelectionInput,
 } from '../address/AddressAssist'
@@ -82,9 +81,6 @@ const createCheckoutAddress = (user, address = {}) => {
     city: normalizedAddress.city || '',
     state: normalizedAddress.state || '',
     pincode: normalizedAddress.pincode || '',
-    coordinates: normalizedAddress.coordinates || null,
-    latitude: normalizedAddress.latitude ?? null,
-    longitude: normalizedAddress.longitude ?? null,
     isDefault: Boolean(normalizedAddress.isDefault),
   }
 }
@@ -343,8 +339,8 @@ export default function CheckoutPage({
       setDeliveryAddressError(formDeliveryAvailability.message)
       return null
     }
-    if (deliveryAssist.pincodeLookup.invalid) {
-      setDeliveryAddressError(deliveryAssist.pincodeLookup.message)
+    if (!deliveryAssist.isPincodeVerified) {
+      setDeliveryAddressError(deliveryAssist.getPincodeValidationMessage())
       return null
     }
     const saved = onSaveAddress?.(normalizeAddress({
@@ -384,6 +380,10 @@ export default function CheckoutPage({
     }
     if (!/^[6-9]\d{9}$/.test(billingAddressForm.phone)) {
       setBillingAddressError('Enter a valid 10-digit Indian mobile number.')
+      return null
+    }
+    if (!billingAssist.isPincodeVerified) {
+      setBillingAddressError(billingAssist.getPincodeValidationMessage())
       return null
     }
     const saved = onSaveAddress?.(normalizeAddress({
@@ -790,8 +790,6 @@ export default function CheckoutPage({
               {/* Manual Delivery Address Form */}
               {(useManualDeliveryAddress || !savedAddresses.length) && (
                 <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <CurrentLocationControl assist={deliveryAssist} className="sm:col-span-2" />
-                  
                   <div>
                     <label className="mb-1 block text-[11px] font-bold text-slate-700">Full Name *</label>
                     <input
@@ -907,7 +905,7 @@ export default function CheckoutPage({
                         </button>
                         <button
                           type="button"
-                          disabled={!formDeliveryAvailability.available || deliveryAssist.pincodeLookup.invalid}
+                          disabled={!formDeliveryAvailability.available || !deliveryAssist.isPincodeVerified}
                           onClick={saveDeliveryAddressInline}
                           className="rounded-lg bg-[#253329] px-4 py-1.5 text-xs font-bold text-white transition hover:bg-[#397a4a] disabled:opacity-40"
                         >
