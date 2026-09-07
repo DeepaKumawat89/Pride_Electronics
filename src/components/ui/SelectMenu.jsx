@@ -13,6 +13,7 @@ export default function SelectMenu({
   onChange,
   options,
   placeholder = 'Select an option',
+  required = false,
   disabled = false,
   ariaLabel,
   className = '',
@@ -50,6 +51,7 @@ export default function SelectMenu({
         aria-controls={menuId}
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-required={required}
         onClick={() => setOpen((current) => !current)}
         className={`flex w-full items-center justify-between gap-3 text-left disabled:cursor-not-allowed disabled:opacity-55 ${buttonClassName}`}
       >

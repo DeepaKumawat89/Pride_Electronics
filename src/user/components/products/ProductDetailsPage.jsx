@@ -17,7 +17,7 @@ import {
   X,
   Zap,
 } from 'lucide-react'
-import { formatCurrency, hasValidPrice, parsePrice } from '../../utils/currency'
+import { formatCurrency, formatDiscount, hasValidPrice, parsePrice } from '../../utils/currency'
 import { getPinDeliveryAvailability } from '../../utils/address'
 import {
   getDeliveryEstimate,
@@ -301,7 +301,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                 </span>
                 {displayProduct.discount && (
                   <span className="rounded-full bg-[#e4f1e7] px-2.5 py-1 text-[10px] font-extrabold text-[#366643]">
-                    {displayProduct.discount}
+                    {formatDiscount(displayProduct.discount)}
                   </span>
                 )}
 

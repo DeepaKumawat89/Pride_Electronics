@@ -108,7 +108,10 @@ function SpecificationInput({ field, value, onChange, error }) {
 
   return (
     <div className={field.type === 'textarea' || field.type === 'multi-select' ? 'sm:col-span-2' : ''}>
-      <span className="mb-2 block text-[9px] font-extrabold uppercase tracking-wider text-slate-400">{label}{field.required ? ' *' : ''}</span>
+      <span className="mb-2 block text-[9px] font-extrabold uppercase tracking-wider text-slate-400">
+        {label}
+        {field.required && <span className="ml-0.5 text-red-600" aria-hidden="true">*</span>}
+      </span>
       {field.type === 'textarea' && <textarea {...commonProps} className={`${inputClass} min-h-24 py-3`} />}
       {field.type === 'text' && <input type="text" {...commonProps} />}
       {field.type === 'number' && <input type="number" step="any" {...commonProps} />}

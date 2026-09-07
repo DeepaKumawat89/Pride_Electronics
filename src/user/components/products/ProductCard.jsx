@@ -1,5 +1,5 @@
 import { Heart, ShoppingBag, Star, Zap } from 'lucide-react'
-import { formatCurrency, hasValidPrice, parsePrice } from '../../utils/currency'
+import { formatCurrency, formatDiscount, hasValidPrice, parsePrice } from '../../utils/currency'
 
 export default function ProductCard({
   product,
@@ -46,7 +46,7 @@ export default function ProductCard({
         <div className="mt-3 flex items-end justify-between gap-3">
           <div><strong className="text-base font-extrabold text-slate-950">{priceAvailable ? formatCurrency(parsePrice(product.price)) : 'Price unavailable'}</strong>{priceAvailable && hasValidPrice(product.originalPrice) && <span className="ml-2 text-xs font-medium text-slate-400 line-through">{formatCurrency(parsePrice(product.originalPrice))}</span>}</div>
           <span className="shrink-0 text-right">
-            <span className="block rounded-full bg-[#e4f1e7] px-2 py-1 text-[9px] font-extrabold text-[#366643]">{product.discount}</span>
+            <span className="block rounded-full bg-[#e4f1e7] px-2 py-1 text-[9px] font-extrabold text-[#366643]">{formatDiscount(product.discount)}</span>
             <span className={`mt-1 block text-[8px] font-extrabold ${product.stock <= 0 ? 'text-red-500' : product.stock <= 10 ? 'text-amber-600' : 'text-emerald-700'}`}>{availability}</span>
           </span>
         </div>

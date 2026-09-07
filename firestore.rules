@@ -61,6 +61,48 @@ service cloud.firestore {
         (data[field] is number && data[field] >= 0);
     }
 
+    function isCurrencyAmount(value, allowZero) {
+      return value is number &&
+        (allowZero ? value >= 0 : value > 0) &&
+        value * 100 == int(value * 100);
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll([
+          'name', 'brand', 'description', 'categoryId', 'category',
+          'subcategoryId', 'subcategory', 'originalPrice', 'price', 'stock',
+          'modelNumber', 'specs'
+        ]) &&
+        data.name is string && data.name.size() >= 3 && data.name.size() <= 200 &&
+        data.brand is string && data.brand.size() > 0 && data.brand.size() <= 100 &&
+        data.description is string && data.description.size() >= 20 && data.description.size() <= 5000 &&
+        data.categoryId is string && data.categoryId.size() > 0 && data.categoryId.size() <= 200 &&
+        data.category is string && data.category.size() > 0 && data.category.size() <= 200 &&
+        data.subcategoryId is string && data.subcategoryId.size() > 0 && data.subcategoryId.size() <= 200 &&
+        data.subcategory is string && data.subcategory.size() > 0 && data.subcategory.size() <= 200 &&
+        isCurrencyAmount(data.originalPrice, false) &&
+        isCurrencyAmount(data.price, true) &&
+        data.price <= data.originalPrice &&
+        data.stock is int && data.stock >= 0 &&
+        data.modelNumber is string && data.modelNumber.size() > 0 && data.modelNumber.size() <= 200 &&
+        data.specs is list && data.specs.size() > 0 && data.specs.size() <= 100 &&
+        (!data.keys().hasAny(['sku']) ||
+          (data.sku is string && data.sku.size() > 0 && data.sku.size() <= 100)) &&
+        (!data.keys().hasAny(['discount']) ||
+          (isCurrencyAmount(data.discount, true) &&
+            data.discount <= 100 &&
+            int(data.price * 100) ==
+              int(data.originalPrice * (100 - data.discount) + 0.5)));
+    }
+
+    function isLegacyProductOperationalUpdate() {
+      return !isValidProduct(resource.data) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'stock', 'reservedStock', 'variants', 'rating', 'reviewsCount',
+          'categoryId', 'category', 'subcategoryId', 'subcategory', 'updatedAt'
+        ]);
+    }
+
     function isValidUser(data, userId) {
       return data.keys().hasOnly([
           'uid', 'name', 'phone', 'phoneNormalized', 'email', 'emailVerified',
@@ -104,7 +146,10 @@ service cloud.firestore {
 
     match /products/{productId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create: if isAdmin() && isValidProduct(request.resource.data);
+      allow update: if isAdmin() &&
+        (isValidProduct(request.resource.data) || isLegacyProductOperationalUpdate());
+      allow delete: if isAdmin();
     }
 
     match /categories/{categoryId} {

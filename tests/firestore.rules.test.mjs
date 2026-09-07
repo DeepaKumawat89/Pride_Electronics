@@ -269,6 +269,56 @@ test('an admin custom claim authorizes privileged Firestore operations', async (
   )
 })
 
+test('admin product creates require complete fields and valid INR pricing', async () => {
+  const database = testEnvironment
+    .authenticatedContext('UID_ADMIN', { admin: true })
+    .firestore()
+  const validProduct = {
+    name: 'Validated product',
+    brand: 'Pride',
+    description: 'A complete product description for validation.',
+    categoryId: 'CATEGORY_1',
+    category: 'Electronics',
+    subcategoryId: 'SUBCATEGORY_1',
+    subcategory: 'Accessories',
+    originalPrice: 1000.5,
+    price: 900.45,
+    discount: 10,
+    stock: 5,
+    modelNumber: 'MODEL-1',
+    specs: ['Power: 10 W'],
+  }
+
+  await assertSucceeds(
+    setDoc(doc(database, 'products', 'VALID_PRODUCT'), validProduct),
+  )
+  await assertFails(
+    setDoc(doc(database, 'products', 'MISSING_SUBCATEGORY'), {
+      ...validProduct,
+      subcategoryId: '',
+      subcategory: '',
+    }),
+  )
+  await assertFails(
+    setDoc(doc(database, 'products', 'INVALID_PRECISION'), {
+      ...validProduct,
+      price: 900.451,
+    }),
+  )
+  await assertFails(
+    setDoc(doc(database, 'products', 'INVALID_DISCOUNT'), {
+      ...validProduct,
+      discount: 100.01,
+    }),
+  )
+  await assertFails(
+    setDoc(doc(database, 'products', 'MISMATCHED_DISCOUNT_PRICE'), {
+      ...validProduct,
+      price: 950,
+    }),
+  )
+})
+
 test('payment and backend index collections are inaccessible to customers', async () => {
   const database = testEnvironment.authenticatedContext('UID_A').firestore()
   for (const collectionName of [

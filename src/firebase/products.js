@@ -6,6 +6,7 @@ import {
   setDoc,
 } from 'firebase/firestore'
 import { db } from './firebase'
+import { assertValidProductForCreate } from '../utils/productValidation'
 
 const productsCollection = collection(db, 'products')
 
@@ -38,13 +39,16 @@ export function subscribeToProducts(onProducts, onError) {
 }
 
 export async function createProduct(product) {
-  const productReference = product.id
-    ? doc(productsCollection, String(product.id))
+  const productToCreate = { ...product }
+  if (!String(productToCreate.sku || '').trim()) delete productToCreate.sku
+  assertValidProductForCreate(productToCreate)
+  const productReference = productToCreate.id
+    ? doc(productsCollection, String(productToCreate.id))
     : doc(productsCollection)
   const savedProduct = {
-    ...product,
+    ...productToCreate,
     id: productReference.id,
-    createdAt: product.createdAt || new Date().toISOString(),
+    createdAt: productToCreate.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }
   await setDoc(productReference, serializeProduct(savedProduct))
@@ -95,4 +99,3 @@ export async function updateProductRatingStats(productId, reviews = []) {
     reviewsCount: count,
   })
 }
-

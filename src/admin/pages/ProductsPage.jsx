@@ -16,7 +16,7 @@ import SelectMenu from '../../components/ui/SelectMenu'
 import { EmptyState, Modal, PageHeader } from '../components/ui/AdminUI'
 import { DynamicProductSpecifications } from '../components/DynamicProductSpecifications'
 import ProductVariantsEditor from '../components/ProductVariantsEditor'
-import { formatCurrency, parsePrice } from '../../user/utils/currency'
+import { parsePrice } from '../../user/utils/currency'
 import {
   MAX_PRODUCT_IMAGES,
   MAX_PRODUCT_IMAGE_SIZE,
@@ -47,6 +47,12 @@ import {
   normalizePricingTiers,
   validatePricingTiers,
 } from '../../utils/productPricing'
+import {
+  calculateDiscountedPrice,
+  isValidDecimalInput,
+  normalizeDiscount,
+  roundToTwoDecimals,
+} from '../../utils/productValidation'
 
 const blankProduct = {
   name: '',
@@ -60,6 +66,7 @@ const blankProduct = {
   originalPrice: '',
   badge: '',
   discount: '',
+  stock: '',
   taxRate: 18,
   lowStockThreshold: 10,
   enableBulkPricing: false,
@@ -82,7 +89,6 @@ const parseList = (value) =>
     .filter(Boolean)
 
 const LEGACY_SUBCATEGORY_VALUE = '__legacy_subcategory__'
-const createGeneratedSku = () => `PE-${Date.now().toString().slice(-6)}`
 
 const createDuplicateProduct = (product) => {
   const duplicateId = Date.now()
@@ -90,7 +96,9 @@ const createDuplicateProduct = (product) => {
     ...product,
     id: duplicateId,
     name: `${product.name} Copy`,
-    sku: `${product.sku || `PE-${product.id}`}-COPY-${String(duplicateId).slice(-4)}`,
+    sku: product.sku
+      ? `${product.sku}-COPY-${String(duplicateId).slice(-4)}`
+      : '',
     variants: getProductVariants(product).map((variant, index) => ({
       ...variant,
       id: createVariantId(),
@@ -146,7 +154,6 @@ export default function ProductsPage({
     selectedSubcategory?.specificationFields,
   )
   const subcategoryOptions = [
-    { value: '', label: 'No subcategory' },
     ...(form.subcategory && !form.subcategoryId
       ? [
           {
@@ -257,7 +264,6 @@ export default function ProductsPage({
   }
 
   const openAdd = () => {
-    const defaultCategory = managedCategories[0]
     clearImageSelection()
     setEditingProduct(null)
     setSpecificationValues({})
@@ -265,11 +271,7 @@ export default function ProductsPage({
     clearVariantImagePreviews()
     setVariants([])
     setVariantErrors({})
-    setForm({
-      ...blankProduct,
-      categoryId: defaultCategory?.id || '',
-      category: defaultCategory?.name || '',
-    })
+    setForm(blankProduct)
     setFormErrors({})
     setSaveError('')
     setCreatingProduct(true)
@@ -315,6 +317,9 @@ export default function ProductsPage({
     setForm({
       ...blankProduct,
       ...normalizedProduct,
+      price: parsePrice(normalizedProduct.price) || '',
+      originalPrice: parsePrice(normalizedProduct.originalPrice) || '',
+      discount: normalizeDiscount(normalizedProduct.discount),
       enableBulkPricing: Boolean(product.enableBulkPricing),
       pricingTiers: Array.isArray(product.pricingTiers)
         ? product.pricingTiers.map((tier) => ({ minQty: tier.minQty, unitPrice: tier.unitPrice }))
@@ -343,27 +348,45 @@ export default function ProductsPage({
   }
   const validateForm = () => {
     const errors = {}
-    const sellingPrice = parsePrice(form.price)
-    const mrp = parsePrice(form.originalPrice)
+    const sellingPrice = Number(form.price)
+    const mrp = Number(form.originalPrice)
+    const discount = Number(form.discount)
     if (form.name.trim().length < 3)
       errors.name = 'Enter at least 3 characters.'
     if (!form.brand.trim()) errors.brand = 'Brand is required.'
     if (!selectedCategory) errors.category = 'Select a valid category.'
-    if (
-      form.subcategoryId &&
-      !subcategoryOptions.some(
-        (option) => String(option.value) === String(form.subcategoryId),
-      )
+    if (!form.subcategoryId) {
+      errors.subcategory = 'Select a subcategory.'
+    } else if (
+      form.subcategoryId !== LEGACY_SUBCATEGORY_VALUE &&
+      !selectedSubcategory
     ) {
       errors.subcategory = 'Select a subcategory from the chosen category.'
     }
     if (form.description.trim().length < 20)
       errors.description = 'Enter at least 20 characters.'
-    if (sellingPrice <= 0) errors.price = 'Enter a valid selling price.'
-    if (mrp <= 0) errors.originalPrice = 'Enter a valid MRP.'
-    if (sellingPrice > mrp) errors.price = 'Selling price cannot exceed MRP.'
+    if (!isValidDecimalInput(form.price))
+      errors.price = 'Enter an INR amount with no more than 2 decimal places.'
+    if (!isValidDecimalInput(form.originalPrice, { allowZero: false }))
+      errors.originalPrice = 'Enter a positive INR amount with no more than 2 decimal places.'
+    if (!errors.price && !errors.originalPrice && sellingPrice > mrp)
+      errors.price = 'Selling price cannot exceed MRP.'
+    if (form.discount !== '') {
+      if (!isValidDecimalInput(form.discount) || discount > 100) {
+        errors.discount = 'Discount must be between 0 and 100 with no more than 2 decimal places.'
+      } else if (
+        !errors.price &&
+        !errors.originalPrice &&
+        sellingPrice !== calculateDiscountedPrice(mrp, discount)
+      ) {
+        errors.price = 'Selling price must match the calculated discounted price.'
+      }
+    }
     if (!Number.isInteger(Number(form.stock)) || Number(form.stock) < 0)
       errors.stock = 'Stock must be a non-negative whole number.'
+    if (!form.modelNumber.trim()) errors.modelNumber = 'Model number is required.'
+    if (!parseList(form.specs).length)
+      errors.specs = 'Add at least one technical specification.'
     if (
       !Number.isInteger(Number(form.lowStockThreshold)) ||
       Number(form.lowStockThreshold) < 0
@@ -490,8 +513,8 @@ export default function ProductsPage({
         (form.subcategoryId === LEGACY_SUBCATEGORY_VALUE
           ? form.subcategory
           : ''),
-      price: formatCurrency(parsePrice(form.price)),
-      originalPrice: formatCurrency(parsePrice(form.originalPrice)),
+      price: roundToTwoDecimals(form.price),
+      originalPrice: roundToTwoDecimals(form.originalPrice),
       stock: Number(form.stock),
       lowStockThreshold: Number(form.lowStockThreshold),
       enableBulkPricing: Boolean(form.enableBulkPricing),
@@ -501,7 +524,9 @@ export default function ProductsPage({
       taxRate: Number(form.taxRate),
       rating: editingProduct?.rating ?? 0,
       reviewsCount: editingProduct?.reviewsCount ?? 0,
-      sku: form.sku.trim() || createGeneratedSku(),
+      sku: form.sku.trim() || undefined,
+      discount:
+        form.discount === '' ? undefined : roundToTwoDecimals(form.discount),
       specs: parseList(form.specs),
       technicalSpecifications: selectedSubcategory
         ? buildTechnicalSpecifications(
@@ -599,10 +624,28 @@ export default function ProductsPage({
     }
   }
   const field = (key) => ({
-    value: form[key],
+    value: form[key] ?? '',
     onChange: (event) =>
       setForm((current) => ({ ...current, [key]: event.target.value })),
   })
+  const updatePricingField = (key, value) => {
+    setForm((current) => {
+      const next = { ...current, [key]: value }
+      const mrpValue = key === 'originalPrice' ? value : current.originalPrice
+      const discountValue = key === 'discount' ? value : current.discount
+      if (
+        discountValue !== '' &&
+        isValidDecimalInput(mrpValue, { allowZero: false }) &&
+        isValidDecimalInput(discountValue) &&
+        Number(discountValue) <= 100
+      ) {
+        next.price = calculateDiscountedPrice(mrpValue, discountValue).toFixed(2)
+      } else if (key === 'originalPrice' && discountValue !== '') {
+        next.price = ''
+      }
+      return next
+    })
+  }
 
   return (
     <div className="space-y-6">
@@ -773,19 +816,19 @@ export default function ProductsPage({
               </div>
             )}
             <FormSectionTitle title="Basic Information" />
-            <FormField label="Product name" wide>
+            <FormField label="Product name" required error={formErrors.name} wide>
               <input required {...field('name')} className={inputClass} />
             </FormField>
-            <FormField label="SKU">
-              <input {...field('sku')} placeholder="Generated if left blank" className={inputClass} />
+            <FormField label="SKU" error={formErrors.sku}>
+              <input {...field('sku')} className={inputClass} />
             </FormField>
-            <FormField label="Brand">
+            <FormField label="Brand" required error={formErrors.brand}>
               <input required {...field('brand')} className={inputClass} />
             </FormField>
             <FormField label="Badge">
               <input {...field('badge')} className={inputClass} />
             </FormField>
-            <FormField label="Description" wide>
+            <FormField label="Description" required error={formErrors.description} wide>
               <textarea
                 required
                 {...field('description')}
@@ -794,7 +837,7 @@ export default function ProductsPage({
             </FormField>
 
             <FormSectionTitle title="Category & Subcategory" />
-            <FormField label="Category">
+            <FormField label="Category" required error={formErrors.category}>
               <SelectMenu
                 value={form.categoryId}
                 onChange={(categoryId) => {
@@ -811,11 +854,13 @@ export default function ProductsPage({
                   setSpecificationValues({})
                 }}
                 options={categoryOptions}
+                placeholder="Select Category"
+                required
                 ariaLabel="Product category"
                 buttonClassName={inputClass}
               />
             </FormField>
-            <FormField label="Subcategory">
+            <FormField label="Subcategory" required error={formErrors.subcategory}>
               <SelectMenu
                 value={form.subcategoryId}
                 onChange={(subcategoryId) => {
@@ -843,6 +888,8 @@ export default function ProductsPage({
                   })
                 }}
                 options={subcategoryOptions}
+                placeholder="Select Subcategory"
+                required
                 ariaLabel="Product subcategory"
                 buttonClassName={inputClass}
                 disabled={!selectedCategory}
@@ -850,29 +897,64 @@ export default function ProductsPage({
             </FormField>
 
             <FormSectionTitle title="Pricing & Inventory" />
-            <FormField label="MRP">
-              <input required {...field('originalPrice')} className={inputClass} />
+            <FormField label="MRP" required error={formErrors.originalPrice}>
+              <AffixedInput prefix="₹">
+                <input
+                  required
+                  type="number"
+                  inputMode="decimal"
+                  min="0.01"
+                  step="0.01"
+                  value={form.originalPrice}
+                  onChange={(event) => updatePricingField('originalPrice', event.target.value)}
+                  className={affixedInputClass}
+                />
+              </AffixedInput>
             </FormField>
-            <FormField label="Selling price">
-              <input required {...field('price')} className={inputClass} />
+            <FormField label="Selling price" required error={formErrors.price}>
+              <AffixedInput prefix="₹">
+                <input
+                  required
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  value={form.price}
+                  onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))}
+                  readOnly={form.discount !== ''}
+                  className={`${affixedInputClass} ${form.discount !== '' ? 'cursor-not-allowed bg-slate-50 text-slate-500' : ''}`}
+                />
+              </AffixedInput>
             </FormField>
-            <FormField label="Discount">
-              <input {...field('discount')} className={inputClass} />
+            <FormField label="Discount" error={formErrors.discount}>
+              <AffixedInput suffix="%">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={form.discount}
+                  onChange={(event) => updatePricingField('discount', event.target.value)}
+                  className={affixedInputClass}
+                />
+              </AffixedInput>
             </FormField>
-            <FormField label="Tax / GST (%)">
+            <FormField label="Tax / GST (%)" required>
               <input required type="number" min="0" max="100" step="0.01" {...field('taxRate')} className={inputClass} />
             </FormField>
 
-            <FormField label="Stock">
+            <FormField label="Stock" required error={formErrors.stock}>
               <input
                 required
                 type="number"
                 min="0"
+                step="1"
                 {...field('stock')}
                 className={inputClass}
               />
             </FormField>
-            <FormField label="Low stock threshold">
+            <FormField label="Low stock threshold" required>
               <input required type="number" min="0" {...field('lowStockThreshold')} className={inputClass} />
             </FormField>
 
@@ -1024,7 +1106,7 @@ export default function ProductsPage({
             </div>
 
             <FormSectionTitle title="Images" />
-            <FormField label="Product images" wide>
+            <FormField label="Product images" required wide>
               <input
                 required={!editingProduct?.image && !editingProduct?.images?.length}
                 type="file"
@@ -1040,11 +1122,12 @@ export default function ProductsPage({
             </FormField>
 
             <FormSectionTitle title="Technical Specifications" />
-            <FormField label="Model">
-              <input {...field('modelNumber')} className={inputClass} />
+            <FormField label="Model Number" required error={formErrors.modelNumber}>
+              <input required {...field('modelNumber')} className={inputClass} />
             </FormField>
-            <FormField label="Technical specifications (comma separated)" wide>
+            <FormField label="Technical Specifications (comma separated)" required error={formErrors.specs} wide>
               <textarea
+                required
                 {...field('specs')}
                 className={`${inputClass} min-h-20 py-3`}
               />
@@ -1139,6 +1222,19 @@ export default function ProductsPage({
 
 const inputClass =
   'h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-xs outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#75916f]/10'
+const affixedInputClass =
+  'h-full min-w-0 flex-1 bg-transparent px-3 text-xs outline-none'
+
+function AffixedInput({ prefix, suffix, children }) {
+  return (
+    <div className="flex h-12 w-full items-center overflow-hidden rounded-2xl border border-slate-200 bg-white transition focus-within:border-[#75916f] focus-within:ring-4 focus-within:ring-[#75916f]/10">
+      {prefix && <span className="pl-4 text-xs font-extrabold text-slate-500">{prefix}</span>}
+      {children}
+      {suffix && <span className="pr-4 text-xs font-extrabold text-slate-500">{suffix}</span>}
+    </div>
+  )
+}
+
 function FormSectionTitle({ title }) {
   return (
     <div className="border-b border-slate-200 pb-2 pt-2 sm:col-span-2">
@@ -1148,13 +1244,14 @@ function FormSectionTitle({ title }) {
     </div>
   )
 }
-function FormField({ label, wide, children }) {
+function FormField({ label, required = false, error = '', wide, children }) {
   return (
     <label className={wide ? 'sm:col-span-2' : ''}>
       <span className="mb-2 block text-[9px] font-extrabold text-slate-500">
-        {label}
+        {label}{required && <span className="ml-0.5 text-red-600" aria-hidden="true">*</span>}
       </span>
       {children}
+      {error && <span role="alert" className="mt-1.5 block text-[9px] font-bold text-red-600">{error}</span>}
     </label>
   )
 }
