@@ -40,24 +40,11 @@ export async function verifyGstinWithCashfree(gstin) {
       registrationDate: data.registrationDate || '',
       address: data.address || '',
       verifiedAt: data.verifiedAt || new Date().toISOString(),
-      verificationSource: 'Cashfree',
+      verificationProvider: data.verificationProvider || 'cashfree',
+      verificationReferenceId: data.verificationReferenceId || '',
+      verificationStatus: data.verificationStatus || 'verified',
     }
   } catch (error) {
-    if (error.message?.includes('Unsupported account operation') || String(error?.cause?.message || '').includes('Unsupported account operation')) {
-      const pan = cleanGstin.slice(2, 12)
-      const isIndividual = pan[3] === 'P'
-      return {
-        gstin: cleanGstin,
-        legalName: isIndividual ? 'PRIDE ELECTRONICS STORE' : 'PRIDE ELECTRONICS PRIVATE LIMITED',
-        tradeName: 'PRIDE ELECTRONICS',
-        status: 'Active',
-        taxpayerType: 'Regular',
-        registrationDate: '2021-04-01',
-        address: 'Plot No. 42, Industrial Area Phase II, Commercial Hub, India',
-        verifiedAt: new Date().toISOString(),
-        verificationSource: 'Cashfree (Local Fallback)',
-      }
-    }
     const errorMessages = {
       'functions/unauthenticated': 'Please sign in to verify your GSTIN.',
       'functions/invalid-argument': error.message || 'Invalid GSTIN details provided.',
@@ -70,21 +57,21 @@ export async function verifyGstinWithCashfree(gstin) {
   }
 }
 
-export async function saveUserGstDetails(gstDetails) {
-  if (!gstDetails || !gstDetails.gstin) {
+export async function saveUserGstDetails(gstin) {
+  const value = typeof gstin === 'string' ? gstin : gstin?.gstin
+  if (!value) {
     throw new Error('Valid GST details are required.')
   }
 
   try {
     const response = await userProfileCallable({
       operation: 'saveVerifiedGstDetails',
-      payload: { gstDetails },
+      payload: { gstin: value },
     })
     return response.data || { success: true }
   } catch (error) {
-    if (error.message?.includes('Unsupported account operation')) {
-      return { success: true, gstDetails }
-    }
-    throw new Error(error.message || 'Failed to save GST details to profile.')
+    throw new Error(error.message || 'Failed to save GST details to profile.', {
+      cause: error,
+    })
   }
 }

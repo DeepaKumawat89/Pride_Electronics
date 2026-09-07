@@ -38,6 +38,7 @@ const normalizeParty = (source, customer, order) => {
       phone: customer?.mobile || 'Not available',
       email: customer?.email || order.email || 'Not available',
       address: source,
+      gstin: '',
     }
   }
 
@@ -56,6 +57,7 @@ const normalizeParty = (source, customer, order) => {
       ]
         .filter(Boolean)
         .join(', ') || 'Address not available',
+    gstin: source?.gstin || '',
   }
 }
 
@@ -220,12 +222,35 @@ async function createInvoicePdfDocument(
     compress: true,
     putOnlyUsedFonts: true,
   })
-  const business = invoiceSettings.business || initialInvoiceSettings.business
-  const taxSettings = invoiceSettings.tax || initialInvoiceSettings.tax
-  const data = createInvoiceData(order, taxSettings)
+  const serverInvoice = order.invoice?.generatedBy === 'server' ? order.invoice : null
+  const business = serverInvoice?.seller || invoiceSettings.business || initialInvoiceSettings.business
+  const taxSettings = serverInvoice
+    ? {
+        gstEnabled: Boolean(serverInvoice.seller?.gstin),
+        gstin: serverInvoice.seller?.gstin || '',
+        pricesIncludeTax: serverInvoice.tax?.pricesIncludeTax === true,
+        defaultRate: serverInvoice.tax?.defaultRate || 0,
+      }
+    : invoiceSettings.tax || initialInvoiceSettings.tax
+  const data = serverInvoice
+    ? {
+        items: (serverInvoice.lineItems || []).map((item) => ({
+          ...item,
+          qty: item.quantity,
+          lineDiscount: item.discount,
+          lineAmount: item.lineTotal,
+        })),
+        subtotal: serverInvoice.amounts?.subtotal || 0,
+        discount: serverInvoice.amounts?.couponDiscount || 0,
+        delivery: serverInvoice.amounts?.shipping || 0,
+        tax: serverInvoice.amounts?.totalGst || 0,
+        total: serverInvoice.amounts?.total || 0,
+        gstBreakdown: serverInvoice.tax || null,
+      }
+    : createInvoiceData(order, taxSettings)
   const legacySequence = Number(String(order.id || '').replace(/\D/g, ''))
   const invoiceNumber =
-    order.invoiceNumber ||
+    serverInvoice?.invoiceNumber || order.invoiceNumber ||
     createInvoiceNumber(
       {
         ...invoiceSettings,
@@ -236,16 +261,33 @@ async function createInvoicePdfDocument(
       },
       order.date,
     )
-  const billing = normalizeParty(
-    order.billingAddress || order.shippingAddress || address,
-    customer,
-    order,
-  )
-  const shipping = normalizeParty(
-    order.shippingAddress || address,
-    customer,
-    order,
-  )
+  const invoiceDate = serverInvoice?.invoiceDate || order.invoiceDate || order.date
+  const billing = serverInvoice
+    ? {
+        name: serverInvoice.buyer?.gst?.legalName || serverInvoice.buyer?.name || 'Pride Customer',
+        phone: serverInvoice.buyer?.phone || 'Not available',
+        email: serverInvoice.buyer?.email || 'Not available',
+        address: serverInvoice.buyer?.gst?.address || serverInvoice.buyer?.billingAddress || 'Address not available',
+        gstin: serverInvoice.buyer?.gst?.gstin || '',
+      }
+    : normalizeParty(
+        order.billingAddress || order.shippingAddress || address,
+        customer,
+        order,
+      )
+  const shipping = serverInvoice
+    ? {
+        name: serverInvoice.buyer?.name || 'Pride Customer',
+        phone: serverInvoice.buyer?.phone || 'Not available',
+        email: serverInvoice.buyer?.email || 'Not available',
+        address: serverInvoice.buyer?.shippingAddress || 'Address not available',
+        gstin: '',
+      }
+    : normalizeParty(
+        order.shippingAddress || address,
+        customer,
+        order,
+      )
   const paymentMethod = order.paymentMethod || 'Online payment'
   const isCod = /cash|cod/i.test(paymentMethod)
   const paymentStatus =
@@ -275,14 +317,14 @@ async function createInvoicePdfDocument(
 
     pdf.setTextColor(...COLORS.dark)
     pdf.setFontSize(14)
-    pdf.text(business.legalName, margin + 20, y + 4)
+    pdf.text(business.legalName || business.displayName, margin + 20, y + 4)
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(6.8)
     pdf.setTextColor(...COLORS.muted)
     pdf.text(business.address, margin + 20, y + 8.5)
     pdf.text(`${business.phone}  |  ${business.email}`, margin + 20, y + 12)
     pdf.text(
-      `${business.website}${taxSettings.gstEnabled ? `  |  GSTIN: ${taxSettings.gstin}` : ''}`,
+      `${business.website || ''}${taxSettings.gstEnabled ? `  |  GSTIN: ${taxSettings.gstin}` : ''}`,
       margin + 20,
       y + 15.5,
     )
@@ -297,7 +339,7 @@ async function createInvoicePdfDocument(
     })
     pdf.setFont('helvetica', 'normal')
     pdf.setTextColor(...COLORS.muted)
-    pdf.text(`Invoice Date: ${formatDate(order.date)}`, pageWidth - margin, y + 12.5, {
+    pdf.text(`Invoice Date: ${formatDate(invoiceDate)}`, pageWidth - margin, y + 12.5, {
       align: 'right',
     })
     pdf.text(`Order ID: #${order.id}`, pageWidth - margin, y + 16, {
@@ -345,15 +387,25 @@ async function createInvoicePdfDocument(
       pdf.setTextColor(...COLORS.muted)
       pdf.text(`Phone: ${party.phone}`, x, sectionTop + 14)
       if (title === 'BILL TO') pdf.text(`Email: ${party.email}`, x, sectionTop + 18.5)
-      const addressY = title === 'BILL TO' ? sectionTop + 23 : sectionTop + 18.5
+      if (party.gstin) {
+        pdf.setFont('helvetica', 'bold')
+        pdf.setTextColor(...COLORS.dark)
+        pdf.text(`GSTIN: ${party.gstin}`, x, sectionTop + 23)
+        pdf.setFont('helvetica', 'normal')
+        pdf.setTextColor(...COLORS.muted)
+      }
+      const addressY = party.gstin
+        ? sectionTop + 27.5
+        : title === 'BILL TO' ? sectionTop + 23 : sectionTop + 18.5
       const lines = pdf.splitTextToSize(party.address, columnWidth - 3)
       pdf.text(lines.slice(0, 4), x, addressY)
     }
     drawParty('BILL TO', billing, margin)
     drawParty('SHIP TO', shipping, rightX)
     pdf.setDrawColor(...COLORS.line)
-    pdf.line(margin + columnWidth + gap / 2, sectionTop, margin + columnWidth + gap / 2, sectionTop + 33)
-    y += 38
+    const partyHeight = billing.gstin ? 40 : 33
+    pdf.line(margin + columnWidth + gap / 2, sectionTop, margin + columnWidth + gap / 2, sectionTop + partyHeight)
+    y += partyHeight + 5
   }
 
   const drawOrderBar = () => {
@@ -465,7 +517,7 @@ async function createInvoicePdfDocument(
   }
 
   const drawAmountSummary = () => {
-    ensureSpace(66)
+    ensureSpace(82)
     y += 7
     const summaryWidth = 83
     const summaryX = pageWidth - margin - summaryWidth
@@ -478,8 +530,21 @@ async function createInvoicePdfDocument(
       ['Subtotal', formatMoney(data.subtotal)],
       ['Discount', `- ${formatMoney(data.discount)}`],
       ['Delivery Charges', data.delivery ? formatMoney(data.delivery) : 'FREE'],
-      ['GST / Tax', formatMoney(data.tax)],
     ]
+    if (data.gstBreakdown?.supplyType === 'intra-state') {
+      rows.push(
+        ['Taxable Value', formatMoney(data.gstBreakdown.taxableValue)],
+        ['CGST', formatMoney(data.gstBreakdown.cgst)],
+        ['SGST', formatMoney(data.gstBreakdown.sgst)],
+      )
+    } else if (data.gstBreakdown?.supplyType === 'inter-state') {
+      rows.push(
+        ['Taxable Value', formatMoney(data.gstBreakdown.taxableValue)],
+        ['IGST', formatMoney(data.gstBreakdown.igst)],
+      )
+    } else {
+      rows.push(['GST / Tax', formatMoney(data.tax)])
+    }
     rows.forEach(([label, value]) => {
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(7.4)

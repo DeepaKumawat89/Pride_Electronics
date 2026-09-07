@@ -2,13 +2,22 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Assumed private user model: users/{uid} contains Firebase identity fields
-    // plus bounded account state (wishlistIds, addresses, paymentMethods,
-    // cartItems, savedCartItems). Clients read only their own document; all
-    // writes are performed by trusted callable functions or an admin claim.
-    // Orders/returns carry an immutable backend-assigned userId and are
-    // client-readable only by that owner. Payment intents, coupon usage, and
-    // phone indexes have no client match and therefore remain default-denied.
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Public catalog: products, categories, subcategories, coupons and the
+    // public settings documents. Admins write these records.
+    // Private users/{uid}: identity strings, bounded account-state lists,
+    // gstDetails (optional verified GST map), and gstProfiles (up to 5 verified
+    // GST maps). Only the owner/admin can read; trusted functions perform normal
+    // customer writes. GST maps require gstin, legalName, address, status,
+    // verifiedAt, verificationProvider and verificationStatus strings.
+    // Private orders/returns: backend-assigned userId plus server snapshots;
+    // owners may read but customers cannot write.
+    // Admin-only: refunds, inventoryHistory and admins.
+    // Backend-only/default-denied: paymentIntents, stockReservations,
+    // couponUsages and _authPhoneIndex.
+    // ===============================================================
 
     function isAuthenticated() {
       return request.auth != null;
@@ -32,6 +41,11 @@ service cloud.firestore {
       return request.resource.data.uid == resource.data.uid;
     }
 
+    function backendGstFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['gstDetails', 'gstProfiles']);
+    }
+
     function optionalString(data, field, maxSize) {
       return !data.keys().hasAny([field]) ||
         (data[field] is string && data[field].size() <= maxSize);
@@ -53,7 +67,8 @@ service cloud.firestore {
           'role', 'createdAt', 'updatedAt', 'dob', 'gender', 'photo', 'status',
           'membershipRole', 'joinedDate', 'registrationDate', 'ordersCount',
           'totalSpentValue', 'lastOrderAt', 'wishlistIds', 'addresses',
-          'paymentMethods', 'cartItems', 'savedCartItems', 'gstDetails'
+          'paymentMethods', 'cartItems', 'savedCartItems', 'gstDetails',
+          'gstProfiles'
         ]) &&
         data.uid == userId &&
         data.name is string && data.name.size() >= 2 && data.name.size() <= 80 &&
@@ -76,7 +91,11 @@ service cloud.firestore {
         optionalList(data, 'addresses', 20) &&
         optionalList(data, 'paymentMethods', 10) &&
         optionalList(data, 'cartItems', 100) &&
-        optionalList(data, 'savedCartItems', 100);
+        optionalList(data, 'savedCartItems', 100) &&
+        (!data.keys().hasAny(['gstDetails']) ||
+          data.gstDetails == null || data.gstDetails is map) &&
+        (!data.keys().hasAny(['gstProfiles']) ||
+          (data.gstProfiles is list && data.gstProfiles.size() <= 5));
     }
 
     function owns(resourceData) {
@@ -139,8 +158,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAdmin() || isOwner(userId);
       allow create: if false;
-      allow update: if isAdmin() && uidUnchanged(userId) &&
-        uidNotModified() && isValidUser(request.resource.data, userId);
+      allow update: if backendGstFieldsUnchanged() &&
+        isAdmin() && uidUnchanged(userId) &&
+        uidNotModified() &&
+        isValidUser(request.resource.data, userId);
       allow delete: if false;
     }
 

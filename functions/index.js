@@ -17,6 +17,17 @@ const {
   removePurchasedCartItems,
   sanitizeAccountState,
 } = require('./account-state')
+const {
+  findReusableGstProfile,
+  isValidGstin,
+  normalizeCashfreeGstinResponse,
+  normalizeGstin,
+  upsertGstProfiles,
+} = require('./gst')
+const {
+  createInvoiceSnapshot,
+  normalizeInvoiceSettings,
+} = require('./invoice')
 
 initializeApp()
 
@@ -30,14 +41,20 @@ const callableOptions = { region, invoker: 'public' }
 const razorpayKeyId = defineSecret('RAZORPAY_KEY_ID')
 const razorpayKeySecret = defineSecret('RAZORPAY_KEY_SECRET')
 const razorpayWebhookSecret = defineSecret('RAZORPAY_WEBHOOK_SECRET')
+const cashfreeClientId = defineSecret('CASHFREE_CLIENT_ID')
+const cashfreeClientSecret = defineSecret('CASHFREE_CLIENT_SECRET')
 const paymentCallableOptions = {
   ...callableOptions,
   secrets: [
     razorpayKeyId,
     razorpayKeySecret,
-    'CASHFREE_CLIENT_ID',
-    'CASHFREE_CLIENT_SECRET',
+    cashfreeClientId,
+    cashfreeClientSecret,
   ],
+}
+const gstCallableOptions = {
+  ...callableOptions,
+  secrets: [cashfreeClientId, cashfreeClientSecret],
 }
 const razorpayCallableOptions = {
   ...callableOptions,
@@ -45,7 +62,6 @@ const razorpayCallableOptions = {
 }
 const PHONE_PATTERN = /^[6-9]\d{9}$/
 const PIN_CODE_PATTERN = /^[1-8]\d{5}$/
-const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/
 const ORDER_REQUEST_PATTERN = /^[a-zA-Z0-9_-]{8,100}$/
 const RAZORPAY_ORDER_PATTERN = /^order_[a-zA-Z0-9]{6,100}$/
 const RAZORPAY_PAYMENT_PATTERN = /^pay_[a-zA-Z0-9]{6,100}$/
@@ -182,24 +198,6 @@ const assertOwnedOrder = (snapshot, uid) => {
     throw new HttpsError('permission-denied', 'This order belongs to another account.')
   }
   return snapshot.data()
-}
-
-const invoiceNumberFor = (numbering = {}, dateValue = new Date()) => {
-  const date = new Date(dateValue)
-  const validDate = Number.isNaN(date.getTime()) ? new Date() : date
-  const year = validDate.getFullYear()
-  const financialYearStart = validDate.getMonth() >= 3 ? year : year - 1
-  const financialYear = `${String(financialYearStart).slice(-2)}-${String(financialYearStart + 1).slice(-2)}`
-  const sequence = String(Math.max(1, Number(numbering.nextNumber) || 1)).padStart(
-    Math.max(1, Number(numbering.padding) || 1),
-    '0',
-  )
-  return [
-    numbering.prefix,
-    numbering.includeFinancialYear ? financialYear : '',
-    sequence,
-    numbering.suffix,
-  ].filter(Boolean).join('/')
 }
 
 const normalizePhone = (value) =>
@@ -344,6 +342,7 @@ exports.getUserProfile = onCall(callableOptions, async (request) => {
     dob: profile.dob || '',
     gender: profile.gender || '',
     gstDetails: profile.gstDetails || null,
+    gstProfiles: Array.isArray(profile.gstProfiles) ? profile.gstProfiles : [],
     role: 'customer',
   }
 })
@@ -353,10 +352,15 @@ const recentGstinCache = new Map()
 const GSTIN_CACHE_TTL_MS = 10 * 60 * 1000
 
 async function verifyGstinHandler(request) {
-  requireUser(request)
-  const gstin = String(request.data?.gstin || request.data?.payload?.gstin || '').trim().toUpperCase()
+  const uid = requireUser(request)
+  const gstin = normalizeGstin(
+    request.data?.gstin ||
+      request.data?.gstDetails?.gstin ||
+      request.data?.payload?.gstin ||
+      request.data?.payload?.gstDetails?.gstin,
+  )
 
-  if (!gstin || !GSTIN_PATTERN.test(gstin)) {
+  if (!isValidGstin(gstin)) {
     throw new HttpsError(
       'invalid-argument',
       'Please enter a valid 15-character Indian GSTIN number.',
@@ -365,14 +369,19 @@ async function verifyGstinHandler(request) {
 
   const now = Date.now()
   const cached = recentGstinCache.get(gstin)
-  if (cached && now - cached.timestamp < GSTIN_CACHE_TTL_MS) {
-    return cached.data
-  }
+  let details = cached && now - cached.timestamp < GSTIN_CACHE_TTL_MS
+    ? cached.data
+    : null
 
-  const clientId = process.env.CASHFREE_CLIENT_ID || ''
-  const clientSecret = process.env.CASHFREE_CLIENT_SECRET || ''
-
-  if (clientId && clientSecret && clientId !== 'placeholder' && clientSecret !== 'placeholder') {
+  if (!details) {
+    const clientId = cashfreeClientId.value()
+    const clientSecret = cashfreeClientSecret.value()
+    if (!clientId || !clientSecret) {
+      throw new HttpsError(
+        'failed-precondition',
+        'GST verification is not configured. Contact support before requesting a GST invoice.',
+      )
+    }
     try {
       const endpoint = process.env.CASHFREE_ENV === 'sandbox' || clientId.startsWith('TEST')
         ? 'https://sandbox.cashfree.com/verification/gstin'
@@ -385,14 +394,20 @@ async function verifyGstinHandler(request) {
           'x-client-id': clientId,
           'x-client-secret': clientSecret,
         },
-        body: JSON.stringify({ gstin }),
+        body: JSON.stringify({ GSTIN: gstin, business_name: '' }),
+        signal: AbortSignal.timeout(10000),
       })
 
-      const result = await response.json()
+      const result = await response.json().catch(() => ({}))
 
-      if (!response.ok || result.status === 'ERROR' || result.valid === false) {
-        const errorMsg = result.message || result.user_message || 'GSTIN verification failed.'
-        if (response.status === 404 || result.subCode === 'GSTIN_NOT_FOUND') {
+      if (!response.ok || result.status === 'ERROR' || result.status === 'FAILED' || result.valid === false) {
+        const errorMsg = String(
+          result.message || result.user_message || 'GSTIN verification failed.',
+        ).slice(0, 200)
+        if (
+          response.status === 404 ||
+          ['GSTIN_NOT_FOUND', 'INVALID_GSTIN'].includes(result.error_code || result.subCode)
+        ) {
           throw new HttpsError('not-found', 'The entered GSTIN could not be found on the GST portal.')
         }
         if (response.status === 429) {
@@ -400,85 +415,41 @@ async function verifyGstinHandler(request) {
         }
         throw new HttpsError('invalid-argument', errorMsg)
       }
-
-      const details = {
-        valid: true,
-        gstin,
-        legalName: result.legal_name || result.registered_name || result.name || 'GST Registered Entity',
-        tradeName: result.trade_name || '',
-        status: result.gstin_status || result.status || 'Active',
-        taxpayerType: result.taxpayer_type || 'Regular',
-        registrationDate: result.registration_date || '',
-        address: typeof result.principal_place_address === 'string'
-          ? result.principal_place_address
-          : result.principal_place_address?.address || result.address || '',
-        verifiedAt: new Date().toISOString(),
-        verificationSource: 'Cashfree API',
-      }
-
+      details = normalizeCashfreeGstinResponse(result, gstin, now)
       recentGstinCache.set(gstin, { timestamp: now, data: details })
-      return details
     } catch (error) {
       if (error instanceof HttpsError) throw error
       console.error('Cashfree GSTIN API error:', error)
+      if (['invalid-gstin', 'inactive-gstin', 'incomplete-gstin'].includes(error?.code)) {
+        throw new HttpsError('failed-precondition', error.message)
+      }
       throw new HttpsError('unavailable', 'Unable to reach Cashfree GST verification service. Please try again.')
     }
   }
 
-  // Safe fallback / mock mode when Cashfree secrets are not configured or in dev
-  const pan = gstin.slice(2, 12)
-  const isIndividual = pan[3] === 'P'
-  
-  const mockDetails = {
-    valid: true,
-    gstin,
-    legalName: isIndividual ? 'PRIDE ELECTRONICS STORE' : 'PRIDE ELECTRONICS PRIVATE LIMITED',
-    tradeName: 'PRIDE ELECTRONICS',
-    status: 'Active',
-    taxpayerType: 'Regular',
-    registrationDate: '2021-04-01',
-    address: 'Plot No. 42, Industrial Area Phase II, Commercial Hub, India',
-    verifiedAt: new Date().toISOString(),
-    verificationSource: 'Cashfree (Demo Mode)',
-  }
-
-  recentGstinCache.set(gstin, { timestamp: now, data: mockDetails })
-  return mockDetails
+  const userReference = db.doc(`users/${uid}`)
+  await db.runTransaction(async (transaction) => {
+    const userDocument = await transaction.get(userReference)
+    if (!userDocument.exists) {
+      throw new HttpsError('failed-precondition', 'Your customer profile is unavailable.')
+    }
+    const gstProfiles = upsertGstProfiles(userDocument.data().gstProfiles, details)
+    transaction.set(userReference, {
+      gstDetails: details,
+      gstProfiles,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true })
+  })
+  return { valid: true, ...details }
 }
 
 async function saveVerifiedGstDetailsHandler(request) {
-  const uid = requireUser(request)
-  const gstDetails = request.data?.gstDetails || request.data?.payload?.gstDetails
-  if (!gstDetails || !gstDetails.gstin || !GSTIN_PATTERN.test(gstDetails.gstin)) {
-    throw new HttpsError('invalid-argument', 'Valid GST details are required.')
-  }
-
-  const cleanDetails = {
-    gstin: String(gstDetails.gstin).trim().toUpperCase(),
-    legalName: String(gstDetails.legalName || gstDetails.businessName || '').trim().slice(0, 150),
-    tradeName: String(gstDetails.tradeName || '').trim().slice(0, 150),
-    status: String(gstDetails.status || 'Active').trim().slice(0, 30),
-    taxpayerType: String(gstDetails.taxpayerType || 'Regular').trim().slice(0, 50),
-    registrationDate: String(gstDetails.registrationDate || '').trim().slice(0, 30),
-    address: String(gstDetails.address || '').trim().slice(0, 300),
-    verifiedAt: gstDetails.verifiedAt || new Date().toISOString(),
-    verificationSource: gstDetails.verificationSource || 'Cashfree',
-  }
-
-  const userReference = db.doc(`users/${uid}`)
-  await userReference.set(
-    {
-      gstDetails: cleanDetails,
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  )
-
-  return { success: true, gstDetails: cleanDetails }
+  const verified = await verifyGstinHandler(request)
+  return { success: true, gstDetails: verified }
 }
 
-exports.verifyGstin = onCall(paymentCallableOptions, verifyGstinHandler)
-exports.saveVerifiedGstDetails = onCall(callableOptions, saveVerifiedGstDetailsHandler)
+exports.verifyGstin = onCall(gstCallableOptions, verifyGstinHandler)
+exports.saveVerifiedGstDetails = onCall(gstCallableOptions, saveVerifiedGstDetailsHandler)
 
 exports.updateUserProfile = onCall(paymentCallableOptions, async (request) => {
   const operation = String(request.data?.operation || '')
@@ -688,12 +659,22 @@ async function reserveCheckoutStock({
     ]
     const invoiceSettingsReference = db.doc('settings/invoice')
     const shippingSettingsReference = db.doc('settings/shipping')
-    const [productDocuments, invoiceSettingsDocument, shippingSettingsDocument] =
+    const userReference = db.doc(`users/${uid}`)
+    const [productDocuments, invoiceSettingsDocument, shippingSettingsDocument, userDocument] =
       await Promise.all([
         Promise.all(productReferences.map((reference) => transaction.get(reference))),
         transaction.get(invoiceSettingsReference),
         transaction.get(shippingSettingsReference),
+        transaction.get(userReference),
       ])
+    const requestedGstin = normalizeGstin(
+      requestData.gstin || requestData.gstDetails?.gstin,
+    )
+    try {
+      findReusableGstProfile(userDocument.data(), requestedGstin)
+    } catch (error) {
+      throw new HttpsError('failed-precondition', error.message)
+    }
 
     const couponCode = String(requestData.couponCode || '').trim().toUpperCase()
     let couponDocument = null
@@ -792,6 +773,7 @@ async function reserveCheckoutStock({
       expectedTotalPaise: quote.totalPaise,
       shippingAddress,
       billingAddress,
+      gstin: requestedGstin,
       deliveryId: quote.deliveryId,
       deliveryDate: String(requestData.deliveryDate || 'Being scheduled').slice(0, 100),
       paymentMethod: 'Online payment',
@@ -1591,7 +1573,7 @@ exports.razorpayWebhook = onRequest(
 
 exports.releaseExpiredStockReservations = onSchedule(
   {
-    schedule: 'every 5 minutes',
+    schedule: 'every 10 minutes',
     region,
     timeZone: 'Asia/Kolkata',
     retryCount: 3,
@@ -1932,6 +1914,39 @@ async function placeOrderHandler(request) {
     const paymentMethod = isCashOnDelivery
       ? 'Cash on Delivery'
       : `${String(verifiedPayment.method || 'Online payment').toUpperCase()} via ${paymentEnvironment}`
+    const requestedGstin = normalizeGstin(
+      isCashOnDelivery
+        ? submittedOrder.gstin || submittedOrder.gstDetails?.gstin
+        : paymentIntent?.checkoutOrder?.gstin,
+    )
+    let gstProfile
+    try {
+      gstProfile = findReusableGstProfile(userDocument.data(), requestedGstin)
+    } catch (error) {
+      throw new HttpsError('failed-precondition', error.message)
+    }
+    const invoiceSettings = normalizeInvoiceSettings(
+      invoiceSettingsDocument.exists ? invoiceSettingsDocument.data() : {},
+    )
+    let invoice
+    try {
+      invoice = createInvoiceSnapshot({
+        orderId: orderReference.id,
+        invoiceSettings,
+        invoiceDate: now,
+        quote,
+        customer: {
+          name: authUser.displayName || userDocument.data()?.name || 'Pride customer',
+          email: String(authUser.email || '').toLowerCase(),
+          phone: userDocument.data()?.phone || '',
+        },
+        shippingAddress,
+        billingAddress,
+        gstProfile,
+      })
+    } catch (error) {
+      throw new HttpsError('failed-precondition', error.message)
+    }
     const order = {
       id: orderReference.id,
       clientRequestId: requestId,
@@ -1952,12 +1967,8 @@ async function placeOrderHandler(request) {
       items: quote.items,
       itemsCount: quote.items.reduce((sum, item) => sum + item.qty, 0),
       status: 'Pending',
-      invoiceNumber: invoiceSettingsDocument.exists
-        ? invoiceNumberFor(
-            invoiceSettingsDocument.data().numbering,
-            now,
-          )
-        : '',
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceDate: invoice.invoiceDate,
       inventoryState: 'reserved',
       inventoryIssue: '',
       orderTime: new Date().toLocaleTimeString('en-IN', {
@@ -1968,15 +1979,9 @@ async function placeOrderHandler(request) {
       deliveryOption: quote.deliveryId === 'express' ? 'Express delivery' : 'Standard delivery',
       shippingAddress,
       billingAddress,
-      gstDetails: submittedOrder.gstDetails ? {
-        gstin: String(submittedOrder.gstDetails.gstin || '').trim().toUpperCase(),
-        legalName: String(submittedOrder.gstDetails.legalName || submittedOrder.gstDetails.businessName || '').trim().slice(0, 150),
-        tradeName: String(submittedOrder.gstDetails.tradeName || '').trim().slice(0, 150),
-        status: String(submittedOrder.gstDetails.status || 'Active').trim().slice(0, 30),
-        address: String(submittedOrder.gstDetails.address || '').trim().slice(0, 300),
-        verifiedAt: String(submittedOrder.gstDetails.verifiedAt || now),
-        verificationSource: String(submittedOrder.gstDetails.verificationSource || 'Cashfree'),
-      } : null,
+      gstDetails: gstProfile,
+      gstBreakdown: invoice.tax,
+      invoice,
       paymentStatus,
       paymentDate: isCashOnDelivery ? null : now,
       paymentMethod,
@@ -1999,7 +2004,7 @@ async function placeOrderHandler(request) {
       transaction.update(invoiceSettingsReference, {
         'numbering.nextNumber': Math.max(
           1,
-          Number(invoiceSettingsDocument.data().numbering?.nextNumber) || 1,
+          Number(invoiceSettings.numbering?.nextNumber) || 1,
         ) + 1,
         updatedAt: now,
       })

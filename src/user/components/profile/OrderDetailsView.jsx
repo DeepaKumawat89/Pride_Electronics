@@ -54,6 +54,17 @@ const getAddressParts = (address) => {
 }
 
 const getFinancials = (order, taxSettings) => {
+  if (order.invoice?.generatedBy === 'server') {
+    const amounts = order.invoice.amounts || {}
+    return {
+      itemTotal: parsePrice(amounts.subtotal),
+      discount: parsePrice(amounts.couponDiscount),
+      delivery: parsePrice(amounts.shipping),
+      tax: parsePrice(amounts.totalGst),
+      total: parsePrice(amounts.total),
+      gstBreakdown: order.invoice.tax || null,
+    }
+  }
   const itemTotal = (order.items || []).reduce(
     (sum, item) => sum + parsePrice(item.price) * Number(item.qty || 1),
     0,
@@ -406,7 +417,16 @@ export default function OrderDetailsView({
               <SummaryRow label="Item total" value={formatCurrency(financials.itemTotal)} />
               <SummaryRow label="Discount" value={`− ${formatCurrency(financials.discount)}`} muted />
               <SummaryRow label="Delivery charges" value={financials.delivery ? formatCurrency(financials.delivery) : 'FREE'} muted={!financials.delivery} />
-              <SummaryRow label={`GST / Taxes (${invoiceSettings.tax.pricesIncludeTax ? 'included' : 'added'})`} value={formatCurrency(financials.tax)} />
+              {financials.gstBreakdown?.supplyType === 'intra-state' ? (
+                <>
+                  <SummaryRow label="CGST" value={formatCurrency(financials.gstBreakdown.cgst)} />
+                  <SummaryRow label="SGST" value={formatCurrency(financials.gstBreakdown.sgst)} />
+                </>
+              ) : financials.gstBreakdown?.supplyType === 'inter-state' ? (
+                <SummaryRow label="IGST" value={formatCurrency(financials.gstBreakdown.igst)} />
+              ) : (
+                <SummaryRow label={`GST / Taxes (${invoiceSettings.tax.pricesIncludeTax ? 'included' : 'added'})`} value={formatCurrency(financials.tax)} />
+              )}
               <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-4">
                 <strong className="text-sm text-slate-900">Grand Total</strong>
                 <strong className="text-xl text-[#253329]">{formatCurrency(financials.total)}</strong>
@@ -534,7 +554,18 @@ export default function OrderDetailsView({
         <div className="flex flex-col gap-4 border-t border-slate-100 py-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <SectionTitle icon={ReceiptText}>Invoice</SectionTitle>
-            <p className="mt-1 text-[9px] text-slate-400">Your professional PDF invoice is available for this order.</p>
+            <p className="mt-1 text-[9px] text-slate-400">
+              Invoice {order.invoice?.invoiceNumber || order.invoiceNumber || 'being prepared'}
+              {' · '}
+              {new Date(order.invoice?.invoiceDate || order.invoiceDate || order.date).toLocaleDateString('en-IN')}
+            </p>
+            {order.invoice?.buyer?.gst && (
+              <div className="mt-3 max-w-xl rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2.5 text-[9px] leading-4 text-emerald-950">
+                <strong className="block text-[10px]">{order.invoice.buyer.gst.legalName}</strong>
+                <span>GSTIN: {order.invoice.buyer.gst.gstin}</span>
+                <span className="block text-emerald-800">{order.invoice.buyer.gst.address}</span>
+              </div>
+            )}
             {invoiceMessage.text && <p className={`mt-2 text-[9px] font-bold ${invoiceMessage.tone === 'success' ? 'text-emerald-700' : 'text-red-600'}`}>{invoiceMessage.text}</p>}
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">

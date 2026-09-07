@@ -564,6 +564,13 @@ export default function UserApp({
       subscribeToUserAccount(
         user.uid,
         (account) => {
+          setUser((current) => current?.uid === user.uid
+            ? {
+                ...current,
+                gstDetails: account.gstDetails || null,
+                gstProfiles: Array.isArray(account.gstProfiles) ? account.gstProfiles : [],
+              }
+            : current)
           const remoteAccount = normalizeAccountState(account)
           const remoteSnapshot = JSON.stringify(remoteAccount)
           remoteAccountRef.current = remoteAccount
@@ -1522,7 +1529,7 @@ export default function UserApp({
       shippingAddress: checkoutDetails.address || null,
       billingAddress:
         checkoutDetails.billingAddress || checkoutDetails.address || null,
-      gstDetails: checkoutDetails.gstDetails || null,
+      gstin: checkoutDetails.gstin || checkoutDetails.gstDetails?.gstin || '',
       deliveryId: checkoutDetails.delivery?.id || 'standard',
       paymentMethod: checkoutDetails.cod
         ? 'Cash on Delivery'

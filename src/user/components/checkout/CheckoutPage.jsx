@@ -11,18 +11,16 @@ import {
   MapPin,
   Minus,
   Package,
-  PackageCheck,
   Pencil,
   Plus,
   ShieldCheck,
   ShoppingBag,
   Tag,
   Trash2,
-  Truck,
 } from 'lucide-react'
-import { formatCurrency, hasValidPrice, parsePrice } from '../../utils/currency'
+import { formatCurrency, hasValidPrice } from '../../utils/currency'
 import { getApplicablePricingTier } from '../../../utils/productPricing'
-import { saveCustomerGstDetails, verifyGstinDetails } from '../../../firebase/customerData'
+import { verifyGstinDetails } from '../../../firebase/customerData'
 import { isValidGstinFormat } from '../../utils/gstinVerification'
 import {
   calculateCartPricing,
@@ -51,6 +49,7 @@ import {
 import { useAddressEntryAssist } from '../../hooks/useAddressEntryAssist'
 
 const createPaymentReceipt = () => `pride_${Date.now()}`
+const GST_PROFILE_FRESH_AFTER = Date.now() - 30 * 24 * 60 * 60 * 1000
 const createCheckoutRequestId = () =>
   globalThis.crypto?.randomUUID?.() ||
   `checkout_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`
@@ -66,12 +65,6 @@ const createEstimatedDeliveryDate = (days) => {
   const date = new Date()
   date.setDate(date.getDate() + days)
   return date.toISOString().slice(0, 10)
-}
-
-export function isValidGstin(gstin) {
-  if (!gstin) return false
-  const clean = String(gstin).trim().toUpperCase()
-  return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(clean)
 }
 
 const createCheckoutAddress = (user, address = {}) => {
@@ -154,12 +147,21 @@ export default function CheckoutPage({
   const [billingAddressForm, setBillingAddressForm] = useState(() => createCheckoutAddress(user))
   const [billingAddressError, setBillingAddressError] = useState('')
 
-  // GST Invoice State (pre-filled if user has saved GST details)
-  const savedGst = user?.gstDetails || null
+  // Only provider-verified server records are reusable. Legacy client-authored
+  // gstDetails values intentionally require verification again.
+  const initialGstProfiles = [
+    ...(Array.isArray(user?.gstProfiles) ? user.gstProfiles : []),
+    ...(user?.gstDetails ? [user.gstDetails] : []),
+  ].filter((profile, index, profiles) =>
+    profile?.verificationProvider === 'cashfree' &&
+    profile?.verificationStatus === 'verified' &&
+    new Date(profile.verifiedAt || 0).getTime() >= GST_PROFILE_FRESH_AFTER &&
+    profiles.findIndex((item) => item?.gstin === profile.gstin) === index,
+  )
+  const savedGst = initialGstProfiles[0] || null
+  const [gstProfiles, setGstProfiles] = useState(initialGstProfiles)
   const [isGstInvoice, setIsGstInvoice] = useState(() => Boolean(savedGst?.gstin))
   const [gstin, setGstin] = useState(() => savedGst?.gstin || '')
-  const [businessName, setBusinessName] = useState(() => savedGst?.legalName || savedGst?.businessName || '')
-  const [gstAddress, setGstAddress] = useState(() => savedGst?.address || '')
   const [gstError, setGstError] = useState('')
   const [gstinVerifying, setGstinVerifying] = useState(false)
   const [gstVerifiedDetails, setGstVerifiedDetails] = useState(() => savedGst || null)
@@ -182,16 +184,11 @@ export default function CheckoutPage({
     try {
       const details = await verifyGstinDetails(cleanGstin)
       setGstVerifiedDetails(details)
-      if (details.legalName) setBusinessName(details.legalName)
-      if (details.address) setGstAddress(details.address)
+      setGstProfiles((current) => [
+        details,
+        ...current.filter((profile) => profile.gstin !== details.gstin),
+      ].slice(0, 5))
       setGstConfirmed(true)
-
-      // Save confirmed GST details in Cloud Firestore linked to user's UID
-      if (user?.uid) {
-        saveCustomerGstDetails(details).catch((err) => {
-          console.warn('Could not auto-save GST details to profile:', err)
-        })
-      }
     } catch (err) {
       setGstVerifiedDetails(null)
       setGstConfirmed(false)
@@ -470,7 +467,7 @@ export default function CheckoutPage({
         setPage1Error('Please confirm your GST business details.')
         return
       }
-      if (!businessName.trim()) {
+      if (!gstVerifiedDetails.legalName?.trim()) {
         setGstError('Registered Business / Company Name is required.')
         setPage1Error('Registered Business Name is required for GST Invoice.')
         return
@@ -508,19 +505,9 @@ export default function CheckoutPage({
       checkoutMode: checkoutMode === 'buy-now' ? 'buy-now' : 'cart',
       address: selectedDeliveryAddress,
       billingAddress: selectedBillingAddress,
-      gstDetails: isGstInvoice && gstVerifiedDetails && gstConfirmed
-        ? {
-            gstin: gstin.trim().toUpperCase(),
-            legalName: gstVerifiedDetails.legalName || businessName.trim(),
-            businessName: businessName.trim() || gstVerifiedDetails.legalName || '',
-            tradeName: gstVerifiedDetails.tradeName || '',
-            status: gstVerifiedDetails.status || 'Active',
-            taxpayerType: gstVerifiedDetails.taxpayerType || 'Regular',
-            address: gstAddress.trim() || gstVerifiedDetails.address || selectedBillingAddress?.line1 || '',
-            verifiedAt: gstVerifiedDetails.verifiedAt || new Date().toISOString(),
-            verificationSource: gstVerifiedDetails.verificationSource || 'Cashfree',
-          }
-        : null,
+      gstin: isGstInvoice && gstVerifiedDetails && gstConfirmed
+        ? gstin.trim().toUpperCase()
+        : '',
       payment: { type: paymentMode === 'online' ? 'Online Payment' : 'Cash on Delivery' },
       discount: pricing.couponDiscount,
       shipping: pricing.shipping,
@@ -571,6 +558,7 @@ export default function CheckoutPage({
         deliveryDate: checkoutDetails.delivery.estimatedDate,
         shippingAddress: checkoutDetails.address,
         billingAddress: checkoutDetails.billingAddress,
+        gstin: checkoutDetails.gstin,
         receipt: createPaymentReceipt(),
       })
 
@@ -1087,6 +1075,32 @@ export default function CheckoutPage({
               {/* GSTIN Input & Cashfree Verification Section */}
               {isGstInvoice && (
                 <div className="mt-4 space-y-4">
+                  {gstProfiles.length > 0 && (
+                    <div>
+                      <label className="mb-1 block text-[11px] font-bold text-slate-700">
+                        Saved GST registrations
+                      </label>
+                      <select
+                        value={gstProfiles.some((profile) => profile.gstin === gstin) ? gstin : ''}
+                        onChange={(event) => {
+                          const profile = gstProfiles.find((item) => item.gstin === event.target.value)
+                          if (!profile) return
+                          setGstin(profile.gstin)
+                          setGstVerifiedDetails(profile)
+                          setGstConfirmed(true)
+                          setGstError('')
+                        }}
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
+                      >
+                        <option value="">Enter another GSTIN</option>
+                        {gstProfiles.map((profile) => (
+                          <option key={profile.gstin} value={profile.gstin}>
+                            {profile.gstin} — {profile.tradeName || profile.legalName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 items-end">
                     <div className="sm:col-span-2">
                       <div className="flex items-center justify-between mb-1">
@@ -1160,7 +1174,7 @@ export default function CheckoutPage({
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                         <div>
                           <span className="text-[11px] text-slate-500 font-semibold block mb-0.5">Legal Registered Business Name</span>
-                          <strong className="text-slate-900 font-extrabold text-sm block">{gstVerifiedDetails.legalName || businessName}</strong>
+                          <strong className="text-slate-900 font-extrabold text-sm block">{gstVerifiedDetails.legalName}</strong>
                         </div>
                         {gstVerifiedDetails.tradeName && (
                           <div>
@@ -1206,27 +1220,11 @@ export default function CheckoutPage({
                     </div>
                   )}
 
-                  {/* Registered Business & Address Inputs */}
+                  {/* Invoice identity is locked to the provider-verified record. */}
                   {gstVerifiedDetails && (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 pt-1">
-                      <div>
-                        <label className="mb-1 block text-[11px] font-bold text-slate-700">Business / Invoice Name *</label>
-                        <input
-                          value={businessName}
-                          onChange={(e) => setBusinessName(e.target.value)}
-                          placeholder="Registered Business Name"
-                          className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-[11px] font-bold text-slate-700">GST Invoice Address (Optional)</label>
-                        <input
-                          value={gstAddress}
-                          onChange={(e) => setGstAddress(e.target.value)}
-                          placeholder="Leave blank to use selected billing address"
-                          className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
-                        />
-                      </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[10px] leading-4 text-slate-500">
+                      The business name and registered address on the invoice come directly from
+                      Cashfree verification and cannot be edited at checkout.
                     </div>
                   )}
 
@@ -1308,7 +1306,7 @@ export default function CheckoutPage({
 
                   {isGstInvoice ? (
                     <p className="mt-1 font-bold text-[#366643]">
-                      GSTIN: {gstin} ({businessName})
+                      GSTIN: {gstin} ({gstVerifiedDetails?.legalName})
                     </p>
                   ) : (
                     <p className="text-[10px] text-slate-400 mt-0.5">Regular Invoice</p>

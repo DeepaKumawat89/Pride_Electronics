@@ -43,6 +43,36 @@ beforeEach(async () => {
       paymentMethods: [],
       cartItems: [],
       savedCartItems: [],
+      gstDetails: {
+        gstin: '08ABCDE1234F1Z5',
+        legalName: 'User A Industries',
+        tradeName: 'User A',
+        status: 'Active',
+        taxpayerType: 'Regular',
+        businessType: 'Proprietorship',
+        registrationDate: '2020-01-01',
+        address: '1 Industrial Area, Jaipur, Rajasthan 302001',
+        addressDetails: { city: 'Jaipur', district: 'Jaipur', state: 'Rajasthan', pincode: '302001' },
+        verifiedAt: '2026-09-04T10:00:00.000Z',
+        verificationProvider: 'cashfree',
+        verificationReferenceId: 'CF-1',
+        verificationStatus: 'verified',
+      },
+      gstProfiles: [{
+        gstin: '08ABCDE1234F1Z5',
+        legalName: 'User A Industries',
+        tradeName: 'User A',
+        status: 'Active',
+        taxpayerType: 'Regular',
+        businessType: 'Proprietorship',
+        registrationDate: '2020-01-01',
+        address: '1 Industrial Area, Jaipur, Rajasthan 302001',
+        addressDetails: { city: 'Jaipur', district: 'Jaipur', state: 'Rajasthan', pincode: '302001' },
+        verifiedAt: '2026-09-04T10:00:00.000Z',
+        verificationProvider: 'cashfree',
+        verificationReferenceId: 'CF-1',
+        verificationStatus: 'verified',
+      }],
     })
     await setDoc(doc(database, 'users', 'UID_B'), {
       uid: 'UID_B',
@@ -114,6 +144,36 @@ test('User A cannot read, update, or delete users/UID_B', async () => {
   await assertFails(getDocs(collection(database, 'users')))
   await assertFails(updateDoc(otherProfile, { wishlistIds: ['product-1'] }))
   await assertFails(deleteDoc(otherProfile))
+})
+
+test('customers cannot forge or replace server-verified GST profiles', async () => {
+  const database = testEnvironment.authenticatedContext('UID_A').firestore()
+  const ownProfile = doc(database, 'users', 'UID_A')
+
+  await assertFails(updateDoc(ownProfile, {
+    gstDetails: {
+      gstin: '27ABCDE1234F1Z5',
+      legalName: 'Forged Business',
+      address: 'Forged address',
+      status: 'Active',
+      verifiedAt: '2026-09-04T10:00:00.000Z',
+      verificationProvider: 'cashfree',
+      verificationStatus: 'verified',
+    },
+  }))
+})
+
+test('admin clients cannot alter backend-managed GST profiles', async () => {
+  const database = testEnvironment
+    .authenticatedContext('UID_ADMIN', { admin: true })
+    .firestore()
+
+  await assertFails(updateDoc(doc(database, 'users', 'UID_A'), {
+    'gstDetails.address': 'x'.repeat(501),
+  }))
+  await assertFails(updateDoc(doc(database, 'users', 'UID_A'), {
+    'gstDetails.verificationProvider': 'browser',
+  }))
 })
 
 test('User B cannot read or update users/UID_A', async () => {

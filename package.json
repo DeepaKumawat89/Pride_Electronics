@@ -19,6 +19,7 @@
     "test:auth": "npx -y firebase-tools@14.19.1 emulators:exec --only auth --project demo-pride-electronics \"node --test tests/firebase-auth.test.mjs\"",
     "test:rules": "npx -y firebase-tools@14.19.1 emulators:exec --only firestore --project demo-pride-electronics \"node --test tests/firestore.rules.test.mjs\"",
     "test:inventory": "npx -y firebase-tools@14.19.1 emulators:exec --only auth,firestore --project demo-pride-electronics \"node --test tests/inventory-reservations.test.mjs\"",
+    "test:gst": "node --test tests/gstin-verification.test.mjs tests/gst-invoice.test.mjs",
     "test:storage": "npx -y firebase-tools@14.19.1 emulators:exec --only storage --project demo-pride-electronics \"node --test tests/storage.rules.test.mjs\""
   },
   "dependencies": {

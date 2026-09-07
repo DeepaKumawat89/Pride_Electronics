@@ -105,34 +105,17 @@ export async function verifyGstinDetails(gstin) {
     const result = await callOperation('verifyGstin', { gstin: cleanGstin })
     return result.data
   } catch (error) {
-    if (error?.message?.includes('Unsupported account operation') || String(error?.cause?.message || '').includes('Unsupported account operation')) {
-      const pan = cleanGstin.slice(2, 12)
-      const isIndividual = pan[3] === 'P'
-      return {
-        valid: true,
-        gstin: cleanGstin,
-        legalName: isIndividual ? 'PRIDE ELECTRONICS STORE' : 'PRIDE ELECTRONICS PRIVATE LIMITED',
-        tradeName: 'PRIDE ELECTRONICS',
-        status: 'Active',
-        taxpayerType: 'Regular',
-        registrationDate: '2021-04-01',
-        address: 'Plot No. 42, Industrial Area Phase II, Commercial Hub, India',
-        verifiedAt: new Date().toISOString(),
-        verificationSource: 'Cashfree (Pending Cloud Deploy)',
-      }
-    }
     throw messageFor(error, error.message || 'Unable to verify GSTIN.')
   }
 }
 
-export async function saveCustomerGstDetails(gstDetails) {
+export async function saveCustomerGstDetails(gstin) {
   try {
-    const result = await callOperation('saveVerifiedGstDetails', { gstDetails })
-    return result.data?.gstDetails || gstDetails
+    const result = await callOperation('saveVerifiedGstDetails', {
+      gstin: typeof gstin === 'string' ? gstin : gstin?.gstin,
+    })
+    return result.data?.gstDetails
   } catch (error) {
-    if (error?.message?.includes('Unsupported account operation')) {
-      return gstDetails
-    }
     throw messageFor(error, 'Unable to save GST details.')
   }
 }

@@ -1,0 +1,252 @@
+const { isValidGstin, normalizeGstin } = require('./gst')
+
+const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100
+
+const DEFAULT_INVOICE_SETTINGS = {
+  business: {
+    legalName: 'PRIDE ELECTRONICS',
+    displayName: 'Pride Electronics',
+    address: '42 Silicon Avenue, Hinjawadi, Pune, Maharashtra 411057',
+    phone: '+91 98765 43210',
+    email: 'support@prideelectronics.in',
+    website: 'www.prideelectronics.in',
+    pan: 'AABCP1234F',
+  },
+  tax: {
+    gstEnabled: true,
+    gstin: '27AABCP1234F1Z5',
+    registrationType: 'Regular',
+    state: 'Maharashtra',
+    stateCode: '27',
+    defaultRate: 18,
+    pricesIncludeTax: true,
+  },
+  numbering: {
+    prefix: 'PE',
+    nextNumber: 1001,
+    padding: 5,
+    includeFinancialYear: true,
+    suffix: '',
+  },
+}
+
+const text = (value, maxLength) => String(value || '').trim().slice(0, maxLength)
+
+const invoiceNumberFor = (numbering = {}, dateValue = new Date()) => {
+  const date = new Date(dateValue)
+  const validDate = Number.isNaN(date.getTime()) ? new Date() : date
+  const year = validDate.getFullYear()
+  const financialYearStart = validDate.getMonth() >= 3 ? year : year - 1
+  const financialYear = `${String(financialYearStart).slice(-2)}-${String(financialYearStart + 1).slice(-2)}`
+  const sequence = String(Math.max(1, Number(numbering.nextNumber) || 1)).padStart(
+    Math.min(12, Math.max(1, Number(numbering.padding) || 1)),
+    '0',
+  )
+  return [
+    text(numbering.prefix, 20),
+    numbering.includeFinancialYear ? financialYear : '',
+    sequence,
+    text(numbering.suffix, 20),
+  ].filter(Boolean).join('/')
+}
+
+const normalizeInvoiceSettings = (settings = {}) => ({
+  business: { ...DEFAULT_INVOICE_SETTINGS.business, ...(settings.business || {}) },
+  tax: { ...DEFAULT_INVOICE_SETTINGS.tax, ...(settings.tax || {}) },
+  numbering: { ...DEFAULT_INVOICE_SETTINGS.numbering, ...(settings.numbering || {}) },
+})
+
+const partyAddress = (value = {}) =>
+  text(
+    typeof value === 'string'
+      ? value
+      : [
+          value.line1,
+          value.line2,
+          [value.city, value.state, value.pincode].filter(Boolean).join(', '),
+        ].filter(Boolean).join(', '),
+    500,
+  )
+
+function allocateLineTaxes(items, couponDiscount, totalTax, pricesIncludeTax) {
+  const sellingSubtotal = roundMoney(
+    items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0), 0),
+  )
+  let allocatedDiscount = 0
+  const baseLines = items.map((item, index) => {
+    const gross = roundMoney(Number(item.price || 0) * Number(item.qty || 0))
+    const discount = index === items.length - 1
+      ? roundMoney(Math.max(0, Number(couponDiscount || 0) - allocatedDiscount))
+      : roundMoney(sellingSubtotal ? Number(couponDiscount || 0) * gross / sellingSubtotal : 0)
+    allocatedDiscount = roundMoney(allocatedDiscount + discount)
+    const net = roundMoney(Math.max(0, gross - discount))
+    const rate = Math.max(0, Math.min(100, Number(item.taxRate || 0)))
+    const taxWeight = Math.max(0,
+      pricesIncludeTax ? net * rate / (100 + rate || 100) : net * rate / 100,
+    )
+    return { item, gross, discount, net, rate, taxWeight }
+  })
+  const totalTaxWeight = baseLines.reduce((sum, line) => sum + line.taxWeight, 0)
+  let allocatedTax = 0
+  return baseLines.map(({ item, gross, discount, net, rate, taxWeight }, index) => {
+    const lineTax = index === baseLines.length - 1
+      ? roundMoney(Math.max(0, Number(totalTax || 0) - allocatedTax))
+      : roundMoney(totalTaxWeight ? Number(totalTax || 0) * taxWeight / totalTaxWeight : 0)
+    allocatedTax = roundMoney(allocatedTax + lineTax)
+    return {
+      productId: text(item.productId, 100),
+      variantId: text(item.variantId, 100),
+      productName: text(item.productName, 200) || 'Product',
+      variant: text(item.variant, 200),
+      sku: text(item.sku, 100),
+      quantity: Number(item.qty || 0),
+      unitPrice: roundMoney(item.price),
+      grossAmount: gross,
+      discount,
+      taxableValue: roundMoney(pricesIncludeTax ? net - lineTax : net),
+      gstRate: rate,
+      lineTax,
+      lineTotal: roundMoney(pricesIncludeTax ? net : net + lineTax),
+    }
+  })
+}
+
+function createInvoiceSnapshot({
+  orderId,
+  invoiceSettings,
+  invoiceDate,
+  quote,
+  customer,
+  shippingAddress,
+  billingAddress,
+  gstProfile = null,
+}) {
+  const settings = normalizeInvoiceSettings(invoiceSettings)
+  const gstEnabled = settings.tax.gstEnabled !== false
+  const sellerGstin = normalizeGstin(settings.tax.gstin)
+  const sellerStateCode = text(settings.tax.stateCode || sellerGstin.slice(0, 2), 2)
+  const recipientStateCode = gstProfile ? normalizeGstin(gstProfile.gstin).slice(0, 2) : ''
+  const intraState = Boolean(recipientStateCode && recipientStateCode === sellerStateCode)
+  const lineItems = allocateLineTaxes(
+    quote.items || [],
+    quote.couponDiscount,
+    gstEnabled ? quote.tax : 0,
+    settings.tax.pricesIncludeTax === true,
+  ).map((item) => {
+    const cgst = recipientStateCode && intraState ? roundMoney(item.lineTax / 2) : 0
+    const sgst = recipientStateCode && intraState ? roundMoney(item.lineTax - cgst) : 0
+    const igst = recipientStateCode && !intraState ? item.lineTax : 0
+    return { ...item, cgst, sgst, igst }
+  })
+  const tax = {
+    pricesIncludeTax: settings.tax.pricesIncludeTax === true,
+    defaultRate: Math.max(0, Math.min(100, Number(settings.tax.defaultRate || 0))),
+    taxableValue: roundMoney(lineItems.reduce((sum, item) => sum + item.taxableValue, 0)),
+    cgst: roundMoney(lineItems.reduce((sum, item) => sum + item.cgst, 0)),
+    sgst: roundMoney(lineItems.reduce((sum, item) => sum + item.sgst, 0)),
+    igst: roundMoney(lineItems.reduce((sum, item) => sum + item.igst, 0)),
+    totalGst: roundMoney(gstEnabled ? quote.tax : 0),
+    supplyType: recipientStateCode ? (intraState ? 'intra-state' : 'inter-state') : 'unregistered',
+    placeOfSupplyStateCode: recipientStateCode,
+  }
+  const number = invoiceNumberFor(settings.numbering, invoiceDate)
+  const snapshot = {
+    schemaVersion: 1,
+    generatedBy: 'server',
+    invoiceNumber: number,
+    invoiceDate: new Date(invoiceDate).toISOString(),
+    orderId: text(orderId, 200),
+    seller: {
+      legalName: text(settings.business.legalName, 200),
+      displayName: text(settings.business.displayName, 200),
+      address: text(settings.business.address, 500),
+      phone: text(settings.business.phone, 30),
+      email: text(settings.business.email, 320),
+      website: text(settings.business.website, 200),
+      pan: text(settings.business.pan, 10).toUpperCase(),
+      gstin: sellerGstin,
+      registrationType: text(settings.tax.registrationType, 50),
+      state: text(settings.tax.state, 100),
+      stateCode: sellerStateCode,
+    },
+    buyer: {
+      name: text(gstProfile?.legalName || customer?.name, 200) || 'Pride customer',
+      email: text(customer?.email, 320),
+      phone: text(billingAddress?.phone || customer?.phone, 30),
+      billingAddress: gstProfile?.address || partyAddress(billingAddress),
+      shippingAddress: partyAddress(shippingAddress),
+      gst: gstProfile ? JSON.parse(JSON.stringify(gstProfile)) : null,
+    },
+    lineItems,
+    amounts: {
+      subtotal: roundMoney(quote.sellingSubtotal),
+      productDiscount: roundMoney(quote.productDiscount),
+      couponDiscount: roundMoney(quote.couponDiscount),
+      shipping: roundMoney(quote.shipping),
+      taxableValue: tax.taxableValue,
+      totalGst: tax.totalGst,
+      total: roundMoney(quote.total),
+    },
+    tax,
+  }
+  validateInvoiceSnapshot(snapshot, { gstRequired: Boolean(gstProfile), gstEnabled })
+  return snapshot
+}
+
+function validateInvoiceSnapshot(invoice, { gstRequired = false, gstEnabled = true } = {}) {
+  const amounts = invoice?.amounts || {}
+  const expectedTotal = roundMoney(
+    Number(amounts.subtotal || 0) -
+      Number(amounts.couponDiscount || 0) +
+      Number(amounts.shipping || 0) +
+      (invoice?.tax?.pricesIncludeTax ? 0 : Number(amounts.totalGst || 0)),
+  )
+  const lineTaxTotal = roundMoney(
+    (invoice?.lineItems || []).reduce((sum, item) => sum + Number(item.lineTax || 0), 0),
+  )
+  const splitTaxTotal = roundMoney(
+    Number(invoice?.tax?.cgst || 0) +
+      Number(invoice?.tax?.sgst || 0) +
+      Number(invoice?.tax?.igst || 0),
+  )
+  if (
+    invoice?.generatedBy !== 'server' ||
+    !text(invoice.invoiceNumber, 100) ||
+    Number.isNaN(new Date(invoice.invoiceDate).getTime()) ||
+    !text(invoice.seller?.legalName, 200) ||
+    !text(invoice.seller?.address, 500) ||
+    !Array.isArray(invoice.lineItems) ||
+    invoice.lineItems.length < 1 ||
+    invoice.lineItems.length > 100 ||
+    !Number.isFinite(Number(amounts.total)) ||
+    Number(amounts.total) < 0 ||
+    roundMoney(invoice.tax?.totalGst) !== roundMoney(amounts.totalGst) ||
+    roundMoney(amounts.total) !== expectedTotal ||
+    lineTaxTotal !== roundMoney(amounts.totalGst) ||
+    (invoice.tax?.supplyType !== 'unregistered' && splitTaxTotal !== lineTaxTotal)
+  ) {
+    throw new Error('The server could not generate valid invoice data for this order.')
+  }
+  if (gstEnabled && !isValidGstin(invoice.seller.gstin)) {
+    throw new Error('Configure a valid seller GSTIN before accepting GST orders.')
+  }
+  if (
+    gstRequired &&
+    (!gstEnabled ||
+      !isValidGstin(invoice.buyer?.gst?.gstin) ||
+      !invoice.buyer.gst.legalName ||
+      !invoice.buyer.gst.address ||
+      invoice.buyer.gst.verificationStatus !== 'verified')
+  ) {
+    throw new Error('The verified buyer GST details are incomplete.')
+  }
+  return true
+}
+
+module.exports = {
+  DEFAULT_INVOICE_SETTINGS,
+  createInvoiceSnapshot,
+  invoiceNumberFor,
+  normalizeInvoiceSettings,
+  validateInvoiceSnapshot,
+}
