@@ -125,16 +125,32 @@ const passwordPolicyMessage = (status) => {
 const wait = (milliseconds) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 
-async function loadUser(firebaseUser, retries = 0) {
+const RETRYABLE_PROFILE_ERROR_CODES = new Set([
+  'functions/deadline-exceeded',
+  'functions/internal',
+  'functions/not-found',
+  'functions/resource-exhausted',
+  'functions/unavailable',
+  'functions/unknown',
+  'auth/network-request-failed',
+])
+
+const TERMINAL_SESSION_ERROR_CODES = new Set([
+  'auth/user-disabled',
+  'functions/permission-denied',
+  'functions/unauthenticated',
+])
+
+async function loadUser(firebaseUser, retries = 2) {
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
       const profile = await getUserProfileRecord()
       return mapUser(firebaseUser, profile.data)
     } catch (error) {
-      if (error?.code !== 'functions/not-found' || attempt === retries) {
+      if (!RETRYABLE_PROFILE_ERROR_CODES.has(error?.code) || attempt === retries) {
         throw error
       }
-      await wait(350)
+      await wait(Math.min(250 * (2 ** attempt), 2000))
     }
   }
   throw createUserFacingAuthError('Unable to load the user profile.')
@@ -177,9 +193,25 @@ export async function signUpUser({ name, phone, email, password }) {
       normalizedPassword,
     )
     await updateProfile(credential.user, { displayName: normalizedName })
-    await createUserProfile({ name: normalizedName, phone: normalizedPhone })
+    let profileCreated = false
+    let profileError
+    for (let attempt = 0; attempt < 3 && !profileCreated; attempt += 1) {
+      try {
+        await createUserProfile({ name: normalizedName, phone: normalizedPhone })
+        profileCreated = true
+      } catch (error) {
+        profileError = error
+        if (error?.code === 'functions/already-exists') throw error
+        if (attempt < 2) await wait(300 * (attempt + 1))
+      }
+    }
+    // A valid Firebase account remains usable if profile provisioning is
+    // temporarily unavailable. getUserProfile repairs a missing record later.
+    if (!profileCreated && profileError?.code === 'functions/invalid-argument') {
+      throw profileError
+    }
   } catch (error) {
-    if (credential?.user) {
+    if (credential?.user && error?.code === 'functions/already-exists') {
       try {
         await deleteUser(credential.user)
       } catch {
@@ -407,28 +439,62 @@ export async function completeUserPasswordReset(actionCode, nextPassword) {
 }
 
 export function observeUserSession(onUser, onError) {
-  return onAuthStateChanged(
+  let active = true
+  let revision = 0
+  const unsubscribe = onAuthStateChanged(
     userAuth,
     async (firebaseUser) => {
+      const currentRevision = ++revision
       if (!firebaseUser) {
-        onUser(null)
+        if (active) onUser(null)
         return
       }
       try {
         const pendingProfileSetup =
           registrationInProgress || googleSignInInProgress
         if (pendingProfileSetup) await pendingProfileSetup
-        if (userAuth.currentUser?.uid !== firebaseUser.uid) return
+        if (
+          !active ||
+          currentRevision !== revision ||
+          userAuth.currentUser?.uid !== firebaseUser.uid
+        ) return
         await reload(firebaseUser)
-        onUser(await loadUser(firebaseUser, 40))
+        if (
+          !active ||
+          currentRevision !== revision ||
+          userAuth.currentUser?.uid !== firebaseUser.uid
+        ) return
+        const authenticatedUser = await loadUser(firebaseUser, 8)
+        if (
+          !active ||
+          currentRevision !== revision ||
+          userAuth.currentUser?.uid !== firebaseUser.uid
+        ) return
+        onUser(authenticatedUser)
       } catch (error) {
-        if (userAuth.currentUser?.uid !== firebaseUser.uid) return
-        await bestEffortSignOut()
-        onError?.(getErrorMessage(error))
+        if (
+          !active ||
+          currentRevision !== revision ||
+          userAuth.currentUser?.uid !== firebaseUser.uid
+        ) return
+        const terminal = TERMINAL_SESSION_ERROR_CODES.has(error?.code)
+        if (terminal) {
+          await bestEffortSignOut()
+        } else {
+          onUser(mapUser(firebaseUser))
+        }
+        onError?.(getErrorMessage(error), { terminal })
       }
     },
-    (error) => onError?.(getErrorMessage(error)),
+    (error) => {
+      if (active) onError?.(getErrorMessage(error))
+    },
   )
+  return () => {
+    active = false
+    revision += 1
+    unsubscribe()
+  }
 }
 
 export async function saveUserProfile(profile) {

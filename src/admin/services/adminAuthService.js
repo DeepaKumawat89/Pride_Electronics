@@ -36,11 +36,17 @@ const createAdminSession = async (user) => {
   }
   const profileDocument = await getDoc(doc(db, 'admins', user.uid))
   const profile = profileDocument.data() || {}
+  const claimPermissions = Array.isArray(token.claims.permissions)
+    ? token.claims.permissions.filter((permission) => typeof permission === 'string')
+    : token.claims.role === 'Store Administrator'
+      ? ['*']
+      : []
   return {
     uid: user.uid,
     name: user.displayName || profile.name || 'Pride Admin',
     email: user.email || '',
     role: profile.role || token.claims.role || 'Store Administrator',
+    permissions: claimPermissions,
   }
 }
 

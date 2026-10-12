@@ -165,7 +165,7 @@ test('customers cannot forge or replace server-verified GST profiles', async () 
 
 test('admin clients cannot alter backend-managed GST profiles', async () => {
   const database = testEnvironment
-    .authenticatedContext('UID_ADMIN', { admin: true })
+    .authenticatedContext('UID_ADMIN', { admin: true, role: 'Store Administrator' })
     .firestore()
 
   await assertFails(updateDoc(doc(database, 'users', 'UID_A'), {
@@ -253,7 +253,7 @@ test('a normal user cannot read admin data or perform direct admin writes', asyn
 
 test('an admin custom claim authorizes privileged Firestore operations', async () => {
   const database = testEnvironment
-    .authenticatedContext('UID_ADMIN', { admin: true })
+    .authenticatedContext('UID_ADMIN', { admin: true, role: 'Store Administrator' })
     .firestore()
 
   await assertSucceeds(getDoc(doc(database, 'users', 'UID_B')))
@@ -269,9 +269,24 @@ test('an admin custom claim authorizes privileged Firestore operations', async (
   )
 })
 
+test('scoped admin claims cannot bypass their assigned permissions', async () => {
+  const database = testEnvironment
+    .authenticatedContext('UID_ORDER_MANAGER', {
+      admin: true,
+      role: 'Order Manager',
+      permissions: ['orders', 'users'],
+    })
+    .firestore()
+
+  await assertSucceeds(getDoc(doc(database, 'users', 'UID_B')))
+  await assertFails(
+    updateDoc(doc(database, 'products', 'PRODUCT_1'), { stock: 3 }),
+  )
+})
+
 test('admin product creates require complete fields and valid INR pricing', async () => {
   const database = testEnvironment
-    .authenticatedContext('UID_ADMIN', { admin: true })
+    .authenticatedContext('UID_ADMIN', { admin: true, role: 'Store Administrator' })
     .firestore()
   const validProduct = {
     name: 'Validated product',

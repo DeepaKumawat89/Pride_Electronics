@@ -438,10 +438,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                         ? 'Not deliverable to this address'
                         : 'Delivery available',
                   ],
-                  [
-                    ShieldCheck,
-                    detailInformation.warranty || 'Warranty details unavailable',
-                  ],
+                  [ShieldCheck, 'Secure'],
                   [RotateCcw, 'Easy returns'],
                 ].map(([Icon, label]) => (
                   <div key={label} className="rounded-2xl bg-slate-50 px-2 py-3 text-center text-[9px] font-extrabold text-slate-600 sm:flex sm:items-center sm:justify-center sm:gap-2 sm:text-[10px]">

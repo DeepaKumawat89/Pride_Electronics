@@ -29,6 +29,16 @@ service cloud.firestore {
         request.auth.token.admin == true;
     }
 
+    function hasAdminPermission(permission) {
+      return isAdmin() && (
+        (request.auth.token.keys().hasAny(['role']) &&
+          request.auth.token.role == 'Store Administrator') ||
+        (request.auth.token.keys().hasAny(['permissions']) &&
+          request.auth.token.permissions is list &&
+          request.auth.token.permissions.hasAny(['*', permission]))
+      );
+    }
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
@@ -146,65 +156,70 @@ service cloud.firestore {
 
     match /products/{productId} {
       allow read: if true;
-      allow create: if isAdmin() && isValidProduct(request.resource.data);
-      allow update: if isAdmin() &&
+      allow create: if hasAdminPermission('products') && isValidProduct(request.resource.data);
+      allow update: if hasAdminPermission('products') &&
         (isValidProduct(request.resource.data) || isLegacyProductOperationalUpdate());
-      allow delete: if isAdmin();
+      allow delete: if hasAdminPermission('products');
     }
 
     match /categories/{categoryId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if hasAdminPermission('categories');
     }
 
     match /subcategories/{subcategoryId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if hasAdminPermission('categories');
     }
 
     match /coupons/{couponId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if hasAdminPermission('coupons');
     }
 
     match /settings/{settingId} {
-      allow read: if isAdmin() || settingId in [
+      allow read: if hasAdminPermission('settings') || settingId in [
         'marketing',
         'shipping',
         'invoice',
         'storefront'
       ];
-      allow write: if isAdmin();
+      allow write: if
+        (settingId == 'admin' && hasAdminPermission('settings')) ||
+        (settingId == 'shipping' && hasAdminPermission('shipping')) ||
+        (settingId == 'invoice' && hasAdminPermission('tax-invoice')) ||
+        (settingId == 'marketing' && hasAdminPermission('offers')) ||
+        (settingId == 'storefront' && hasAdminPermission('settings'));
     }
 
     match /reviews/{reviewId} {
-      allow read: if isAdmin() || resource.data.status == 'Published' || owns(resource.data);
-      allow write: if isAdmin();
+      allow read: if hasAdminPermission('reviews') || resource.data.status == 'Published' || owns(resource.data);
+      allow write: if hasAdminPermission('reviews');
     }
 
     match /orders/{orderId} {
-      allow read: if isAdmin() || owns(resource.data);
-      allow write: if isAdmin();
+      allow read: if hasAdminPermission('orders') || owns(resource.data);
+      allow write: if hasAdminPermission('orders');
     }
 
     match /returns/{returnId} {
-      allow read: if isAdmin() || owns(resource.data);
-      allow write: if isAdmin();
+      allow read: if hasAdminPermission('returns') || owns(resource.data);
+      allow write: if hasAdminPermission('returns');
     }
 
     match /refunds/{refundId} {
-      allow read, write: if isAdmin();
+      allow read, write: if hasAdminPermission('payments');
     }
 
     match /inventoryHistory/{entryId} {
-      allow read, write: if isAdmin();
+      allow read, write: if hasAdminPermission('inventory');
     }
 
     match /users/{userId} {
-      allow read: if isAdmin() || isOwner(userId);
+      allow read: if hasAdminPermission('users') || isOwner(userId);
       allow create: if false;
       allow update: if backendGstFieldsUnchanged() &&
-        isAdmin() && uidUnchanged(userId) &&
+        hasAdminPermission('users') && uidUnchanged(userId) &&
         uidNotModified() &&
         isValidUser(request.resource.data, userId);
       allow delete: if false;
@@ -212,7 +227,7 @@ service cloud.firestore {
 
     match /admins/{adminId} {
       allow read: if isOwner(adminId);
-      allow write: if isAdmin();
+      allow write: if hasAdminPermission('settings');
     }
 
     match /couponUsages/{usageId} {
@@ -220,6 +235,10 @@ service cloud.firestore {
     }
 
     match /_authPhoneIndex/{phone} {
+      allow read, write: if false;
+    }
+
+    match /_authRateLimits/{key} {
       allow read, write: if false;
     }
   }

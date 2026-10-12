@@ -45,6 +45,7 @@ import {
   getProtectedPathForSection,
   getProtectedRoute,
 } from './utils/protectedRoutes'
+import { transitionAccountSession } from './utils/accountSession'
 import { createInvoiceNumber, initialInvoiceSettings } from '../data/invoice'
 import { initialAdminSettings } from '../data/adminSettings'
 import {
@@ -201,6 +202,7 @@ export default function UserApp({
   const [authStatus, setAuthStatus] = useState('loading')
   const [accountReady, setAccountReady] = useState(false)
   const [accountError, setAccountError] = useState('')
+  const [accountLoadAttempt, setAccountLoadAttempt] = useState(0)
   const [localOrders, setOrders] = useState([])
   const [savedAddresses, setSavedAddresses] = useState([])
   const [savedPayments, setSavedPayments] = useState([])
@@ -511,29 +513,36 @@ export default function UserApp({
     () =>
       observeUserSession(
         (authenticatedUser) => {
-          const previousUid = activeUserUid.current
           if (authenticatedUser) {
-            if (previousUid && previousUid !== authenticatedUser.uid) {
+            const session = transitionAccountSession(
+              activeUserUid,
+              authenticatedUser.uid,
+            )
+            if (session.shouldClearPreviousUser) {
               clearAuthenticatedState()
+              // clearAuthenticatedState also clears the active UID.
+              activeUserUid.current = authenticatedUser.uid
             }
-            if (previousUid !== authenticatedUser.uid) {
+            if (session.userChanged) {
               setAccountReady(false)
               setAccountError('')
             }
-            activeUserUid.current = authenticatedUser.uid
             setUser(authenticatedUser)
             setAuthStatus('authenticated')
             onCustomerAuthenticatedRef.current?.(authenticatedUser)
           } else {
+            const previousUid = activeUserUid.current
             if (previousUid) clearAuthenticatedState()
             else setUser(null)
             activeUserUid.current = null
             setAuthStatus('unauthenticated')
           }
         },
-        (error) => {
-          clearAuthenticatedState()
-          setAuthStatus('unauthenticated')
+        (error, { terminal = true } = {}) => {
+          if (terminal) {
+            clearAuthenticatedState()
+            setAuthStatus('unauthenticated')
+          }
           setToast(error.message)
           clearTimeout(toastTimer.current)
           toastTimer.current = setTimeout(() => setToast(''), 4200)
@@ -611,7 +620,7 @@ export default function UserApp({
       clearTimeout(accountSaveTimer.current)
       unsubscribers.forEach((unsubscribe) => unsubscribe())
     }
-  }, [user?.uid, hydrateCart])
+  }, [user?.uid, hydrateCart, accountLoadAttempt])
 
   useEffect(() => {
     if (!user?.uid) return undefined
@@ -1089,6 +1098,18 @@ export default function UserApp({
   }
 
   const handleAuthSuccess = (authenticatedUser, mode) => {
+    const session = transitionAccountSession(
+      activeUserUid,
+      authenticatedUser.uid,
+    )
+    if (session.shouldClearPreviousUser) {
+      clearAuthenticatedState()
+      activeUserUid.current = authenticatedUser.uid
+    }
+    if (session.userChanged) {
+      setAccountReady(false)
+      setAccountError('')
+    }
     setUser(authenticatedUser)
     setAuthStatus('authenticated')
     onCustomerAuthenticatedRef.current?.(authenticatedUser)
@@ -1414,6 +1435,12 @@ export default function UserApp({
     setAccountSection(null)
   }
 
+  const retryAccountData = () => {
+    setAccountReady(false)
+    setAccountError('')
+    setAccountLoadAttempt((attempt) => attempt + 1)
+  }
+
   const handleAccountCheckout = (checkoutOptions) => {
     setAccountSection(null)
     handleCheckout({ ...checkoutOptions, selection: null })
@@ -1733,9 +1760,16 @@ export default function UserApp({
               <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">
                 {protectedDataError}
               </p>
-              <button type="button" onClick={closeCheckout} className="mt-5 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white">
-                Back to store
-              </button>
+              <div className="mt-5 flex flex-wrap justify-center gap-2">
+                {accountError && (
+                  <button type="button" onClick={retryAccountData} className="rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white">
+                    Retry loading
+                  </button>
+                )}
+                <button type="button" onClick={checkoutOpen ? closeCheckout : closeAccountPanel} className="rounded-full border border-slate-200 bg-white px-5 py-3 text-xs font-extrabold text-slate-700">
+                  Back to store
+                </button>
+              </div>
             </div>
           </section>
         ) : successfulOrder && authStatus === 'authenticated' && user ? (

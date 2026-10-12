@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   clearAdminSession,
   observeAdminSession,
@@ -31,10 +31,10 @@ export function useAdminAuth() {
     }
   }
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     setAdmin(null)
     await clearAdminSession()
-  }
+  }, [])
 
   const updateProfile = async (profile) => {
     const session = await updateAdminProfile(profile)

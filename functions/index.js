@@ -1,4 +1,4 @@
-const { createHmac, randomUUID, timingSafeEqual } = require('node:crypto')
+const { createHash, createHmac, randomUUID, timingSafeEqual } = require('node:crypto')
 const { initializeApp } = require('firebase-admin/app')
 const { getAuth } = require('firebase-admin/auth')
 const { FieldValue, Timestamp, getFirestore } = require('firebase-admin/firestore')
@@ -38,6 +38,10 @@ const firebaseWebApiKey =
   'AIzaSyDF4djFtrqwozdqnPA0iOhhJ08PZvpCauc'
 const region = 'asia-south1'
 const callableOptions = { region, invoker: 'public' }
+const phoneLoginCallableOptions = {
+  ...callableOptions,
+  enforceAppCheck: process.env.FUNCTIONS_EMULATOR !== 'true',
+}
 const razorpayKeyId = defineSecret('RAZORPAY_KEY_ID')
 const razorpayKeySecret = defineSecret('RAZORPAY_KEY_SECRET')
 const razorpayWebhookSecret = defineSecret('RAZORPAY_WEBHOOK_SECRET')
@@ -68,6 +72,9 @@ const RAZORPAY_PAYMENT_PATTERN = /^pay_[a-zA-Z0-9]{6,100}$/
 const RAZORPAY_SIGNATURE_PATTERN = /^[a-fA-F0-9]{64}$/
 const STOCK_RESERVATION_TTL_MS = 15 * 60 * 1000
 const STOCK_RESERVATION_CLEANUP_LIMIT = 100
+const PHONE_LOGIN_WINDOW_MS = 15 * 60 * 1000
+const PHONE_LOGIN_MAX_ATTEMPTS = 8
+const PHONE_LOGIN_MAX_IP_ATTEMPTS = 30
 
 const cleanObject = (value) => JSON.parse(JSON.stringify(value || {}))
 
@@ -205,6 +212,62 @@ const normalizePhone = (value) =>
     .replace(/\D/g, '')
     .slice(-10)
 
+const rateLimitKey = (scope, value) =>
+  `${scope}_${createHash('sha256').update(String(value || 'unknown')).digest('hex')}`
+
+const phoneLoginRateLimitReferences = (request, phone) => {
+  const forwardedFor = String(request.rawRequest?.headers?.['x-forwarded-for'] || '')
+    .split(',')[0]
+    .trim()
+  const clientIp = request.rawRequest?.ip || forwardedFor || 'unknown'
+  return [
+    {
+      limit: PHONE_LOGIN_MAX_ATTEMPTS,
+      reference: db.doc(`_authRateLimits/${rateLimitKey('phone', phone)}`),
+    },
+    {
+      limit: PHONE_LOGIN_MAX_IP_ATTEMPTS,
+      reference: db.doc(`_authRateLimits/${rateLimitKey('ip', clientIp)}`),
+    },
+  ]
+}
+
+const consumePhoneLoginAttempt = async (request, phone) => {
+  const entries = phoneLoginRateLimitReferences(request, phone)
+  const now = Date.now()
+  await db.runTransaction(async (transaction) => {
+    const snapshots = await Promise.all(
+      entries.map(({ reference }) => transaction.get(reference)),
+    )
+    entries.forEach(({ limit, reference }, index) => {
+      const existing = snapshots[index].data() || {}
+      const windowStartedAt = Number(existing.windowStartedAt || 0)
+      const inCurrentWindow = now - windowStartedAt < PHONE_LOGIN_WINDOW_MS
+      const attempts = inCurrentWindow ? Number(existing.attempts || 0) : 0
+      if (attempts >= limit) {
+        throw new HttpsError(
+          'resource-exhausted',
+          'Too many unsuccessful attempts. Please wait and try again.',
+        )
+      }
+      transaction.set(reference, {
+        attempts: attempts + 1,
+        windowStartedAt: inCurrentWindow ? windowStartedAt : now,
+        expiresAt: Timestamp.fromMillis(now + PHONE_LOGIN_WINDOW_MS),
+      })
+    })
+  })
+  return entries.map(({ reference }) => reference)
+}
+
+const clearPhoneLoginAttempts = async (references) => {
+  await Promise.all(
+    references
+      .slice(0, 1)
+      .map((reference) => reference.delete().catch(() => undefined)),
+  )
+}
+
 const validateProfile = (data = {}) => {
   const name = String(data.name || '').trim()
   const phone = normalizePhone(data.phone)
@@ -238,8 +301,12 @@ exports.createUserProfile = onCall(callableOptions, async (request) => {
       transaction.get(userReference),
       transaction.get(phoneReference),
     ])
-    if (existingProfile.exists) {
-      throw new HttpsError('already-exists', 'The user profile already exists.')
+    const currentPhone = existingProfile.data()?.phoneNormalized
+    if (currentPhone && currentPhone !== profile.phone) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Use the profile settings to change an existing phone number.',
+      )
     }
     if (existingPhone.exists && existingPhone.data().uid !== uid) {
       throw new HttpsError('already-exists', 'The phone number is already used.')
@@ -256,9 +323,11 @@ exports.createUserProfile = onCall(callableOptions, async (request) => {
       email: authUser.email.toLowerCase(),
       emailVerified: authUser.emailVerified,
       role: 'customer',
-      createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-    })
+      ...(!existingProfile.exists
+        ? { createdAt: FieldValue.serverTimestamp() }
+        : {}),
+    }, { merge: true })
   })
   return { success: true }
 })
@@ -322,7 +391,29 @@ exports.getUserProfile = onCall(callableOptions, async (request) => {
   const userReference = db.doc(`users/${uid}`)
   const userDocument = await userReference.get()
   if (!userDocument.exists) {
-    throw new HttpsError('not-found', 'The user profile was not found.')
+    const name = String(authUser.displayName || 'Pride Customer').trim().slice(0, 80)
+    const recoveredProfile = {
+      uid,
+      name: name.length >= 2 ? name : 'Pride Customer',
+      email: String(authUser.email || '').toLowerCase(),
+      emailVerified: authUser.emailVerified,
+      role: 'customer',
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }
+    await userReference.set(recoveredProfile)
+    return {
+      uid,
+      name: recoveredProfile.name,
+      phone: '',
+      email: recoveredProfile.email,
+      emailVerified: recoveredProfile.emailVerified,
+      dob: '',
+      gender: '',
+      gstDetails: null,
+      gstProfiles: [],
+      role: 'customer',
+    }
   }
   const profile = userDocument.data()
   await userReference.set(
@@ -548,7 +639,7 @@ exports.updateUserProfile = onCall(paymentCallableOptions, async (request) => {
   return { success: true }
 })
 
-exports.signInUserWithPhone = onCall(callableOptions, async (request) => {
+exports.signInUserWithPhone = onCall(phoneLoginCallableOptions, async (request) => {
   if (request.auth) {
     throw new HttpsError('failed-precondition', 'Sign out before signing in.')
   }
@@ -557,6 +648,8 @@ exports.signInUserWithPhone = onCall(callableOptions, async (request) => {
   if (!PHONE_PATTERN.test(phone) || !password || password.length > 128) {
     throw new HttpsError('invalid-argument', 'Invalid login details.')
   }
+
+  const rateLimitReferences = await consumePhoneLoginAttempt(request, phone)
 
   const phoneDocument = await db.doc(`_authPhoneIndex/${phone}`).get()
   if (!phoneDocument.exists) {
@@ -593,6 +686,7 @@ exports.signInUserWithPhone = onCall(callableOptions, async (request) => {
       'Invalid login details.',
     )
   }
+  await clearPhoneLoginAttempts(rateLimitReferences)
   // The client completes a normal Firebase email/password sign-in with this
   // verified address. This avoids requiring the runtime service account to
   // sign a custom token while keeping phone-to-email lookup protected by the
@@ -2379,7 +2473,7 @@ exports.submitOrderFeedback = onCall(
 )
 
 async function updateCustomerStatusHandler(request) {
-  await requireAdmin(request)
+  await requireAdmin(request, 'users')
   const userId = String(request.data?.userId || '').trim()
   const status = String(request.data?.status || '').trim()
   if (!userId || !['Active', 'Suspended'].includes(status)) {

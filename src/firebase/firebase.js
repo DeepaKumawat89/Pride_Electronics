@@ -1,4 +1,8 @@
 import { getApp, getApps, initializeApp } from 'firebase/app'
+import {
+  initializeAppCheck,
+  ReCaptchaEnterpriseProvider,
+} from 'firebase/app-check'
 import { getAuth } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 import { getFunctions } from 'firebase/functions'
@@ -21,6 +25,19 @@ const userApp = getApps().some(
 )
   ? getApp('pride-user-auth')
   : initializeApp(firebaseConfig, 'pride-user-auth')
+
+const viteEnvironment = import.meta.env || {}
+const appCheckSiteKey = viteEnvironment.VITE_FIREBASE_APP_CHECK_SITE_KEY
+if (typeof window !== 'undefined' && appCheckSiteKey) {
+  const debugToken = viteEnvironment.VITE_FIREBASE_APP_CHECK_DEBUG_TOKEN
+  if (viteEnvironment.DEV && debugToken) {
+    self.FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken
+  }
+  initializeAppCheck(userApp, {
+    provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+    isTokenAutoRefreshEnabled: true,
+  })
+}
 
 export const auth = getAuth(app)
 export const userAuth = getAuth(userApp)

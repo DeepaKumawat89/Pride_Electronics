@@ -49,7 +49,7 @@ test('unauthenticated clients cannot read profile images', async () => {
 test('only an admin claim can mutate product images', async () => {
   const user = testEnvironment.authenticatedContext('UID_A').storage(bucket)
   const admin = testEnvironment
-    .authenticatedContext('UID_ADMIN', { admin: true })
+    .authenticatedContext('UID_ADMIN', { admin: true, role: 'Store Administrator' })
     .storage(bucket)
   const productPath = 'products/product-1/photo.png'
 

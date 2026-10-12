@@ -1,13 +1,4 @@
 {
-  "auth": {
-    "providers": {
-      "emailPassword": true,
-      "googleSignIn": {
-        "oAuthBrandDisplayName": "Pride Electronics",
-        "supportEmail": "deepakkumawat31434@gmail.com"
-      }
-    }
-  },
   "functions": {
     "source": "functions"
   },

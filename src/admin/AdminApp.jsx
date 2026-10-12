@@ -77,8 +77,7 @@ export default function AdminApp({
   const [activeTab, setActiveTab] = useState('dashboard')
   const [searchQuery, setSearchQuery] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const activeRole = adminSettings.roles.find((role) => role.name === admin?.role)
-  const permissions = activeRole?.permissions || []
+  const permissions = admin?.permissions || []
   const canAccess = (tab) =>
     permissions.includes('*') || permissions.includes(tab)
   const firstPermittedTab = permissions.includes('*')
