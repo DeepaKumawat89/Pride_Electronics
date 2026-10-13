@@ -1,4 +1,4 @@
-const { createHash, createHmac, randomUUID, timingSafeEqual } = require('node:crypto')
+const { createHmac, randomUUID, timingSafeEqual } = require('node:crypto')
 const { initializeApp } = require('firebase-admin/app')
 const { getAuth } = require('firebase-admin/auth')
 const { FieldValue, Timestamp, getFirestore } = require('firebase-admin/firestore')
@@ -26,15 +26,8 @@ initializeApp()
 
 const db = getFirestore()
 const adminAuth = getAuth()
-const firebaseWebApiKey =
-  process.env.FIREBASE_WEB_API_KEY ||
-  'AIzaSyCniVo3kJxHiq1pIO-apKxvx2xayaXmYus'
 const region = 'asia-south1'
 const callableOptions = { region, invoker: 'public' }
-const phoneLoginCallableOptions = {
-  ...callableOptions,
-  enforceAppCheck: process.env.FUNCTIONS_EMULATOR !== 'true',
-}
 const razorpayKeyId = defineSecret('RAZORPAY_KEY_ID')
 const razorpayKeySecret = defineSecret('RAZORPAY_KEY_SECRET')
 const razorpayWebhookSecret = defineSecret('RAZORPAY_WEBHOOK_SECRET')
@@ -54,9 +47,6 @@ const RAZORPAY_PAYMENT_PATTERN = /^pay_[a-zA-Z0-9]{6,100}$/
 const RAZORPAY_SIGNATURE_PATTERN = /^[a-fA-F0-9]{64}$/
 const STOCK_RESERVATION_TTL_MS = 15 * 60 * 1000
 const STOCK_RESERVATION_CLEANUP_LIMIT = 100
-const PHONE_LOGIN_WINDOW_MS = 15 * 60 * 1000
-const PHONE_LOGIN_MAX_ATTEMPTS = 8
-const PHONE_LOGIN_MAX_IP_ATTEMPTS = 30
 
 const cleanObject = (value) => JSON.parse(JSON.stringify(value || {}))
 
@@ -195,62 +185,6 @@ const normalizePhone = (value) =>
     .replace(/\D/g, '')
     .slice(-10)
 
-const rateLimitKey = (scope, value) =>
-  `${scope}_${createHash('sha256').update(String(value || 'unknown')).digest('hex')}`
-
-const phoneLoginRateLimitReferences = (request, phone) => {
-  const forwardedFor = String(request.rawRequest?.headers?.['x-forwarded-for'] || '')
-    .split(',')[0]
-    .trim()
-  const clientIp = request.rawRequest?.ip || forwardedFor || 'unknown'
-  return [
-    {
-      limit: PHONE_LOGIN_MAX_ATTEMPTS,
-      reference: db.doc(`_authRateLimits/${rateLimitKey('phone', phone)}`),
-    },
-    {
-      limit: PHONE_LOGIN_MAX_IP_ATTEMPTS,
-      reference: db.doc(`_authRateLimits/${rateLimitKey('ip', clientIp)}`),
-    },
-  ]
-}
-
-const consumePhoneLoginAttempt = async (request, phone) => {
-  const entries = phoneLoginRateLimitReferences(request, phone)
-  const now = Date.now()
-  await db.runTransaction(async (transaction) => {
-    const snapshots = await Promise.all(
-      entries.map(({ reference }) => transaction.get(reference)),
-    )
-    entries.forEach(({ limit, reference }, index) => {
-      const existing = snapshots[index].data() || {}
-      const windowStartedAt = Number(existing.windowStartedAt || 0)
-      const inCurrentWindow = now - windowStartedAt < PHONE_LOGIN_WINDOW_MS
-      const attempts = inCurrentWindow ? Number(existing.attempts || 0) : 0
-      if (attempts >= limit) {
-        throw new HttpsError(
-          'resource-exhausted',
-          'Too many unsuccessful attempts. Please wait and try again.',
-        )
-      }
-      transaction.set(reference, {
-        attempts: attempts + 1,
-        windowStartedAt: inCurrentWindow ? windowStartedAt : now,
-        expiresAt: Timestamp.fromMillis(now + PHONE_LOGIN_WINDOW_MS),
-      })
-    })
-  })
-  return entries.map(({ reference }) => reference)
-}
-
-const clearPhoneLoginAttempts = async (references) => {
-  await Promise.all(
-    references
-      .slice(0, 1)
-      .map((reference) => reference.delete().catch(() => undefined)),
-  )
-}
-
 const validateProfile = (data = {}) => {
   const name = String(data.name || '').trim()
   const phone = normalizePhone(data.phone)
@@ -268,154 +202,6 @@ const validateProfile = (data = {}) => {
     photo: String(data.photo || '').slice(0, 2000),
   }
 }
-
-exports.createUserProfile = onCall(callableOptions, async (request) => {
-  const uid = requireUser(request)
-  const profile = validateProfile(request.data)
-  const authUser = await adminAuth.getUser(uid)
-  if (!authUser.email) {
-    throw new HttpsError('failed-precondition', 'An email address is required.')
-  }
-
-  const userReference = db.doc(`users/${uid}`)
-  const phoneReference = db.doc(`_authPhoneIndex/${profile.phone}`)
-  await db.runTransaction(async (transaction) => {
-    const [existingProfile, existingPhone] = await Promise.all([
-      transaction.get(userReference),
-      transaction.get(phoneReference),
-    ])
-    const currentPhone = existingProfile.data()?.phoneNormalized
-    if (currentPhone && currentPhone !== profile.phone) {
-      throw new HttpsError(
-        'failed-precondition',
-        'Use the profile settings to change an existing phone number.',
-      )
-    }
-    if (existingPhone.exists && existingPhone.data().uid !== uid) {
-      throw new HttpsError('already-exists', 'The phone number is already used.')
-    }
-    transaction.set(phoneReference, {
-      uid,
-      createdAt: FieldValue.serverTimestamp(),
-    })
-    transaction.set(userReference, {
-      uid,
-      name: profile.name,
-      phone: profile.phone,
-      phoneNormalized: profile.phone,
-      email: authUser.email.toLowerCase(),
-      emailVerified: authUser.emailVerified,
-      role: 'customer',
-      updatedAt: FieldValue.serverTimestamp(),
-      ...(!existingProfile.exists
-        ? { createdAt: FieldValue.serverTimestamp() }
-        : {}),
-    }, { merge: true })
-  })
-  return { success: true }
-})
-
-exports.ensureGoogleUserProfile = onCall(callableOptions, async (request) => {
-  const uid = requireUser(request)
-  const authUser = await adminAuth.getUser(uid)
-  const usesGoogle = authUser.providerData.some(
-    (provider) => provider.providerId === 'google.com',
-  )
-  if (!usesGoogle || !authUser.email) {
-    throw new HttpsError(
-      'failed-precondition',
-      'A verified Google account is required.',
-    )
-  }
-
-  const name = String(authUser.displayName || 'Pride Customer')
-    .trim()
-    .slice(0, 80)
-  const email = authUser.email.trim().toLowerCase()
-  const photo = String(authUser.photoURL || '').slice(0, 2000)
-  const userReference = db.doc(`users/${uid}`)
-
-  await db.runTransaction(async (transaction) => {
-    const userDocument = await transaction.get(userReference)
-    if (!userDocument.exists) {
-      transaction.set(userReference, {
-        uid,
-        name: name || 'Pride Customer',
-        email,
-        emailVerified: authUser.emailVerified,
-        photo,
-        role: 'customer',
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      })
-      return
-    }
-
-    const currentProfile = userDocument.data()
-    const requiredUpdates = {
-      email,
-      emailVerified: authUser.emailVerified,
-      updatedAt: FieldValue.serverTimestamp(),
-    }
-    if (!currentProfile.name && name) requiredUpdates.name = name
-    if (!currentProfile.photo && photo) requiredUpdates.photo = photo
-    transaction.set(userReference, requiredUpdates, { merge: true })
-  })
-
-  return { success: true }
-})
-
-exports.getUserProfile = onCall(callableOptions, async (request) => {
-  const uid = requireUser(request)
-  const authUser = await adminAuth.getUser(uid)
-  if (authUser.disabled) {
-    throw new HttpsError('permission-denied', 'This customer account is suspended.')
-  }
-  const userReference = db.doc(`users/${uid}`)
-  const userDocument = await userReference.get()
-  if (!userDocument.exists) {
-    const name = String(authUser.displayName || 'Pride Customer').trim().slice(0, 80)
-    const recoveredProfile = {
-      uid,
-      name: name.length >= 2 ? name : 'Pride Customer',
-      email: String(authUser.email || '').toLowerCase(),
-      emailVerified: authUser.emailVerified,
-      role: 'customer',
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    }
-    await userReference.set(recoveredProfile)
-    return {
-      uid,
-      name: recoveredProfile.name,
-      phone: '',
-      email: recoveredProfile.email,
-      emailVerified: recoveredProfile.emailVerified,
-      dob: '',
-      gender: '',
-      role: 'customer',
-    }
-  }
-  const profile = userDocument.data()
-  await userReference.set(
-    {
-      email: String(authUser.email || '').toLowerCase(),
-      emailVerified: authUser.emailVerified,
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  )
-  return {
-    uid,
-    name: profile.name || authUser.displayName || 'Pride Customer',
-    phone: profile.phone || '',
-    email: String(authUser.email || '').toLowerCase(),
-    emailVerified: authUser.emailVerified,
-    dob: profile.dob || '',
-    gender: profile.gender || '',
-    role: 'customer',
-  }
-})
 
 exports.updateUserProfile = onCall(paymentCallableOptions, async (request) => {
   const operation = String(request.data?.operation || '')
@@ -508,61 +294,6 @@ exports.updateUserProfile = onCall(paymentCallableOptions, async (request) => {
     await adminAuth.updateUser(uid, { displayName: profile.name })
   }
   return { success: true }
-})
-
-exports.signInUserWithPhone = onCall(phoneLoginCallableOptions, async (request) => {
-  if (request.auth) {
-    throw new HttpsError('failed-precondition', 'Sign out before signing in.')
-  }
-  const phone = normalizePhone(request.data?.phone)
-  const password = String(request.data?.password || '')
-  if (!PHONE_PATTERN.test(phone) || !password || password.length > 128) {
-    throw new HttpsError('invalid-argument', 'Invalid login details.')
-  }
-
-  const rateLimitReferences = await consumePhoneLoginAttempt(request, phone)
-
-  const phoneDocument = await db.doc(`_authPhoneIndex/${phone}`).get()
-  if (!phoneDocument.exists) {
-    throw new HttpsError('unauthenticated', 'Invalid login details.')
-  }
-  const uid = phoneDocument.data().uid
-  const authUser = await adminAuth.getUser(uid)
-  if (!authUser.email || !authUser.emailVerified || authUser.disabled) {
-    throw new HttpsError(
-      authUser.emailVerified ? 'unauthenticated' : 'failed-precondition',
-      'Invalid login details.',
-    )
-  }
-
-  const response = await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(firebaseWebApiKey)}`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        email: authUser.email,
-        password,
-        returnSecureToken: true,
-      }),
-    },
-  )
-  const result = await response.json()
-  if (!response.ok || result.localId !== uid) {
-    const tooManyAttempts = String(result?.error?.message || '').includes(
-      'TOO_MANY_ATTEMPTS',
-    )
-    throw new HttpsError(
-      tooManyAttempts ? 'resource-exhausted' : 'unauthenticated',
-      'Invalid login details.',
-    )
-  }
-  await clearPhoneLoginAttempts(rateLimitReferences)
-  // The client completes a normal Firebase email/password sign-in with this
-  // verified address. This avoids requiring the runtime service account to
-  // sign a custom token while keeping phone-to-email lookup protected by the
-  // user's password.
-  return { email: authUser.email }
 })
 
 async function reserveCheckoutStock({

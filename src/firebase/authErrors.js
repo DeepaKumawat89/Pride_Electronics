@@ -60,6 +60,15 @@ const AUTH_ERROR_MESSAGES = {
     'This password reset link is invalid or has already been used.',
   'auth/requires-recent-login':
     'Please sign out, sign in again, and retry this security-sensitive change.',
+  'permission-denied':
+    'Unable to finish setting up your account. Please contact support.',
+  'unauthenticated': INVALID_CREDENTIALS_MESSAGE,
+  'unavailable':
+    'Authentication is temporarily unavailable. Please try again.',
+  'resource-exhausted':
+    'Authentication is temporarily busy. Please wait and try again.',
+  'deadline-exceeded':
+    'The request timed out. Check your connection and try again.',
   'functions/already-exists':
     'An account already exists with this phone number.',
   'functions/failed-precondition':

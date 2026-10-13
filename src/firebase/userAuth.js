@@ -19,27 +19,18 @@ import {
   verifyPasswordResetCode,
   verifyBeforeUpdateEmail,
 } from 'firebase/auth'
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
-import { userAuth, userFunctions, userStorage } from './firebase'
+import { userAuth, userDb, userFunctions, userStorage } from './firebase'
 import {
   createUserFacingAuthError,
   toUserFacingAuthError,
 } from './authErrors'
 
-const createUserProfile = httpsCallable(userFunctions, 'createUserProfile')
-const ensureGoogleUserProfileRecord = httpsCallable(
-  userFunctions,
-  'ensureGoogleUserProfile',
-)
-const getUserProfileRecord = httpsCallable(userFunctions, 'getUserProfile')
 const updateUserProfileRecord = httpsCallable(
   userFunctions,
   'updateUserProfile',
-)
-const signInUserWithPhone = httpsCallable(
-  userFunctions,
-  'signInUserWithPhone',
 )
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -124,26 +115,67 @@ const wait = (milliseconds) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 
 const RETRYABLE_PROFILE_ERROR_CODES = new Set([
-  'functions/deadline-exceeded',
-  'functions/internal',
-  'functions/not-found',
-  'functions/resource-exhausted',
-  'functions/unavailable',
-  'functions/unknown',
+  'deadline-exceeded',
+  'internal',
+  'resource-exhausted',
+  'unavailable',
+  'unknown',
   'auth/network-request-failed',
 ])
 
 const TERMINAL_SESSION_ERROR_CODES = new Set([
   'auth/user-disabled',
-  'functions/permission-denied',
-  'functions/unauthenticated',
+  'permission-denied',
+  'unauthenticated',
 ])
 
-async function loadUser(firebaseUser, retries = 2) {
+const profileReferenceFor = (firebaseUser) =>
+  doc(userDb, 'users', firebaseUser.uid)
+
+const profileSeedFor = (firebaseUser, profile = {}) => {
+  const name = String(
+    profile.name || firebaseUser.displayName || nameFromEmail(firebaseUser.email),
+  ).trim().slice(0, 80)
+  const phone = normalizeUserPhone(profile.phone || profile.mobile)
+  const photo = String(firebaseUser.photoURL || profile.photo || '').slice(0, 2000)
+  return {
+    uid: firebaseUser.uid,
+    name: name.length >= 2 ? name : 'Pride Customer',
+    // Keep the exact Auth token email so Firestore rules can bind the profile
+    // to request.auth.token.email without trusting client-supplied identity.
+    email: String(firebaseUser.email || '').trim(),
+    emailVerified: firebaseUser.emailVerified,
+    role: 'customer',
+    ...(phone ? { phone, phoneNormalized: phone } : {}),
+    ...(photo ? { photo } : {}),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }
+}
+
+async function readOrCreateUserProfile(firebaseUser, profile = {}) {
+  const profileReference = profileReferenceFor(firebaseUser)
+  const profileDocument = await getDoc(profileReference)
+  if (profileDocument.exists()) return profileDocument.data()
+
+  const profileSeed = profileSeedFor(firebaseUser, profile)
+  try {
+    await setDoc(profileReference, profileSeed)
+    return profileSeed
+  } catch (error) {
+    // An auth observer and the initiating sign-in can race to provision the
+    // same profile. If one won, use that record instead of surfacing an error.
+    const concurrentProfile = await getDoc(profileReference)
+    if (concurrentProfile.exists()) return concurrentProfile.data()
+    throw error
+  }
+}
+
+async function loadUser(firebaseUser, retries = 2, profile = {}) {
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
-      const profile = await getUserProfileRecord()
-      return mapUser(firebaseUser, profile.data)
+      const savedProfile = await readOrCreateUserProfile(firebaseUser, profile)
+      return mapUser(firebaseUser, savedProfile)
     } catch (error) {
       if (!RETRYABLE_PROFILE_ERROR_CODES.has(error?.code) || attempt === retries) {
         throw error
@@ -191,25 +223,12 @@ export async function signUpUser({ name, phone, email, password }) {
       normalizedPassword,
     )
     await updateProfile(credential.user, { displayName: normalizedName })
-    let profileCreated = false
-    let profileError
-    for (let attempt = 0; attempt < 3 && !profileCreated; attempt += 1) {
-      try {
-        await createUserProfile({ name: normalizedName, phone: normalizedPhone })
-        profileCreated = true
-      } catch (error) {
-        profileError = error
-        if (error?.code === 'functions/already-exists') throw error
-        if (attempt < 2) await wait(300 * (attempt + 1))
-      }
-    }
-    // A valid Firebase account remains usable if profile provisioning is
-    // temporarily unavailable. getUserProfile repairs a missing record later.
-    if (!profileCreated && profileError?.code === 'functions/invalid-argument') {
-      throw profileError
-    }
+    await loadUser(credential.user, 2, {
+      name: normalizedName,
+      phone: normalizedPhone,
+    })
   } catch (error) {
-    if (credential?.user && error?.code === 'functions/already-exists') {
+    if (credential?.user) {
       try {
         await deleteUser(credential.user)
       } catch {
@@ -242,7 +261,7 @@ export async function signInUser(identifier, password) {
   const normalizedIdentifier = String(identifier || '').trim().toLowerCase()
   const normalizedPassword = String(password || '')
   if (!normalizedIdentifier) {
-    throw new Error('Enter your email address or 10-digit mobile number.')
+    throw new Error('Enter your email address.')
   }
   if (!normalizedPassword) {
     throw new Error('Enter your password.')
@@ -257,29 +276,14 @@ export async function signInUser(identifier, password) {
   let credential
   try {
     await setPersistence(userAuth, browserLocalPersistence)
-    const phone = normalizeUserPhone(normalizedIdentifier)
-    if (!normalizedIdentifier.includes('@') && PHONE_PATTERN.test(phone)) {
-      const result = await signInUserWithPhone({
-        phone,
-        password: normalizedPassword,
-      })
-      credential = await signInWithEmailAndPassword(
-        userAuth,
-        result.data.email,
-        normalizedPassword,
-      )
-    } else {
-      if (!EMAIL_PATTERN.test(normalizedIdentifier)) {
-        throw createUserFacingAuthError(
-          'Enter a valid email address or 10-digit mobile number.',
-        )
-      }
-      credential = await signInWithEmailAndPassword(
-        userAuth,
-        normalizedIdentifier,
-        normalizedPassword,
-      )
+    if (!EMAIL_PATTERN.test(normalizedIdentifier)) {
+      throw createUserFacingAuthError('Enter a valid email address.')
     }
+    credential = await signInWithEmailAndPassword(
+      userAuth,
+      normalizedIdentifier,
+      normalizedPassword,
+    )
     await reload(credential.user)
     if (pendingGoogleLink) {
       const signedInEmail = String(credential.user.email || '').toLowerCase()
@@ -301,7 +305,6 @@ export async function signInUser(identifier, password) {
           throw linkError
         }
       }
-      await ensureGoogleUserProfileRecord()
       await reload(credential.user)
     }
     let verificationEmailSent = false
@@ -340,10 +343,12 @@ export async function signInUserWithGoogle() {
     await setPersistence(userAuth, browserLocalPersistence)
     result = await signInWithPopup(userAuth, googleProvider)
     isNewUser = Boolean(getAdditionalUserInfo(result)?.isNewUser)
-    await ensureGoogleUserProfileRecord()
     await reload(result.user)
     return {
-      ...(await loadUser(result.user, 8)),
+      ...(await loadUser(result.user, 8, {
+        name: result.user.displayName,
+        photo: result.user.photoURL,
+      })),
       isNewUser,
     }
   } catch (error) {

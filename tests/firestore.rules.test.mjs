@@ -12,6 +12,7 @@ import {
   getDoc,
   getDocs,
   query,
+  serverTimestamp,
   setDoc,
   updateDoc,
   where,
@@ -127,6 +128,54 @@ test('User B cannot read or update users/UID_A', async () => {
 test('unauthenticated clients cannot read user profiles', async () => {
   const database = testEnvironment.unauthenticatedContext().firestore()
   await assertFails(getDoc(doc(database, 'users', 'UID_A')))
+})
+
+test('a signed-in user can create only their validated customer profile', async () => {
+  const database = testEnvironment.authenticatedContext('UID_NEW', {
+    email: 'new@example.com',
+    email_verified: true,
+  }).firestore()
+  const ownProfile = doc(database, 'users', 'UID_NEW')
+
+  await assertSucceeds(setDoc(ownProfile, {
+    uid: 'UID_NEW',
+    name: 'New Customer',
+    phone: '9876543210',
+    phoneNormalized: '9876543210',
+    email: 'new@example.com',
+    emailVerified: true,
+    role: 'customer',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }))
+  await assertFails(updateDoc(ownProfile, { role: 'admin' }))
+})
+
+test('profile creation rejects forged identity and privileged fields', async () => {
+  const database = testEnvironment.authenticatedContext('UID_FORGED', {
+    email: 'owner@example.com',
+    email_verified: false,
+  }).firestore()
+
+  await assertFails(setDoc(doc(database, 'users', 'UID_OTHER'), {
+    uid: 'UID_OTHER',
+    name: 'Wrong Owner',
+    email: 'owner@example.com',
+    emailVerified: false,
+    role: 'customer',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }))
+  await assertFails(setDoc(doc(database, 'users', 'UID_FORGED'), {
+    uid: 'UID_FORGED',
+    name: 'Forged Admin',
+    email: 'different@example.com',
+    emailVerified: true,
+    role: 'admin',
+    status: 'Active',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }))
 })
 
 test('subcategory catalog documents remain publicly readable', async () => {

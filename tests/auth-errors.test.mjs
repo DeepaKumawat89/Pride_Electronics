@@ -21,6 +21,8 @@ const cases = [
   ['auth/invalid-oauth-provider', 'Google sign-in is temporarily unavailable. Please use another sign-in method.'],
   ['auth/account-exists-with-different-credential', 'An account already uses this email. Sign in with your email and password to link Google safely.'],
   ['auth/internal-error', 'Authentication is temporarily unavailable. Please try again.'],
+  ['permission-denied', 'Unable to finish setting up your account. Please contact support.'],
+  ['unavailable', 'Authentication is temporarily unavailable. Please try again.'],
   ['functions/internal', 'Authentication is temporarily unavailable. Please try again.'],
 ]
 

@@ -71,23 +71,12 @@ export default function AuthModal({ initialMode = 'login', open, onClose, onSucc
     const normalizedIdentifier = email.trim()
     if (!normalizedIdentifier) {
       setError(
-        mode === 'signup' || mode === 'forgot'
-          ? 'Enter your email address.'
-          : 'Enter your email address or 10-digit mobile number.',
+        'Enter your email address.',
       )
       return
     }
-    const isPhoneLogin =
-      mode === 'login' && /^[6-9]\d{9}$/.test(normalizedIdentifier)
-    if (
-      !isPhoneLogin &&
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedIdentifier)
-    ) {
-      setError(
-        mode === 'signup' || mode === 'forgot'
-          ? 'Enter a valid email address.'
-          : 'Enter a valid email address or 10-digit mobile number.',
-      )
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedIdentifier)) {
+      setError('Enter a valid email address.')
       return
     }
     if (mode === 'forgot') {
@@ -198,7 +187,7 @@ export default function AuthModal({ initialMode = 'login', open, onClose, onSucc
       ? 'Create your account.'
       : 'Reset your password.'
   const description = mode === 'login'
-    ? 'Sign in securely with your email or verified mobile number.'
+    ? 'Sign in securely with your email and password.'
     : isSignup
       ? 'Create your secure Pride Electronics account.'
       : 'Enter your account email and Firebase will send a secure reset link.'
@@ -302,8 +291,8 @@ export default function AuthModal({ initialMode = 'login', open, onClose, onSucc
                 </>
               )}
               <label className={`relative block ${isSignup ? 'sm:col-span-2' : ''}`}>
-                <span className="sr-only">{mode === 'login' ? 'Email or mobile number' : 'Email address'}</span><Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"/>
-                <input required value={email} onChange={(event) => setEmail(event.target.value)} type={mode === 'login' ? 'text' : 'email'} inputMode={mode === 'login' ? 'text' : 'email'} autoComplete="email" placeholder={mode === 'login' ? 'Email or mobile number' : 'Email address'} className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 text-sm outline-none transition focus:border-[#ff5c35] focus:ring-4 focus:ring-[#ff5c35]/10"/>
+                <span className="sr-only">Email address</span><Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"/>
+                <input required value={email} onChange={(event) => setEmail(event.target.value)} type="email" inputMode="email" autoComplete="email" placeholder="Email address" className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 text-sm outline-none transition focus:border-[#ff5c35] focus:ring-4 focus:ring-[#ff5c35]/10"/>
               </label>
               {!isForgotPassword && <label className="relative block">
                 <span className="sr-only">Password</span><LockKeyhole size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"/>

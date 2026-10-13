@@ -38,8 +38,9 @@ npm run set-admin -- admin@example.com "Store Administrator"
 Runtime collections are `products`, `categories`, `coupons`, `reviews`,
 `orders`, `returns`, `refunds`, `inventoryHistory`, `users`, and `admins`.
 Backend-only checkout state is stored in `stockReservations`, `paymentIntents`,
-`couponUsages`, and `_authPhoneIndex`; Firestore rules intentionally deny all
-client access to these collections.
+and `couponUsages`. The legacy `_authPhoneIndex` remains backend-only for
+profile phone-number updates; login uses Firebase email/password or Google
+Authentication directly.
 Store configuration uses `settings/marketing`, `settings/shipping`,
 `settings/invoice`, `settings/storefront`, and `settings/admin`. Existing values can be entered and
 saved from the corresponding admin screens; subsequent updates are persisted

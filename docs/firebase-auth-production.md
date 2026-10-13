@@ -12,12 +12,13 @@ Before deploying production authentication:
    **Authentication > Settings > Authorized domains**.
 4. Enable email-enumeration protection and configure the required password
    policy.
-5. Register the web app with Firebase App Check using reCAPTCHA Enterprise,
+5. Deploy the Firestore rules before the web application. Authentication uses
+   the React Firebase SDK directly and the rules permit a signed-in user to
+   create only their own tightly validated customer profile.
+6. Register the web app with Firebase App Check using reCAPTCHA Enterprise,
    set `VITE_FIREBASE_APP_CHECK_SITE_KEY` in the production build environment,
-   and enable enforcement for Cloud Functions. Local development can use a
-   registered `VITE_FIREBASE_APP_CHECK_DEBUG_TOKEN`.
-6. Configure a Firestore TTL policy for `_authRateLimits.expiresAt` so expired
-   phone-login rate-limit records are removed automatically.
+   and enable enforcement for the remaining Cloud Functions. Local development
+   can use a registered `VITE_FIREBASE_APP_CHECK_DEBUG_TOKEN`.
 7. Provision administrators with trusted permission claims by running:
 
    ```powershell
