@@ -9,12 +9,12 @@ import { getFunctions } from 'firebase/functions'
 import { getStorage } from 'firebase/storage'
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyDF4djFtrqwozdqnPA0iOhhJ08PZvpCauc',
-  authDomain: 'iplteams-6eb14.firebaseapp.com',
-  projectId: 'iplteams-6eb14',
-  storageBucket: 'iplteams-6eb14.firebasestorage.app',
-  messagingSenderId: '29343418210',
-  appId: '1:29343418210:web:e4954f777ba1df5cc80e3b',
+  apiKey: '',
+  authDomain: '',
+  projectId: '',
+  storageBucket: '',
+  messagingSenderId: '',
+  appId: '',
 }
 
 const app = getApps().some((firebaseApp) => firebaseApp.name === '[DEFAULT]')
