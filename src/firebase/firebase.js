@@ -1,4 +1,5 @@
 import { getApp, getApps, initializeApp } from 'firebase/app'
+import { getAnalytics } from 'firebase/analytics'
 import {
   initializeAppCheck,
   ReCaptchaEnterpriseProvider,
@@ -9,12 +10,13 @@ import { getFunctions } from 'firebase/functions'
 import { getStorage } from 'firebase/storage'
 
 const firebaseConfig = {
-  apiKey: '',
-  authDomain: '',
-  projectId: '',
-  storageBucket: '',
-  messagingSenderId: '',
-  appId: '',
+  apiKey: 'AIzaSyCniVo3kJxHiq1pIO-apKxvx2xayaXmYus',
+  authDomain: 'ecommerce-78081.firebaseapp.com',
+  projectId: 'ecommerce-78081',
+  storageBucket: 'ecommerce-78081.firebasestorage.app',
+  messagingSenderId: '434764316635',
+  appId: '1:434764316635:web:bc0d7ca394801cc70231fe',
+  measurementId: 'G-KV5GF131X3',
 }
 
 const app = getApps().some((firebaseApp) => firebaseApp.name === '[DEFAULT]')
@@ -47,5 +49,6 @@ export const db = getFirestore(app)
 export const userDb = getFirestore(userApp)
 export const storage = getStorage(app)
 export const userStorage = getStorage(userApp)
+export const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null
 
 export default app

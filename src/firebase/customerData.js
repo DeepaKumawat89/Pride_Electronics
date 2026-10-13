@@ -4,11 +4,6 @@ import { userAuth, userFunctions, userStorage } from './firebase'
 
 const operationGateway = httpsCallable(userFunctions, 'updateUserProfile')
 const placeOrderGateway = httpsCallable(userFunctions, 'placeOrder')
-const verifyGstinGateway = httpsCallable(userFunctions, 'verifyGstin')
-const saveVerifiedGstDetailsGateway = httpsCallable(
-  userFunctions,
-  'saveVerifiedGstDetails',
-)
 const callOperation = (operation, payload = {}) =>
   operationGateway({ operation, payload })
 
@@ -104,23 +99,3 @@ export async function getCustomerCouponUsage() {
   }
 }
 
-export async function verifyGstinDetails(gstin) {
-  const cleanGstin = String(gstin || '').trim().toUpperCase()
-  try {
-    const result = await verifyGstinGateway({ gstin: cleanGstin })
-    return result.data
-  } catch (error) {
-    throw messageFor(error, error.message || 'Unable to verify GSTIN.')
-  }
-}
-
-export async function saveCustomerGstDetails(gstin) {
-  try {
-    const result = await saveVerifiedGstDetailsGateway({
-      gstin: typeof gstin === 'string' ? gstin : gstin?.gstin,
-    })
-    return result.data?.gstDetails
-  } catch (error) {
-    throw messageFor(error, 'Unable to save GST details.')
-  }
-}

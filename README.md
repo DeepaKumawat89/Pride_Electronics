@@ -71,28 +71,6 @@ Cloud Scheduler API. Configure `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and
 Dashboard, point the webhook at the deployed `razorpayWebhook` URL and subscribe
 to `payment.authorized`, `payment.captured`, and `payment.failed`.
 
-## GSTIN verification and invoices
-
-GSTIN verification runs only in Cloud Functions. Configure the Cashfree Secure
-ID credentials as Firebase secrets; never expose them through a `VITE_` variable:
-
-```bash
-firebase functions:secrets:set CASHFREE_CLIENT_ID
-firebase functions:secrets:set CASHFREE_CLIENT_SECRET
-```
-
-Set `CASHFREE_ENV=sandbox` for sandbox credentials and omit it (or set it to
-`production`) for live verification. Deploy `verifyGstin`,
-`saveVerifiedGstDetails`, `updateUserProfile`, and `placeOrder` after changing
-the credentials or GST implementation.
-
-Successful verification saves up to five registrations at `users/{uid}.gstProfiles` and
-updates `users/{uid}.gstDetails` with the latest record. Checkout sends only the
-selected GSTIN. The backend resolves it against an active Cashfree-verified
-record no older than 30 days, then stores the verified GST and complete invoice
-snapshot on the order. Customer clients cannot write user GST records or order
-invoice data directly.
-
 ## Storefront structure
 
 ```text

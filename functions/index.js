@@ -18,13 +18,6 @@ const {
   sanitizeAccountState,
 } = require('./account-state')
 const {
-  findReusableGstProfile,
-  isValidGstin,
-  normalizeCashfreeGstinResponse,
-  normalizeGstin,
-  upsertGstProfiles,
-} = require('./gst')
-const {
   createInvoiceSnapshot,
   normalizeInvoiceSettings,
 } = require('./invoice')
@@ -35,7 +28,7 @@ const db = getFirestore()
 const adminAuth = getAuth()
 const firebaseWebApiKey =
   process.env.FIREBASE_WEB_API_KEY ||
-  'AIzaSyDF4djFtrqwozdqnPA0iOhhJ08PZvpCauc'
+  'AIzaSyCniVo3kJxHiq1pIO-apKxvx2xayaXmYus'
 const region = 'asia-south1'
 const callableOptions = { region, invoker: 'public' }
 const phoneLoginCallableOptions = {
@@ -45,20 +38,9 @@ const phoneLoginCallableOptions = {
 const razorpayKeyId = defineSecret('RAZORPAY_KEY_ID')
 const razorpayKeySecret = defineSecret('RAZORPAY_KEY_SECRET')
 const razorpayWebhookSecret = defineSecret('RAZORPAY_WEBHOOK_SECRET')
-const cashfreeClientId = defineSecret('CASHFREE_CLIENT_ID')
-const cashfreeClientSecret = defineSecret('CASHFREE_CLIENT_SECRET')
 const paymentCallableOptions = {
   ...callableOptions,
-  secrets: [
-    razorpayKeyId,
-    razorpayKeySecret,
-    cashfreeClientId,
-    cashfreeClientSecret,
-  ],
-}
-const gstCallableOptions = {
-  ...callableOptions,
-  secrets: [cashfreeClientId, cashfreeClientSecret],
+  secrets: [razorpayKeyId, razorpayKeySecret],
 }
 const razorpayCallableOptions = {
   ...callableOptions,
@@ -411,8 +393,6 @@ exports.getUserProfile = onCall(callableOptions, async (request) => {
       emailVerified: recoveredProfile.emailVerified,
       dob: '',
       gender: '',
-      gstDetails: null,
-      gstProfiles: [],
       role: 'customer',
     }
   }
@@ -433,125 +413,15 @@ exports.getUserProfile = onCall(callableOptions, async (request) => {
     emailVerified: authUser.emailVerified,
     dob: profile.dob || '',
     gender: profile.gender || '',
-    gstDetails: profile.gstDetails || null,
-    gstProfiles: Array.isArray(profile.gstProfiles) ? profile.gstProfiles : [],
     role: 'customer',
   }
 })
-
-// GSTIN Verification Cache & Handlers
-const recentGstinCache = new Map()
-const GSTIN_CACHE_TTL_MS = 10 * 60 * 1000
-
-async function verifyGstinHandler(request) {
-  const uid = requireUser(request)
-  const gstin = normalizeGstin(
-    request.data?.gstin ||
-      request.data?.gstDetails?.gstin ||
-      request.data?.payload?.gstin ||
-      request.data?.payload?.gstDetails?.gstin,
-  )
-
-  if (!isValidGstin(gstin)) {
-    throw new HttpsError(
-      'invalid-argument',
-      'Please enter a valid 15-character Indian GSTIN number.',
-    )
-  }
-
-  const now = Date.now()
-  const cached = recentGstinCache.get(gstin)
-  let details = cached && now - cached.timestamp < GSTIN_CACHE_TTL_MS
-    ? cached.data
-    : null
-
-  if (!details) {
-    const clientId = cashfreeClientId.value()
-    const clientSecret = cashfreeClientSecret.value()
-    if (!clientId || !clientSecret) {
-      throw new HttpsError(
-        'failed-precondition',
-        'GST verification is not configured. Contact support before requesting a GST invoice.',
-      )
-    }
-    try {
-      const endpoint = process.env.CASHFREE_ENV === 'sandbox' || clientId.startsWith('TEST')
-        ? 'https://sandbox.cashfree.com/verification/gstin'
-        : 'https://api.cashfree.com/verification/gstin'
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-client-id': clientId,
-          'x-client-secret': clientSecret,
-        },
-        body: JSON.stringify({ GSTIN: gstin, business_name: '' }),
-        signal: AbortSignal.timeout(10000),
-      })
-
-      const result = await response.json().catch(() => ({}))
-
-      if (!response.ok || result.status === 'ERROR' || result.status === 'FAILED' || result.valid === false) {
-        const errorMsg = String(
-          result.message || result.user_message || 'GSTIN verification failed.',
-        ).slice(0, 200)
-        if (
-          response.status === 404 ||
-          ['GSTIN_NOT_FOUND', 'INVALID_GSTIN'].includes(result.error_code || result.subCode)
-        ) {
-          throw new HttpsError('not-found', 'The entered GSTIN could not be found on the GST portal.')
-        }
-        if (response.status === 429) {
-          throw new HttpsError('resource-exhausted', 'GST verification rate limit exceeded. Try again in a moment.')
-        }
-        throw new HttpsError('invalid-argument', errorMsg)
-      }
-      details = normalizeCashfreeGstinResponse(result, gstin, now)
-      recentGstinCache.set(gstin, { timestamp: now, data: details })
-    } catch (error) {
-      if (error instanceof HttpsError) throw error
-      console.error('Cashfree GSTIN API error:', error)
-      if (['invalid-gstin', 'inactive-gstin', 'incomplete-gstin'].includes(error?.code)) {
-        throw new HttpsError('failed-precondition', error.message)
-      }
-      throw new HttpsError('unavailable', 'Unable to reach Cashfree GST verification service. Please try again.')
-    }
-  }
-
-  const userReference = db.doc(`users/${uid}`)
-  await db.runTransaction(async (transaction) => {
-    const userDocument = await transaction.get(userReference)
-    if (!userDocument.exists) {
-      throw new HttpsError('failed-precondition', 'Your customer profile is unavailable.')
-    }
-    const gstProfiles = upsertGstProfiles(userDocument.data().gstProfiles, details)
-    transaction.set(userReference, {
-      gstDetails: details,
-      gstProfiles,
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true })
-  })
-  return { valid: true, ...details }
-}
-
-async function saveVerifiedGstDetailsHandler(request) {
-  const verified = await verifyGstinHandler(request)
-  return { success: true, gstDetails: verified }
-}
-
-exports.verifyGstin = onCall(gstCallableOptions, verifyGstinHandler)
-exports.saveVerifiedGstDetails = onCall(gstCallableOptions, saveVerifiedGstDetailsHandler)
 
 exports.updateUserProfile = onCall(paymentCallableOptions, async (request) => {
   const operation = String(request.data?.operation || '')
   const operationRequest = operation
     ? { ...request, data: request.data?.payload || {} }
     : request
-  if (operation === 'verifyGstin') return verifyGstinHandler(operationRequest)
-  if (operation === 'saveVerifiedGstDetails') {
-    return saveVerifiedGstDetailsHandler(operationRequest)
-  }
   if (operation === 'placeOrder') return placeOrderHandler(operationRequest)
   if (operation === 'getCouponUsage') return getMyCouponUsageHandler(operationRequest)
   if (operation === 'saveAccountState') {
@@ -754,22 +624,12 @@ async function reserveCheckoutStock({
     ]
     const invoiceSettingsReference = db.doc('settings/invoice')
     const shippingSettingsReference = db.doc('settings/shipping')
-    const userReference = db.doc(`users/${uid}`)
-    const [productDocuments, invoiceSettingsDocument, shippingSettingsDocument, userDocument] =
+    const [productDocuments, invoiceSettingsDocument, shippingSettingsDocument] =
       await Promise.all([
         Promise.all(productReferences.map((reference) => transaction.get(reference))),
         transaction.get(invoiceSettingsReference),
         transaction.get(shippingSettingsReference),
-        transaction.get(userReference),
       ])
-    const requestedGstin = normalizeGstin(
-      requestData.gstin || requestData.gstDetails?.gstin,
-    )
-    try {
-      findReusableGstProfile(userDocument.data(), requestedGstin)
-    } catch (error) {
-      throw new HttpsError('failed-precondition', error.message)
-    }
 
     const couponCode = String(requestData.couponCode || '').trim().toUpperCase()
     let couponDocument = null
@@ -868,7 +728,6 @@ async function reserveCheckoutStock({
       expectedTotalPaise: quote.totalPaise,
       shippingAddress,
       billingAddress,
-      gstin: requestedGstin,
       deliveryId: quote.deliveryId,
       deliveryDate: String(requestData.deliveryDate || 'Being scheduled').slice(0, 100),
       paymentMethod: 'Online payment',
@@ -2009,17 +1868,6 @@ async function placeOrderHandler(request) {
     const paymentMethod = isCashOnDelivery
       ? 'Cash on Delivery'
       : `${String(verifiedPayment.method || 'Online payment').toUpperCase()} via ${paymentEnvironment}`
-    const requestedGstin = normalizeGstin(
-      isCashOnDelivery
-        ? submittedOrder.gstin || submittedOrder.gstDetails?.gstin
-        : paymentIntent?.checkoutOrder?.gstin,
-    )
-    let gstProfile
-    try {
-      gstProfile = findReusableGstProfile(userDocument.data(), requestedGstin)
-    } catch (error) {
-      throw new HttpsError('failed-precondition', error.message)
-    }
     const invoiceSettings = normalizeInvoiceSettings(
       invoiceSettingsDocument.exists ? invoiceSettingsDocument.data() : {},
     )
@@ -2037,7 +1885,6 @@ async function placeOrderHandler(request) {
         },
         shippingAddress,
         billingAddress,
-        gstProfile,
       })
     } catch (error) {
       throw new HttpsError('failed-precondition', error.message)
@@ -2074,7 +1921,6 @@ async function placeOrderHandler(request) {
       deliveryOption: quote.deliveryId === 'express' ? 'Express delivery' : 'Standard delivery',
       shippingAddress,
       billingAddress,
-      gstDetails: gstProfile,
       gstBreakdown: invoice.tax,
       invoice,
       paymentStatus,

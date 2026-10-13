@@ -19,12 +19,12 @@
     "test:auth": "npx -y firebase-tools@14.19.1 emulators:exec --only auth --project demo-pride-electronics \"node --test tests/firebase-auth.test.mjs\"",
     "test:rules": "npx -y firebase-tools@14.19.1 emulators:exec --only firestore --project demo-pride-electronics \"node --test tests/firestore.rules.test.mjs\"",
     "test:inventory": "npx -y firebase-tools@14.19.1 emulators:exec --only auth,firestore --project demo-pride-electronics \"node --test tests/inventory-reservations.test.mjs\"",
-    "test:gst": "node --test tests/gstin-verification.test.mjs tests/gst-invoice.test.mjs",
+    "test:gst": "node --test tests/gst-invoice.test.mjs",
     "test:storage": "npx -y firebase-tools@14.19.1 emulators:exec --only storage --project demo-pride-electronics \"node --test tests/storage.rules.test.mjs\""
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
-    "firebase": "^12.17.1",
+    "firebase": "^12.19.0",
     "india-edu-cities-data": "1.1.0",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.29.0",

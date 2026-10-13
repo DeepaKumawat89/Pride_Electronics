@@ -86,8 +86,6 @@ const mapUser = (firebaseUser, profile = {}) => ({
   photo: firebaseUser.photoURL || profile.photo || '',
   dob: profile.dob || '',
   gender: profile.gender || '',
-  gstDetails: profile.gstDetails || null,
-  gstProfiles: Array.isArray(profile.gstProfiles) ? profile.gstProfiles : [],
   role: 'customer',
 })
 

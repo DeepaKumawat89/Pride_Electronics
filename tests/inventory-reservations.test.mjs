@@ -43,9 +43,6 @@ before(async () => {
   process.env.GCLOUD_PROJECT = 'demo-pride-electronics'
   process.env.RAZORPAY_KEY_ID = 'rzp_test_inventory123'
   process.env.RAZORPAY_KEY_SECRET = 'inventory_test_secret'
-  process.env.CASHFREE_CLIENT_ID = 'TEST_cashfree_client'
-  process.env.CASHFREE_CLIENT_SECRET = 'cashfree_test_secret'
-  process.env.CASHFREE_ENV = 'sandbox'
 
   const { getApp } = functionsRequire('firebase-admin/app')
   const { getAuth } = functionsRequire('firebase-admin/auth')
@@ -57,22 +54,6 @@ before(async () => {
   db = getFirestore(adminApp)
 
   globalThis.fetch = async (url) => {
-    if (String(url).endsWith('/verification/gstin')) {
-      return {
-        ok: true,
-        json: async () => ({
-          reference_id: 19,
-          GSTIN: '29AAICP2912R1ZR',
-          legal_name_of_business: 'VERIFIED INDUSTRIES LIMITED',
-          trade_name_of_business: 'VERIFIED INDUSTRIES',
-          date_of_registration: '2017-09-30',
-          taxpayer_type: 'Regular',
-          gst_in_status: 'Active',
-          principal_place_address: '1 Verified Road, Bengaluru, Karnataka 560001',
-          valid: true,
-        }),
-      }
-    }
     if (String(url).endsWith('/v1/orders')) {
       orderSequence += 1
       const id = `order_test${String(orderSequence).padStart(6, '0')}`
@@ -201,22 +182,6 @@ test('two buyers competing for the last unit produce exactly one reservation', a
   assert.equal(product.reservedStock, 1)
   assert.equal(reservations.size, 1)
   assert.equal(reservations.docs[0].data().status, 'active')
-})
-
-test('GST verification saves only provider-returned details under the user', async () => {
-  const result = await invoke('BUYER_A', 'verifyGstin', {
-    gstin: '29AAICP2912R1ZR',
-    legalName: 'FORGED CLIENT NAME',
-    address: 'FORGED CLIENT ADDRESS',
-  })
-  const profile = (await db.doc('users/BUYER_A').get()).data()
-
-  assert.equal(result.valid, true)
-  assert.equal(result.legalName, 'VERIFIED INDUSTRIES LIMITED')
-  assert.equal(profile.gstDetails.legalName, 'VERIFIED INDUSTRIES LIMITED')
-  assert.equal(profile.gstDetails.address, '1 Verified Road, Bengaluru, Karnataka 560001')
-  assert.equal(profile.gstDetails.verificationProvider, 'cashfree')
-  assert.equal(profile.gstProfiles.length, 1)
 })
 
 test('failed checkout releases its reservation atomically', async () => {
