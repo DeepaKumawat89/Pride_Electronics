@@ -24,6 +24,7 @@ import {
   enabledRazorpayMethods,
   preferredRazorpayMethod,
 } from '../src/user/utils/razorpayOptions.js'
+import { getAddressValidationError } from '../src/user/utils/address.js'
 
 const require = createRequire(import.meta.url)
 const {
@@ -424,6 +425,38 @@ test('saved address add, edit, delete, and default operations remain consistent'
   assert.equal(removed.length, 1)
   assert.equal(removed[0].id, 'address-2')
   assert.equal(removed[0].isDefault, true)
+})
+
+test('checkout address validation accepts any valid Indian PIN without a serviceability lookup', () => {
+  const address = {
+    fullName: 'Test User',
+    phone: '9876543210',
+    houseFlat: '12A',
+    street: 'Test Street',
+    area: 'Test Area',
+    city: 'Port Blair',
+    state: 'Andaman and Nicobar Islands',
+    pincode: '744101',
+  }
+
+  assert.equal(
+    getAddressValidationError(address, { requireStructured: true }),
+    '',
+  )
+  assert.equal(
+    getAddressValidationError({ ...address, pincode: '74410' }),
+    'Enter a valid 6-digit Indian PIN code.',
+  )
+  assert.equal(
+    getAddressValidationError({
+      ...address,
+      houseFlat: '',
+      street: '',
+      area: '',
+      line1: '12A, Test Street, Test Area',
+    }),
+    '',
+  )
 })
 
 test('successful checkout removes only purchased products from the persisted cart', () => {

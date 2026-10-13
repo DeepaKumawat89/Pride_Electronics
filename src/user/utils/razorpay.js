@@ -61,13 +61,18 @@ export async function postRazorpayApi(path, payload) {
       'functions/resource-exhausted',
       'app/payment-error',
     ])
-    const message = error.code === 'functions/deadline-exceeded'
-      ? 'The payment request timed out. Please try again.'
-      : error.code === 'functions/unavailable'
-        ? 'The payment service is temporarily unavailable. Check your connection and try again.'
-        : safeBackendCodes.has(error.code)
-          ? error.message
-          : 'The payment request could not be completed. Please try again.'
+    const firebaseMessages = {
+      'functions/unauthenticated': 'Your session expired. Sign in again before continuing payment.',
+      'functions/deadline-exceeded': 'The payment request timed out. Please try again.',
+      'functions/unavailable': 'The payment service is temporarily unavailable. Check your connection and try again.',
+      'functions/data-loss': 'Payment verification returned inconsistent details. No order was placed.',
+      'functions/internal': 'The payment provider could not complete the request. Please try again.',
+    }
+    const message = firebaseMessages[error.code] || (
+      safeBackendCodes.has(error.code)
+        ? error.message
+        : 'The payment request could not be completed. Please try again.'
+    )
     throw new Error(
       message,
       { cause: error },

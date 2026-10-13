@@ -18,14 +18,12 @@ import {
   Zap,
 } from 'lucide-react'
 import { formatCurrency, formatDiscount, hasValidPrice, parsePrice } from '../../utils/currency'
-import { getPinDeliveryAvailability } from '../../utils/address'
 import {
   getDeliveryEstimate,
   getProductDetailInformation,
 } from '../../utils/productDetails'
 import ProductCard from './ProductCard'
 import ProductReviews from './ProductReviews'
-import { initialShippingSettings } from '../../../data/shipping'
 import { initialInvoiceSettings } from '../../../data/invoice'
 import { getDisplaySpecifications } from '../../../utils/productSpecifications'
 import {
@@ -104,7 +102,7 @@ function TechnicalSpecificationsSection({ specifications }) {
   )
 }
 
-export default function ProductDetailsPage({ product, relatedProducts = [], deliveryAddress, likedIds = [], reviews, onBack, onLike, onAdd, onBuyNow, onViewProduct, onViewAllReviews, shippingSettings = initialShippingSettings, taxSettings = initialInvoiceSettings.tax }) {
+export default function ProductDetailsPage({ product, relatedProducts = [], deliveryAddress, likedIds = [], reviews, onBack, onLike, onAdd, onBuyNow, onViewProduct, onViewAllReviews, taxSettings = initialInvoiceSettings.tax }) {
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [])
@@ -153,14 +151,8 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
   const liked = likedIds.includes(product.id)
   const detailInformation = getProductDetailInformation(displayProduct)
   const displaySpecifications = getDisplaySpecifications(displayProduct)
-  const pinDeliveryAvailability = deliveryAddress
-    ? getPinDeliveryAvailability(deliveryAddress.pincode, new Date(), shippingSettings)
-    : null
-  const deliveryEstimate = deliveryAddress
-    ? pinDeliveryAvailability?.estimatedDateLabel
-    : getDeliveryEstimate(stock)
-  const deliveryAvailable =
-    stock > 0 && (!deliveryAddress || pinDeliveryAvailability?.available)
+  const deliveryEstimate = getDeliveryEstimate(stock)
+  const deliveryAvailable = stock > 0
   const deliveryDestination = deliveryAddress
     ? `${deliveryAddress.city} ${deliveryAddress.pincode}`
     : 'your location'
@@ -434,9 +426,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                     Truck,
                     stock <= 0
                       ? 'Delivery unavailable'
-                      : deliveryAddress && !pinDeliveryAvailability?.available
-                        ? 'Not deliverable to this address'
-                        : 'Delivery available',
+                      : 'Delivery available',
                   ],
                   [ShieldCheck, 'Secure'],
                   [RotateCcw, 'Easy returns'],
@@ -449,11 +439,9 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
               <p className={`mt-3 text-center text-[10px] font-bold ${deliveryAvailable ? 'text-slate-500' : 'text-red-600'}`}>
                 {stock <= 0
                   ? 'Delivery estimate will be available when this product is back in stock.'
-                  : deliveryAddress && !pinDeliveryAvailability.available
-                    ? pinDeliveryAvailability.message
-                    : deliveryEstimate
-                      ? `Estimated delivery to ${deliveryDestination}: ${deliveryEstimate}`
-                      : 'Add a delivery address to check availability and estimated delivery.'}
+                  : deliveryEstimate
+                    ? `Estimated delivery to ${deliveryDestination}: ${deliveryEstimate}`
+                    : 'Delivery estimate is currently unavailable.'}
               </p>
             </div>
           </div>

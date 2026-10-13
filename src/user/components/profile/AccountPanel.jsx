@@ -35,20 +35,13 @@ import { formatCurrency, hasValidPrice, parsePrice } from '../../utils/currency'
 import { getApplicablePricingTier } from '../../../utils/productPricing'
 import { calculateCartPricing } from '../../utils/cart'
 import {
-  getPinDeliveryAvailability,
+  getAddressValidationError,
   normalizeAddress,
 } from '../../utils/address'
 import { accountMenuItems } from './accountMenuItems'
 import OrderDetailsView from './OrderDetailsView'
 import { initialShippingSettings } from '../../../data/shipping'
 import { initialInvoiceSettings } from '../../../data/invoice'
-import {
-  AddressAutocompleteInput,
-  CitySelectionInput,
-  PincodeAutocompleteInput,
-  StateSelectionInput,
-} from '../address/AddressAssist'
-import { useAddressEntryAssist } from '../../hooks/useAddressEntryAssist'
 
 const genderOptions = [
   { value: '', label: 'Select gender' },
@@ -78,8 +71,6 @@ const orderStatusOptions = [
   'Returned',
   'Refunded',
 ]
-const addressTypeOptions = ['Shipping', 'Billing']
-const addressLabelOptions = ['Home', 'Office', 'Other']
 const sectionMeta = {
   profile: ['My Profile', 'Manage your personal information', UserRound],
   wishlist: ['Wishlist', 'Your saved products, all in one place', Heart],
@@ -545,7 +536,6 @@ export default function AccountPanel({
                     onSave={onSaveAddress}
                     onDelete={onDeleteAddress}
                     onSetDefault={onSetDefaultAddress}
-                    shippingSettings={shippingSettings}
                   />
                 )}
                 {section === 'payment' && (
@@ -1665,7 +1655,7 @@ function CartSummaryRow({ label, value, accent }) {
   )
 }
 
-function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shippingSettings }) {
+function AddressSection({ addresses, user, onSave, onDelete, onSetDefault }) {
   const emptyAddress = {
     id: '',
     type: 'Shipping',
@@ -1676,6 +1666,7 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
     street: '',
     area: '',
     line1: '',
+    landmark: '',
     city: '',
     state: '',
     pincode: '',
@@ -1685,15 +1676,8 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
   const [form, setForm] = useState(emptyAddress)
   const [permission, setPermission] = useState(false)
   const [formError, setFormError] = useState('')
-  const addressAssist = useAddressEntryAssist(form, setForm, formOpen)
-  const deliveryAvailability = getPinDeliveryAvailability(
-    form.pincode,
-    new Date(),
-    shippingSettings,
-  )
 
   const openForm = (address = emptyAddress) => {
-    addressAssist.reset()
     setForm(normalizeAddress(address))
     setPermission(false)
     setFormError('')
@@ -1701,7 +1685,6 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
   }
 
   const closeForm = () => {
-    addressAssist.reset()
     setFormOpen(false)
     setForm(emptyAddress)
     setPermission(false)
@@ -1710,19 +1693,12 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
 
   const submit = (event) => {
     event.preventDefault()
-    if (!String(form.state).trim() || !String(form.city).trim()) {
-      setFormError('Select a state and city before saving this address.')
+    const validationError = getAddressValidationError(form)
+    if (validationError) {
+      setFormError(validationError)
       return
     }
-    if (!addressAssist.isPincodeVerified) {
-      setFormError(addressAssist.getPincodeValidationMessage())
-      return
-    }
-    if (
-      !permission ||
-      !deliveryAvailability.available ||
-      !addressAssist.isPincodeVerified
-    ) return
+    if (!permission) return
     onSave(normalizeAddress(form))
     closeForm()
   }
@@ -1736,7 +1712,7 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
               Your saved addresses
             </h2>
             <p className="mt-1 text-[10px] text-slate-400">
-              Add separate shipping and billing destinations.
+              Save delivery addresses for faster checkout.
             </p>
           </div>
           <button
@@ -1745,7 +1721,7 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
             className="inline-flex w-fit items-center gap-2 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white transition hover:bg-[#ff5c35]"
           >
             <Plus size={15} />
-            Add address
+            Add Delivery Address
           </button>
         </div>
       )}
@@ -1762,8 +1738,8 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
               </p>
               <h3 className="mt-1 text-lg font-extrabold">
                 {form.id
-                  ? `Edit ${form.label}`
-                  : 'Add billing or shipping address'}
+                  ? 'Update Delivery Address'
+                  : 'Add Delivery Address'}
               </h3>
             </div>
             <button
@@ -1775,25 +1751,7 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
             </button>
           </div>
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <Field label="Address type">
-              <SelectMenu
-                value={form.type}
-                onChange={(type) => setForm({ ...form, type })}
-                options={addressTypeOptions}
-                ariaLabel="Address type"
-                buttonClassName={fieldClass}
-              />
-            </Field>
-            <Field label="Address label">
-              <SelectMenu
-                value={form.label}
-                onChange={(label) => setForm({ ...form, label })}
-                options={addressLabelOptions}
-                ariaLabel="Address label"
-                buttonClassName={fieldClass}
-              />
-            </Field>
-            <Field label="Full name">
+            <Field label="Full Name *">
               <input
                 required
                 value={form.fullName}
@@ -1803,7 +1761,7 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
                 className={fieldClass}
               />
             </Field>
-            <Field label="Phone">
+            <Field label="Mobile Number *">
               <input
                 required
                 type="tel"
@@ -1820,74 +1778,96 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
                 className={fieldClass}
               />
             </Field>
-            <Field label="House / Flat">
-              <input
-                required
-                value={form.houseFlat}
-                onChange={(event) =>
-                  setForm({ ...form, houseFlat: event.target.value })
-                }
-                className={fieldClass}
-              />
-            </Field>
-            <Field label="Street">
-              <AddressAutocompleteInput
-                required
-                assist={addressAssist}
-                value={form.street}
-                className={fieldClass}
-              />
-            </Field>
             <div className="sm:col-span-2">
-              <Field label="Area">
+              <Field label="Full Address *">
                 <input
                   required
-                  value={form.area}
-                  onChange={(event) =>
-                    setForm({ ...form, area: event.target.value })
-                  }
+                  autoComplete="street-address"
+                  value={form.line1}
+                  onChange={(event) => setForm({
+                    ...form,
+                    houseFlat: event.target.value,
+                    street: '',
+                    area: '',
+                    line1: event.target.value,
+                  })}
                   className={fieldClass}
                 />
               </Field>
             </div>
-            <Field label="State">
-              <StateSelectionInput
+            <Field label="City *">
+              <input
                 required
-                assist={addressAssist}
-                value={form.state}
-                className={fieldClass}
-              />
-            </Field>
-            <Field label="City">
-              <CitySelectionInput
-                required
-                assist={addressAssist}
+                autoComplete="address-level2"
                 value={form.city}
+                onChange={(event) =>
+                  setForm({ ...form, city: event.target.value })
+                }
                 className={fieldClass}
               />
             </Field>
-            <Field label="PIN code">
-              <PincodeAutocompleteInput
+            <Field label="State *">
+              <input
                 required
-                assist={addressAssist}
-                value={form.pincode}
+                autoComplete="address-level1"
+                value={form.state}
+                onChange={(event) =>
+                  setForm({ ...form, state: event.target.value })
+                }
                 className={fieldClass}
               />
             </Field>
+            <Field label="PIN Code *">
+              <input
+                required
+                inputMode="numeric"
+                pattern="[1-9][0-9]{5}"
+                maxLength={6}
+                autoComplete="postal-code"
+                value={form.pincode}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    pincode: event.target.value.replace(/\D/g, '').slice(0, 6),
+                  })
+                }
+                className={fieldClass}
+              />
+            </Field>
+            <div className="sm:col-span-2">
+              <Field label="Landmark (Optional)">
+                <input
+                  value={form.landmark}
+                  onChange={(event) => setForm({ ...form, landmark: event.target.value })}
+                  className={fieldClass}
+                />
+              </Field>
+            </div>
+            <fieldset className="sm:col-span-2">
+              <legend className="mb-2 text-[10px] font-extrabold text-slate-500">Address Type</legend>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  ['Home', 'Home'],
+                  ['Office', 'Work'],
+                  ['Other', 'Other'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setForm({ ...form, type: 'Shipping', label: value })}
+                    className={`rounded-full border px-5 py-2.5 text-xs font-extrabold transition ${form.label === value ? 'border-[#397a4a] bg-[#397a4a] text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-[#75916f]'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
             <div className="sm:col-span-2">
               {formError && (
                 <p className="mb-3 text-[10px] font-bold text-red-600">
                   {formError}
                 </p>
               )}
-              {addressAssist.pincodeLookup.invalid && (
-                <p className="mb-3 text-[10px] font-bold text-red-600">
-                  {addressAssist.pincodeLookup.message}
-                </p>
-              )}
-              <p className={`rounded-2xl px-4 py-3 text-[10px] font-bold ${deliveryAvailability.available ? 'bg-emerald-50 text-emerald-700' : deliveryAvailability.status === 'unchecked' || deliveryAvailability.status === 'incomplete' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
-                {deliveryAvailability.message}
-              </p>
             </div>
           </div>
           <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-2xl bg-white p-4">
@@ -1912,7 +1892,7 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
               Cancel
             </button>
             <button
-              disabled={!permission || !deliveryAvailability.available || !addressAssist.isPincodeVerified}
+              disabled={!permission}
               className="rounded-full bg-[#253329] px-5 py-2.5 text-xs font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {form.id ? 'Update address' : 'Save address'}
@@ -1940,11 +1920,8 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-sm font-extrabold">
-                          {address.label}
+                          {address.label === 'Office' ? 'Work' : address.label}
                         </h3>
-                        <span className="rounded-full bg-white px-2 py-1 text-[8px] font-extrabold uppercase text-slate-500 shadow-sm">
-                          {address.type}
-                        </span>
                         {address.isDefault && (
                           <span className="rounded-full bg-[#e4f1e7] px-2 py-1 text-[8px] font-extrabold uppercase text-[#366643]">
                             Default
@@ -1957,14 +1934,11 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
                       <p className="mt-1 text-[11px] leading-5 text-slate-500">
                         {address.line1}
                         <br />
+                        {address.landmark && <><span>Landmark: {address.landmark}</span><br /></>}
                         {address.city}, {address.state} {address.pincode}
                         <br />
                         {address.phone}
                       </p>
-                      <AddressDeliveryStatus
-                        pincode={address.pincode}
-                        shippingSettings={shippingSettings}
-                      />
                     </div>
                   </div>
                   <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
@@ -2003,23 +1977,10 @@ function AddressSection({ addresses, user, onSave, onDelete, onSetDefault, shipp
           <EmptyState
             icon={MapPin}
             title="No saved addresses"
-            text="Add a shipping or billing address to get started."
+            text="Add a delivery address to get started."
           />
         ))}
     </div>
-  )
-}
-
-function AddressDeliveryStatus({ pincode, shippingSettings }) {
-  const availability = getPinDeliveryAvailability(
-    pincode,
-    new Date(),
-    shippingSettings,
-  )
-  return (
-    <p className={`mt-3 text-[9px] font-extrabold ${availability.available ? 'text-emerald-700' : 'text-red-600'}`}>
-      {availability.message}
-    </p>
   )
 }
 

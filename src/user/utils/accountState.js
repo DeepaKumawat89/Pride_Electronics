@@ -35,6 +35,7 @@ const normalizeSavedAddress = (value) => {
       [houseFlat, street, area].filter(Boolean).join(', ') || address.line1,
       500,
     ),
+    landmark: text(address.landmark, 150),
     city: text(address.city, 100),
     state: text(address.state, 100),
     pincode: text(address.pincode, 6),

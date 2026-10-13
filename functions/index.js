@@ -65,7 +65,7 @@ const razorpayCallableOptions = {
   secrets: [razorpayKeyId, razorpayKeySecret],
 }
 const PHONE_PATTERN = /^[6-9]\d{9}$/
-const PIN_CODE_PATTERN = /^[1-8]\d{5}$/
+const PIN_CODE_PATTERN = /^[1-9]\d{5}$/
 const ORDER_REQUEST_PATTERN = /^[a-zA-Z0-9_-]{8,100}$/
 const RAZORPAY_ORDER_PATTERN = /^order_[a-zA-Z0-9]{6,100}$/
 const RAZORPAY_PAYMENT_PATTERN = /^pay_[a-zA-Z0-9]{6,100}$/
@@ -150,6 +150,7 @@ const validateShippingAddress = (value = {}) => {
     street: String(address.street || '').trim().slice(0, 200),
     area: String(address.area || '').trim().slice(0, 150),
     line1: String(address.line1 || '').trim().slice(0, 500),
+    landmark: String(address.landmark || '').trim().slice(0, 150),
     city: String(address.city || '').trim().slice(0, 100),
     state: String(address.state || '').trim().slice(0, 100),
     pincode: String(address.pincode || '').trim(),

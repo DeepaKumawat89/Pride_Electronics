@@ -1,14 +1,5 @@
-const INDIAN_PIN_CODE = /^[1-8]\d{5}$/
-
-const addBusinessDays = (value, days) => {
-  const date = new Date(value)
-  let remaining = days
-  while (remaining > 0) {
-    date.setDate(date.getDate() + 1)
-    if (date.getDay() !== 0 && date.getDay() !== 6) remaining -= 1
-  }
-  return date
-}
+const INDIAN_PIN_CODE = /^[1-9]\d{5}$/
+const INDIAN_MOBILE_NUMBER = /^[6-9]\d{9}$/
 
 export function normalizeAddress(address = {}) {
   const hasStructuredAddress = Boolean(
@@ -27,82 +18,25 @@ export function normalizeAddress(address = {}) {
     street,
     area,
     line1,
+    landmark: String(address.landmark || '').trim(),
   }
 }
 
-export function getPinDeliveryAvailability(
-  pincode,
-  now = new Date(),
-  shippingSettings = {},
+export function getAddressValidationError(
+  address = {},
+  { addressType = 'delivery' } = {},
 ) {
-  const normalizedPincode = String(pincode || '').trim()
-  if (!normalizedPincode) {
-    return {
-      status: 'unchecked',
-      available: false,
-      pincode: '',
-      message: 'Enter a PIN code to check delivery availability.',
-      estimatedDate: '',
-      estimatedDateLabel: '',
-    }
-  }
-  if (!INDIAN_PIN_CODE.test(normalizedPincode)) {
-    return {
-      status: normalizedPincode.length < 6 ? 'incomplete' : 'unavailable',
-      available: false,
-      pincode: normalizedPincode,
-      message:
-        normalizedPincode.length < 6
-          ? 'Enter a valid 6-digit PIN code.'
-          : 'Delivery is not available for this PIN code.',
-      estimatedDate: '',
-      estimatedDateLabel: '',
-    }
-  }
+  const normalized = normalizeAddress(address)
+  const requiredFields = ['fullName', 'phone', 'line1', 'city', 'state', 'pincode']
 
-  const deliveryArea = (shippingSettings.deliveryAreas || []).find(
-    (area) =>
-      area.enabled !== false &&
-      (area.pinPrefixes || []).some((prefix) =>
-        normalizedPincode.startsWith(String(prefix)),
-      ),
-  )
-  if (!deliveryArea) {
-    return {
-      status: 'unavailable',
-      available: false,
-      pincode: normalizedPincode,
-      message: 'Delivery is not available for this PIN code.',
-      estimatedDate: '',
-      estimatedDateLabel: '',
-    }
+  if (requiredFields.some((field) => !String(normalized[field] || '').trim())) {
+    return `Please fill in all mandatory ${addressType} address fields.`
   }
-
-  const leadDays =
-    Number(deliveryArea.leadDays || shippingSettings.standardMinDays || 3) +
-    (Number(normalizedPincode.at(-1)) %
-      Math.max(
-        1,
-        Number(shippingSettings.standardMaxDays || 5) -
-          Number(shippingSettings.standardMinDays || 3) +
-          1,
-      ))
-  const estimatedDate = addBusinessDays(now, leadDays)
-  const estimatedDateLabel = estimatedDate.toLocaleDateString('en-IN', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-
-  return {
-    status: 'available',
-    available: true,
-    pincode: normalizedPincode,
-    message: `Delivery available. Estimated by ${estimatedDateLabel}.`,
-    estimatedDate: estimatedDate.toISOString().slice(0, 10),
-    estimatedDateLabel,
-    leadDays,
-    deliveryArea: deliveryArea.name,
+  if (!INDIAN_MOBILE_NUMBER.test(String(normalized.phone || '').trim())) {
+    return 'Enter a valid 10-digit Indian mobile number.'
   }
+  if (!INDIAN_PIN_CODE.test(String(normalized.pincode || '').trim())) {
+    return 'Enter a valid 6-digit Indian PIN code.'
+  }
+  return ''
 }

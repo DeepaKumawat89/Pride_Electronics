@@ -1492,7 +1492,7 @@ export default function UserApp({
     if (!user?.uid) return
     clearTimeout(accountSaveTimer.current)
     if (!pendingAccountSnapshot.current) {
-      await accountSaveQueue.current
+      await accountSaveQueue.current.catch(() => undefined)
       return
     }
     const account = accountStateRef.current
@@ -1508,7 +1508,6 @@ export default function UserApp({
   }
 
   const handlePlaceOrder = async (checkoutDetails = {}) => {
-    await flushPendingAccountChanges()
     const verifiedPayment = checkoutDetails.verifiedPayment
     const verifiedAmount = Number(verifiedPayment?.amount)
     const gatewayLabel = adminSettings.payment.testMode
@@ -1780,7 +1779,7 @@ export default function UserApp({
           />
         ) : checkoutOpen && authStatus === 'authenticated' && user ? (
           <CheckoutPage
-            key={`${checkoutSelection?.mode || 'cart'}-${checkoutSelection?.items?.map((item) => variantCartKey(item.productId, item.variantId)).join('-') || 'all'}-${savedAddresses.find((address) => address.isDefault)?.id || 'no-address'}-${savedPayments.find((payment) => payment.isDefault)?.id || 'no-payment'}`}
+            key={`${checkoutSelection?.mode || 'cart'}-${checkoutSelection?.items?.map((item) => variantCartKey(item.productId, item.variantId)).join('-') || 'all'}`}
             items={activeCheckoutItems}
             initialCouponCode={checkoutCouponCode}
             coupons={customerCoupons}
@@ -1788,6 +1787,7 @@ export default function UserApp({
             savedPayments={savedPayments}
             user={user}
             onSaveAddress={handleSaveAddress}
+            onPrepareCheckout={flushPendingAccountChanges}
             onBack={closeCheckout}
             onPlaceOrder={handlePlaceOrder}
             onUpdateQuantity={handleCheckoutUpdateQuantity}
@@ -1886,10 +1886,12 @@ export default function UserApp({
           </HomeScrollReveal>
         )}
       </main>
-      <Footer
-        onBeSellerClick={onBeSellerClick}
-        onPageOpen={navigateToContentPage}
-      />
+      {!checkoutOpen && (
+        <Footer
+          onBeSellerClick={onBeSellerClick}
+          onPageOpen={navigateToContentPage}
+        />
+      )}
 
       <AuthModal
         key={authInitialMode}

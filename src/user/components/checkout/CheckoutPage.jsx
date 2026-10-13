@@ -27,10 +27,7 @@ import {
   paymentAmountMatchesCheckout,
   toRazorpayAmount,
 } from '../../utils/cart'
-import {
-  getPinDeliveryAvailability,
-  normalizeAddress,
-} from '../../utils/address'
+import { getAddressValidationError, normalizeAddress } from '../../utils/address'
 import { loadRazorpayCheckout, postRazorpayApi } from '../../utils/razorpay'
 import {
   createRazorpayDisplayConfig,
@@ -39,13 +36,6 @@ import {
 import { initialShippingSettings } from '../../../data/shipping'
 import { initialInvoiceSettings } from '../../../data/invoice'
 import { initialAdminSettings } from '../../../data/adminSettings'
-import {
-  AddressAutocompleteInput,
-  CitySelectionInput,
-  PincodeAutocompleteInput,
-  StateSelectionInput,
-} from '../address/AddressAssist'
-import { useAddressEntryAssist } from '../../hooks/useAddressEntryAssist'
 
 const createPaymentReceipt = () => `pride_${Date.now()}`
 const GST_PROFILE_FRESH_AFTER = Date.now() - 30 * 24 * 60 * 60 * 1000
@@ -78,6 +68,7 @@ const createCheckoutAddress = (user, address = {}) => {
     street: normalizedAddress.street || '',
     area: normalizedAddress.area || '',
     line1: normalizedAddress.line1 || '',
+    landmark: normalizedAddress.landmark || '',
     city: normalizedAddress.city || '',
     state: normalizedAddress.state || '',
     pincode: normalizedAddress.pincode || '',
@@ -93,6 +84,7 @@ export default function CheckoutPage({
   savedPayments = [],
   user,
   onSaveAddress,
+  onPrepareCheckout,
   onBack,
   onPlaceOrder,
   onUpdateQuantity,
@@ -110,6 +102,7 @@ export default function CheckoutPage({
 
   const checkoutRequestId = useRef(createCheckoutRequestId())
   const paymentInFlight = useRef(false)
+  const [orderConfirmationAttempt, setOrderConfirmationAttempt] = useState(null)
 
   const releaseCheckoutReservation = async (
     reason,
@@ -128,6 +121,7 @@ export default function CheckoutPage({
 
   // 2 separate page view state ('address' = Page 1: Address & GST, 'summary' = Page 2: Order Summary)
   const [activePage, setActivePage] = useState('address')
+  const [checkoutAddresses, setCheckoutAddresses] = useState(null)
 
   // Delivery Address State
   const defaultDeliveryAddress = savedAddresses.find((address) => address.isDefault) || savedAddresses[0]
@@ -213,18 +207,11 @@ export default function CheckoutPage({
   ].some(Boolean)
 
   const paymentMode = onlinePaymentEnabled ? 'online' : 'cod'
-
-  // Address entry assist hooks
-  const deliveryAssist = useAddressEntryAssist(
-    deliveryAddressForm,
-    setDeliveryAddressForm,
-    useManualDeliveryAddress,
-  )
-  const billingAssist = useAddressEntryAssist(
-    billingAddressForm,
-    setBillingAddressForm,
-    useManualBillingAddress,
-  )
+  const primaryActionLabel = orderConfirmationAttempt
+    ? 'Confirm Order'
+    : paymentMode === 'online'
+      ? 'Pay Now'
+      : 'Place Order'
 
   // Active delivery address computation
   const selectedDeliveryAddress = useManualDeliveryAddress
@@ -237,18 +224,6 @@ export default function CheckoutPage({
     : (useManualBillingAddress
         ? normalizeAddress(billingAddressForm)
         : (savedAddresses.find((address) => address.id === billingAddressId) || selectedDeliveryAddress))
-
-  // Delivery Availability Computation (pincode based)
-  const deliveryAddressAvailability = getPinDeliveryAvailability(
-    selectedDeliveryAddress?.pincode,
-    new Date(),
-    shippingSettings,
-  )
-  const formDeliveryAvailability = getPinDeliveryAvailability(
-    deliveryAddressForm.pincode,
-    new Date(),
-    shippingSettings,
-  )
 
   // Pricing computation
   const pricing = calculateCartPricing(
@@ -286,14 +261,12 @@ export default function CheckoutPage({
 
   // Address form toggles
   const openDeliveryAddressForm = (address) => {
-    deliveryAssist.reset()
     setDeliveryAddressForm(createCheckoutAddress(user, address))
     setDeliveryAddressError('')
     setUseManualDeliveryAddress(true)
   }
 
   const closeDeliveryAddressForm = () => {
-    deliveryAssist.reset()
     setDeliveryAddressForm(createCheckoutAddress(user))
     setDeliveryAddressError('')
     if (savedAddresses.length > 0) {
@@ -302,45 +275,49 @@ export default function CheckoutPage({
   }
 
   const openBillingAddressForm = (address) => {
-    billingAssist.reset()
     setBillingAddressForm(createCheckoutAddress(user, address))
     setBillingAddressError('')
     setUseManualBillingAddress(true)
   }
 
   const closeBillingAddressForm = () => {
-    billingAssist.reset()
     setBillingAddressForm(createCheckoutAddress(user))
     setBillingAddressError('')
     setUseManualBillingAddress(false)
   }
 
+  const editCheckoutDetails = () => {
+    const deliveryAddress = checkoutAddresses?.delivery
+    const billingAddress = checkoutAddresses?.billing
+
+    if (deliveryAddress) {
+      setDeliveryAddressId(deliveryAddress.id || '')
+      setDeliveryAddressForm(createCheckoutAddress(user, deliveryAddress))
+      setDeliveryAddressError('')
+      setUseManualDeliveryAddress(true)
+    }
+
+    if (!billingSameAsDelivery && billingAddress) {
+      setBillingAddressId(billingAddress.id || '')
+      setBillingAddressForm(createCheckoutAddress(user, billingAddress))
+      setBillingAddressError('')
+      setUseManualBillingAddress(true)
+    }
+
+    setCheckoutAddresses(null)
+    setPage1Error('')
+    setActivePage('address')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   // Save Delivery Address inline
   const saveDeliveryAddressInline = () => {
-    const requiredFields = [
-      'fullName',
-      'phone',
-      'houseFlat',
-      'street',
-      'area',
-      'city',
-      'state',
-      'pincode',
-    ]
-    if (requiredFields.some((field) => !String(deliveryAddressForm[field] || '').trim())) {
-      setDeliveryAddressError('Please fill in all mandatory delivery address fields.')
-      return null
-    }
-    if (!/^[6-9]\d{9}$/.test(deliveryAddressForm.phone)) {
-      setDeliveryAddressError('Enter a valid 10-digit Indian mobile number.')
-      return null
-    }
-    if (!formDeliveryAvailability.available) {
-      setDeliveryAddressError(formDeliveryAvailability.message)
-      return null
-    }
-    if (!deliveryAssist.isPincodeVerified) {
-      setDeliveryAddressError(deliveryAssist.getPincodeValidationMessage())
+    const validationError = getAddressValidationError(deliveryAddressForm, {
+      requireStructured: true,
+      addressType: 'delivery',
+    })
+    if (validationError) {
+      setDeliveryAddressError(validationError)
       return null
     }
     const saved = onSaveAddress?.(normalizeAddress({
@@ -350,13 +327,16 @@ export default function CheckoutPage({
       houseFlat: deliveryAddressForm.houseFlat.trim(),
       street: deliveryAddressForm.street.trim(),
       area: deliveryAddressForm.area.trim(),
+      landmark: deliveryAddressForm.landmark.trim(),
       city: deliveryAddressForm.city.trim(),
       state: deliveryAddressForm.state.trim(),
       pincode: deliveryAddressForm.pincode.trim(),
     }))
     if (saved?.id) {
       setDeliveryAddressId(saved.id)
-      closeDeliveryAddressForm()
+      setDeliveryAddressForm(createCheckoutAddress(user, saved))
+      setDeliveryAddressError('')
+      setUseManualDeliveryAddress(false)
       return saved
     }
     return null
@@ -364,26 +344,12 @@ export default function CheckoutPage({
 
   // Save Billing Address inline
   const saveBillingAddressInline = () => {
-    const requiredFields = [
-      'fullName',
-      'phone',
-      'houseFlat',
-      'street',
-      'area',
-      'city',
-      'state',
-      'pincode',
-    ]
-    if (requiredFields.some((field) => !String(billingAddressForm[field] || '').trim())) {
-      setBillingAddressError('Please fill in all mandatory billing address fields.')
-      return null
-    }
-    if (!/^[6-9]\d{9}$/.test(billingAddressForm.phone)) {
-      setBillingAddressError('Enter a valid 10-digit Indian mobile number.')
-      return null
-    }
-    if (!billingAssist.isPincodeVerified) {
-      setBillingAddressError(billingAssist.getPincodeValidationMessage())
+    const validationError = getAddressValidationError(billingAddressForm, {
+      requireStructured: true,
+      addressType: 'billing',
+    })
+    if (validationError) {
+      setBillingAddressError(validationError)
       return null
     }
     const saved = onSaveAddress?.(normalizeAddress({
@@ -393,13 +359,16 @@ export default function CheckoutPage({
       houseFlat: billingAddressForm.houseFlat.trim(),
       street: billingAddressForm.street.trim(),
       area: billingAddressForm.area.trim(),
+      landmark: billingAddressForm.landmark.trim(),
       city: billingAddressForm.city.trim(),
       state: billingAddressForm.state.trim(),
       pincode: billingAddressForm.pincode.trim(),
     }))
     if (saved?.id) {
       setBillingAddressId(saved.id)
-      closeBillingAddressForm()
+      setBillingAddressForm(createCheckoutAddress(user, saved))
+      setBillingAddressError('')
+      setUseManualBillingAddress(false)
       return saved
     }
     return null
@@ -412,25 +381,29 @@ export default function CheckoutPage({
     setGstError('')
     setPage1Error('')
 
-    // 1. Delivery Address Validation
+    // Capture immutable checkout addresses before Firebase account snapshots or
+    // later form edits can change the saved-address collection beneath step 2.
+    let checkoutDeliveryAddress = selectedDeliveryAddress
     if (useManualDeliveryAddress) {
       const saved = saveDeliveryAddressInline()
       if (!saved) {
         setPage1Error('Please fix delivery address errors before proceeding.')
         return
       }
+      checkoutDeliveryAddress = saved
     } else {
-      if (!selectedDeliveryAddress) {
+      if (!checkoutDeliveryAddress) {
         setPage1Error('Please select a delivery address.')
         return
       }
-      if (!deliveryAddressAvailability.available) {
-        setPage1Error(`Selected delivery address issue: ${deliveryAddressAvailability.message}`)
+      const validationError = getAddressValidationError(checkoutDeliveryAddress)
+      if (validationError) {
+        setPage1Error(validationError)
         return
       }
     }
 
-    // 2. Billing Address Validation (if different)
+    let checkoutBillingAddress = checkoutDeliveryAddress
     if (!billingSameAsDelivery) {
       if (useManualBillingAddress) {
         const saved = saveBillingAddressInline()
@@ -438,9 +411,19 @@ export default function CheckoutPage({
           setPage1Error('Please fix billing address errors before proceeding.')
           return
         }
+        checkoutBillingAddress = saved
       } else if (!selectedBillingAddress) {
         setPage1Error('Please select a billing address.')
         return
+      } else {
+        const validationError = getAddressValidationError(selectedBillingAddress, {
+          addressType: 'billing',
+        })
+        if (validationError) {
+          setPage1Error(validationError)
+          return
+        }
+        checkoutBillingAddress = selectedBillingAddress
       }
     }
 
@@ -474,7 +457,10 @@ export default function CheckoutPage({
       }
     }
 
-    // Switch page view to Page 2: Order Summary
+    setCheckoutAddresses({
+      delivery: normalizeAddress(checkoutDeliveryAddress),
+      billing: normalizeAddress(checkoutBillingAddress),
+    })
     setActivePage('summary')
     window.scrollTo({ top: 0, behavior: 'auto' })
   }
@@ -485,16 +471,45 @@ export default function CheckoutPage({
     if (paymentInFlight.current) return
     setPaymentError('')
 
-    if (!selectedDeliveryAddress) {
+    const checkoutDeliveryAddress = checkoutAddresses?.delivery
+    const checkoutBillingAddress = checkoutAddresses?.billing
+    if (!checkoutDeliveryAddress) {
       setPaymentError('Select or save a delivery address before placing your order.')
       setActivePage('address')
       return
     }
-    if (!deliveryAddressAvailability.available) {
-      setPaymentError(deliveryAddressAvailability.message)
+    const addressValidationError = getAddressValidationError(checkoutDeliveryAddress)
+    if (addressValidationError) {
+      setPaymentError(addressValidationError)
       setActivePage('address')
       return
     }
+    const billingValidationError = getAddressValidationError(checkoutBillingAddress, {
+      addressType: 'billing',
+    })
+    if (billingValidationError) {
+      setPaymentError(billingValidationError)
+      setActivePage('address')
+      return
+    }
+
+    if (orderConfirmationAttempt) {
+      paymentInFlight.current = true
+      setPaying(true)
+      try {
+        await onPlaceOrder(orderConfirmationAttempt)
+      } catch (error) {
+        setPaymentError(
+          orderConfirmationAttempt.cod
+            ? `${error.message || 'Order confirmation is temporarily unavailable.'} Retry confirmation; the same order will not be created twice.`
+            : `${error.message || 'Order confirmation is temporarily unavailable.'} Your payment is already verified; retry confirmation without paying again.`,
+        )
+        paymentInFlight.current = false
+        setPaying(false)
+      }
+      return
+    }
+
     if (!items.length || hasUnavailableItems) {
       setPaymentError('Your cart contains unavailable or invalid items. Return to your cart and review them before placing the order.')
       return
@@ -503,8 +518,8 @@ export default function CheckoutPage({
     const checkoutDetails = {
       requestId: checkoutRequestId.current,
       checkoutMode: checkoutMode === 'buy-now' ? 'buy-now' : 'cart',
-      address: selectedDeliveryAddress,
-      billingAddress: selectedBillingAddress,
+      address: checkoutDeliveryAddress,
+      billingAddress: checkoutBillingAddress,
       gstin: isGstInvoice && gstVerifiedDetails && gstConfirmed
         ? gstin.trim().toUpperCase()
         : '',
@@ -518,18 +533,31 @@ export default function CheckoutPage({
       delivery: {
         id: 'standard',
         name: 'Standard Delivery',
-        estimatedDate: deliveryAddressAvailability.estimatedDate || createEstimatedDeliveryDate(3),
+        estimatedDate: createEstimatedDeliveryDate(3),
       },
     }
 
     paymentInFlight.current = true
     setPaying(true)
 
+    try {
+      await onPrepareCheckout?.()
+    } catch (error) {
+      setPaymentError(error.message || 'Unable to save your checkout details. Please try again.')
+      paymentInFlight.current = false
+      setPaying(false)
+      return
+    }
+
     if (paymentMode === 'cod' || !onlinePaymentEnabled) {
+      const codCheckout = { ...checkoutDetails, cod: true }
+      setOrderConfirmationAttempt(codCheckout)
       try {
-        await onPlaceOrder({ ...checkoutDetails, cod: true })
+        await onPlaceOrder(codCheckout)
       } catch (error) {
-        setPaymentError(error.message || 'Unable to place the order.')
+        setPaymentError(
+          `${error.message || 'Unable to confirm the order.'} Retry confirmation; the same order will not be created twice.`,
+        )
         paymentInFlight.current = false
         setPaying(false)
       }
@@ -588,9 +616,9 @@ export default function CheckoutPage({
         description: `Order checkout for ${items.length} ${items.length === 1 ? 'item' : 'items'}`,
         order_id: order.id,
         prefill: {
-          name: user?.name || selectedDeliveryAddress?.fullName || '',
+          name: user?.name || checkoutDeliveryAddress.fullName || '',
           email: user?.email || '',
-          contact: user?.mobile || selectedDeliveryAddress?.phone || '',
+          contact: user?.mobile || checkoutDeliveryAddress.phone || '',
         },
         ...(preferredMethod ? { method: preferredMethod } : {}),
         notes: { checkout: `${storeName} ${environment === 'test' ? 'Test Mode' : 'Checkout'}` },
@@ -621,13 +649,19 @@ export default function CheckoutPage({
               )
             }
             paymentVerified = true
-            await onPlaceOrder({
+            const verifiedCheckout = {
               ...checkoutDetails,
               razorpay: response,
               verifiedPayment: verification.payment,
-            })
+            }
+            setOrderConfirmationAttempt(verifiedCheckout)
+            await onPlaceOrder(verifiedCheckout)
           } catch (error) {
-            setPaymentError(error.message)
+            setPaymentError(
+              paymentVerified
+                ? `${error.message || 'Order confirmation is temporarily unavailable.'} Your payment is already verified; retry confirmation without paying again.`
+                : error.message,
+            )
             paymentInFlight.current = false
             setPaying(false)
             if (!paymentVerified) {
@@ -678,19 +712,12 @@ export default function CheckoutPage({
           ) : (
             <button
               type="button"
-              onClick={() => {
-                setActivePage('address')
-                window.scrollTo({ top: 0, behavior: 'smooth' })
-              }}
+              onClick={editCheckoutDetails}
               className="inline-flex items-center gap-2 text-xs font-extrabold text-[#397a4a] hover:underline transition"
             >
               <ArrowLeft size={16} /> Back to Address & GST Details
             </button>
           )}
-
-          <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
-            <ShieldCheck size={14} className="text-[#397a4a]" /> Real-time Firebase Sync
-          </div>
         </div>
 
         {/* Page Title & Subtitle */}
@@ -732,7 +759,6 @@ export default function CheckoutPage({
               {!useManualDeliveryAddress && Boolean(savedAddresses.length) && (
                 <div className="mt-4 space-y-3">
                   {savedAddresses.map((address) => {
-                    const avail = getPinDeliveryAvailability(address.pincode, new Date(), shippingSettings)
                     const isSelected = selectedDeliveryAddress?.id === address.id
                     return (
                       <label
@@ -757,14 +783,12 @@ export default function CheckoutPage({
                               className="mt-0.5 size-4 border-slate-300 text-[#397a4a] focus:ring-[#397a4a]"
                             />
                             <div>
-                              <strong className="text-xs font-extrabold text-slate-900">{address.label} — {address.fullName}</strong>
+                              <strong className="text-xs font-extrabold text-slate-900">{address.label === 'Office' ? 'Work' : address.label} — {address.fullName}</strong>
                               <span className="ml-2 text-[11px] font-semibold text-slate-500">({address.phone})</span>
                               <p className="mt-1 text-xs leading-5 text-slate-600">
-                                {address.houseFlat ? `${address.houseFlat}, ` : ''}{address.line1 || address.street}, {address.city}, {address.state} — <strong>{address.pincode}</strong>
+                                {address.line1 || address.houseFlat || address.street}, {address.city}, {address.state} — <strong>{address.pincode}</strong>
                               </p>
-                              <p className={`mt-1 text-[10px] font-bold ${avail.available ? 'text-emerald-700' : 'text-red-600'}`}>
-                                {avail.message}
-                              </p>
+                              {address.landmark && <p className="mt-0.5 text-[11px] text-slate-500">Landmark: {address.landmark}</p>}
                             </div>
                           </div>
 
@@ -790,6 +814,11 @@ export default function CheckoutPage({
               {/* Manual Delivery Address Form */}
               {(useManualDeliveryAddress || !savedAddresses.length) && (
                 <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <h3 className="text-sm font-extrabold text-slate-900">
+                      {deliveryAddressForm.id ? 'Edit Delivery Address' : 'Add Delivery Address'}
+                    </h3>
+                  </div>
                   <div>
                     <label className="mb-1 block text-[11px] font-bold text-slate-700">Full Name *</label>
                     <input
@@ -801,7 +830,7 @@ export default function CheckoutPage({
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-[11px] font-bold text-slate-700">10-Digit Mobile Phone *</label>
+                    <label className="mb-1 block text-[11px] font-bold text-slate-700">Mobile Number *</label>
                     <input
                       value={deliveryAddressForm.phone}
                       onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
@@ -813,86 +842,85 @@ export default function CheckoutPage({
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-[11px] font-bold text-slate-700">Flat / House / Building *</label>
+                    <label className="mb-1 block text-[11px] font-bold text-slate-700">PIN Code *</label>
                     <input
-                      value={deliveryAddressForm.houseFlat}
-                      onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, houseFlat: e.target.value })}
-                      placeholder="Flat 102, Green Apartments"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-[11px] font-bold text-slate-700">Street / Road *</label>
-                    <AddressAutocompleteInput
-                      assist={deliveryAssist}
-                      value={deliveryAddressForm.street}
-                      placeholder="MG Road, 4th Block"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <label className="mb-1 block text-[11px] font-bold text-slate-700">Locality / Area *</label>
-                    <input
-                      value={deliveryAddressForm.area}
-                      onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, area: e.target.value })}
-                      placeholder="Koramangala, Near Forum Mall"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-[11px] font-bold text-slate-700">State *</label>
-                    <StateSelectionInput
-                      assist={deliveryAssist}
-                      value={deliveryAddressForm.state}
+                      inputMode="numeric"
+                      pattern="[1-9][0-9]{5}"
+                      value={deliveryAddressForm.pincode}
+                      onChange={(e) => setDeliveryAddressForm({
+                        ...deliveryAddressForm,
+                        pincode: e.target.value.replace(/\D/g, '').slice(0, 6),
+                      })}
+                      placeholder="6-digit PIN code"
+                      autoComplete="postal-code"
                       className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
                     />
                   </div>
 
                   <div>
                     <label className="mb-1 block text-[11px] font-bold text-slate-700">City *</label>
-                    <CitySelectionInput
-                      assist={deliveryAssist}
+                    <input
                       value={deliveryAddressForm.city}
+                      onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, city: e.target.value })}
+                      placeholder="City"
+                      autoComplete="address-level2"
                       className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
                     />
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-[11px] font-bold text-slate-700">PIN Code *</label>
-                    <PincodeAutocompleteInput
-                      assist={deliveryAssist}
-                      value={deliveryAddressForm.pincode}
-                      placeholder="6-digit PIN code"
+                    <label className="mb-1 block text-[11px] font-bold text-slate-700">State *</label>
+                    <input
+                      value={deliveryAddressForm.state}
+                      onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, state: e.target.value })}
+                      placeholder="State"
+                      autoComplete="address-level1"
                       className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
                     />
                   </div>
 
-                  <div>
-                    <label className="mb-1 block text-[11px] font-bold text-slate-700">Label</label>
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-[11px] font-bold text-slate-700">Flat / House No., Building, Street *</label>
+                    <input
+                      value={deliveryAddressForm.line1}
+                      onChange={(e) => setDeliveryAddressForm({
+                        ...deliveryAddressForm,
+                        houseFlat: e.target.value,
+                        street: '',
+                        area: '',
+                        line1: e.target.value,
+                      })}
+                      placeholder="Flat 102, Green Apartments, MG Road"
+                      autoComplete="street-address"
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-[11px] font-bold text-slate-700">Landmark (Optional)</label>
+                    <input
+                      value={deliveryAddressForm.landmark}
+                      onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, landmark: e.target.value })}
+                      placeholder="Near a well-known place"
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="mb-2 block text-[11px] font-bold text-slate-700">Address Type</label>
                     <select
                       value={deliveryAddressForm.label}
                       onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, label: e.target.value })}
                       className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
                     >
                       <option value="Home">Home</option>
-                      <option value="Work">Work / Office</option>
+                      <option value="Office">Work</option>
                       <option value="Other">Other</option>
                     </select>
                   </div>
 
                   <div className="sm:col-span-2">
                     {deliveryAddressError && <p className="mb-2 text-xs font-bold text-red-600">{deliveryAddressError}</p>}
-                    {deliveryAssist.pincodeLookup.invalid && (
-                      <p className="mb-2 text-xs font-bold text-red-600">{deliveryAssist.pincodeLookup.message}</p>
-                    )}
-                    <p className={`mb-3 rounded-lg px-3 py-2 text-xs font-bold ${
-                      formDeliveryAvailability.available ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                    }`}>
-                      {formDeliveryAvailability.message}
-                    </p>
 
                     {Boolean(savedAddresses.length) && (
                       <div className="flex justify-end gap-2">
@@ -905,9 +933,8 @@ export default function CheckoutPage({
                         </button>
                         <button
                           type="button"
-                          disabled={!formDeliveryAvailability.available || !deliveryAssist.isPincodeVerified}
                           onClick={saveDeliveryAddressInline}
-                          className="rounded-lg bg-[#253329] px-4 py-1.5 text-xs font-bold text-white transition hover:bg-[#397a4a] disabled:opacity-40"
+                          className="rounded-lg bg-[#253329] px-4 py-1.5 text-xs font-bold text-white transition hover:bg-[#397a4a]"
                         >
                           Save Address
                         </button>
@@ -983,9 +1010,9 @@ export default function CheckoutPage({
                                 className="size-4 border-slate-300 text-[#397a4a] focus:ring-[#397a4a]"
                               />
                               <div>
-                                <strong className="text-xs font-bold text-slate-900">{address.label} — {address.fullName}</strong>
+                                <strong className="text-xs font-bold text-slate-900">{address.label === 'Office' ? 'Work' : address.label} — {address.fullName}</strong>
                                 <p className="text-xs text-slate-600">
-                                  {address.houseFlat ? `${address.houseFlat}, ` : ''}{address.line1 || address.street}, {address.city} ({address.pincode})
+                                  {address.line1 || address.houseFlat || address.street}, {address.city} ({address.pincode})
                                 </p>
                               </div>
                             </div>
@@ -1015,26 +1042,43 @@ export default function CheckoutPage({
                         placeholder="House / Flat / Building *"
                         className="h-10 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none"
                       />
-                      <AddressAutocompleteInput
-                        assist={billingAssist}
+                      <input
                         value={billingAddressForm.street}
+                        onChange={(e) => setBillingAddressForm({ ...billingAddressForm, street: e.target.value, line1: '' })}
                         placeholder="Street / Area *"
+                        autoComplete="street-address"
                         className="h-10 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none"
                       />
-                      <StateSelectionInput
-                        assist={billingAssist}
+                      <input
+                        value={billingAddressForm.area}
+                        onChange={(e) => setBillingAddressForm({ ...billingAddressForm, area: e.target.value })}
+                        placeholder="Locality / Area *"
+                        className="h-10 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none"
+                      />
+                      <input
                         value={billingAddressForm.state}
+                        onChange={(e) => setBillingAddressForm({ ...billingAddressForm, state: e.target.value })}
+                        placeholder="State *"
+                        autoComplete="address-level1"
                         className="h-10 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none"
                       />
-                      <CitySelectionInput
-                        assist={billingAssist}
+                      <input
                         value={billingAddressForm.city}
+                        onChange={(e) => setBillingAddressForm({ ...billingAddressForm, city: e.target.value })}
+                        placeholder="City *"
+                        autoComplete="address-level2"
                         className="h-10 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none"
                       />
-                      <PincodeAutocompleteInput
-                        assist={billingAssist}
+                      <input
+                        inputMode="numeric"
+                        pattern="[1-9][0-9]{5}"
                         value={billingAddressForm.pincode}
+                        onChange={(e) => setBillingAddressForm({
+                          ...billingAddressForm,
+                          pincode: e.target.value.replace(/\D/g, '').slice(0, 6),
+                        })}
                         placeholder="6-digit PIN code *"
+                        autoComplete="postal-code"
                         className="h-10 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none sm:col-span-2"
                       />
                       {billingAddressError && <p className="text-xs font-bold text-red-600 sm:col-span-2">{billingAddressError}</p>}
@@ -1270,10 +1314,7 @@ export default function CheckoutPage({
                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Address & Tax Details</span>
                 <button
                   type="button"
-                  onClick={() => {
-                    setActivePage('address')
-                    window.scrollTo({ top: 0, behavior: 'smooth' })
-                  }}
+                  onClick={editCheckoutDetails}
                   className="flex items-center gap-1 text-xs font-extrabold text-[#397a4a] hover:underline"
                 >
                   <Edit3 size={13} /> Edit Address & GST
@@ -1284,12 +1325,12 @@ export default function CheckoutPage({
                 <div className="rounded-xl bg-[#f8faf7] p-3 border border-slate-200/60">
                   <span className="text-[9px] font-black uppercase tracking-wider text-[#397a4a]">Delivery Address</span>
                   <strong className="block font-bold text-slate-900 mt-0.5">
-                    {selectedDeliveryAddress?.fullName} ({selectedDeliveryAddress?.phone})
+                    {checkoutAddresses?.delivery?.fullName} ({checkoutAddresses?.delivery?.phone})
                   </strong>
                   <p className="mt-0.5 text-slate-600 leading-4">
-                    {selectedDeliveryAddress?.houseFlat ? `${selectedDeliveryAddress.houseFlat}, ` : ''}
-                    {selectedDeliveryAddress?.line1 || selectedDeliveryAddress?.street}, {selectedDeliveryAddress?.city}, {selectedDeliveryAddress?.state} — <strong>{selectedDeliveryAddress?.pincode}</strong>
+                    {checkoutAddresses?.delivery?.line1 || checkoutAddresses?.delivery?.street}, {checkoutAddresses?.delivery?.city}, {checkoutAddresses?.delivery?.state} — <strong>{checkoutAddresses?.delivery?.pincode}</strong>
                   </p>
+                  {checkoutAddresses?.delivery?.landmark && <p className="mt-0.5 text-slate-500">Landmark: {checkoutAddresses.delivery.landmark}</p>}
                 </div>
 
                 <div className="rounded-xl bg-[#f8faf7] p-3 border border-slate-200/60">
@@ -1298,7 +1339,7 @@ export default function CheckoutPage({
                     <p className="font-bold text-slate-800 mt-0.5">Same as Delivery Address</p>
                   ) : (
                     <p className="text-slate-600 mt-0.5">
-                      {selectedBillingAddress?.fullName} — {selectedBillingAddress?.line1 || selectedBillingAddress?.street}, {selectedBillingAddress?.city}
+                      {checkoutAddresses?.billing?.fullName} — {checkoutAddresses?.billing?.line1 || checkoutAddresses?.billing?.street}, {checkoutAddresses?.billing?.city}
                     </p>
                   )}
 
@@ -1558,7 +1599,7 @@ export default function CheckoutPage({
                 <div className="flex items-start gap-2">
                   <LockKeyhole size={14} className="mt-0.5 shrink-0 text-[#397a4a]" />
                   <p className="leading-4">
-                    By clicking <strong>Place Order</strong>, you agree to Pride Electronics'{' '}
+                    By clicking <strong>{primaryActionLabel}</strong>, you agree to Pride Electronics'{' '}
                     <button
                       type="button"
                       onClick={() => onOpenPolicy?.('terms')}
@@ -1587,7 +1628,13 @@ export default function CheckoutPage({
                 className="mt-4 flex h-13 w-full items-center justify-center gap-2 rounded-full bg-[#253329] px-6 text-sm font-extrabold text-white shadow-md transition hover:bg-[#397a4a] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
               >
                 <LockKeyhole size={16} />
-                {paying ? 'Placing Order…' : `Place Order · ${formatCurrency(checkoutTotal)}`}
+                {paying
+                  ? orderConfirmationAttempt
+                    ? 'Confirming Order…'
+                    : paymentMode === 'online'
+                      ? 'Opening Secure Payment…'
+                      : 'Placing Order…'
+                  : `${primaryActionLabel} · ${formatCurrency(checkoutTotal)}`}
               </button>
             </section>
 

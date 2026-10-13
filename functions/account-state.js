@@ -50,7 +50,7 @@ const sanitizeAddress = (address) => {
   }
   const phone = String(address.phone || '').replace(/\D/g, '').slice(-10)
   const pincode = shortText(address.pincode, 6, true)
-  if (!/^[6-9]\d{9}$/.test(phone) || !/^[1-8]\d{5}$/.test(pincode)) {
+  if (!/^[6-9]\d{9}$/.test(phone) || !/^[1-9]\d{5}$/.test(pincode)) {
     const error = new Error('Invalid address contact details.')
     error.code = 'invalid-account-state'
     throw error
@@ -68,6 +68,7 @@ const sanitizeAddress = (address) => {
     street: shortText(address.street, 200),
     area: shortText(address.area, 150),
     line1: shortText(address.line1, 500, true),
+    landmark: shortText(address.landmark, 150),
     city: shortText(address.city, 100, true),
     state: shortText(address.state, 100, true),
     pincode,
