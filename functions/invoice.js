@@ -1,4 +1,4 @@
-const { isValidGstin, normalizeGstin } = require('./gst')
+const { isValidGstin, normalizeGstin, stateCodeFor } = require('./gst')
 
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100
 
@@ -68,6 +68,17 @@ const partyAddress = (value = {}) =>
     500,
   )
 
+const addressSnapshot = (value = {}) => ({
+  fullName: text(value.fullName, 100),
+  phone: text(value.phone, 30),
+  line1: text(value.line1, 500),
+  city: text(value.city, 100),
+  state: text(value.state, 100),
+  stateCode: stateCodeFor(value.state),
+  pincode: text(value.pincode, 6),
+  formatted: partyAddress(value),
+})
+
 function allocateLineTaxes(items, couponDiscount, totalTax, pricesIncludeTax) {
   const sellingSubtotal = roundMoney(
     items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0), 0),
@@ -99,6 +110,7 @@ function allocateLineTaxes(items, couponDiscount, totalTax, pricesIncludeTax) {
       productName: text(item.productName, 200) || 'Product',
       variant: text(item.variant, 200),
       sku: text(item.sku, 100),
+      hsnCode: text(item.hsnCode, 8),
       quantity: Number(item.qty || 0),
       unitPrice: roundMoney(item.price),
       grossAmount: gross,
@@ -120,24 +132,31 @@ function createInvoiceSnapshot({
   shippingAddress,
   billingAddress,
   gstProfile = null,
+  payment = {},
 }) {
   const settings = normalizeInvoiceSettings(invoiceSettings)
   const gstEnabled = settings.tax.gstEnabled !== false
   const sellerGstin = normalizeGstin(settings.tax.gstin)
   const sellerStateCode = text(settings.tax.stateCode || sellerGstin.slice(0, 2), 2)
-  const recipientStateCode = gstProfile ? normalizeGstin(gstProfile.gstin).slice(0, 2) : ''
-  const intraState = Boolean(recipientStateCode && recipientStateCode === sellerStateCode)
+  const placeOfSupplyStateCode = stateCodeFor(shippingAddress?.state)
+  if (!placeOfSupplyStateCode) {
+    throw new Error('Select a valid Indian delivery state for GST calculation.')
+  }
+  const intraState = placeOfSupplyStateCode === sellerStateCode
   const lineItems = allocateLineTaxes(
     quote.items || [],
     quote.couponDiscount,
     gstEnabled ? quote.tax : 0,
     settings.tax.pricesIncludeTax === true,
   ).map((item) => {
-    const cgst = recipientStateCode && intraState ? roundMoney(item.lineTax / 2) : 0
-    const sgst = recipientStateCode && intraState ? roundMoney(item.lineTax - cgst) : 0
-    const igst = recipientStateCode && !intraState ? item.lineTax : 0
+    const cgst = intraState ? roundMoney(item.lineTax / 2) : 0
+    const sgst = intraState ? roundMoney(item.lineTax - cgst) : 0
+    const igst = !intraState ? item.lineTax : 0
     return { ...item, cgst, sgst, igst }
   })
+  if (lineItems.some((item) => !/^(?:\d{4}|\d{6}|\d{8})$/.test(item.hsnCode))) {
+    throw new Error('Configure a valid HSN code for every product before accepting orders.')
+  }
   const tax = {
     pricesIncludeTax: settings.tax.pricesIncludeTax === true,
     defaultRate: Math.max(0, Math.min(100, Number(settings.tax.defaultRate || 0))),
@@ -146,12 +165,13 @@ function createInvoiceSnapshot({
     sgst: roundMoney(lineItems.reduce((sum, item) => sum + item.sgst, 0)),
     igst: roundMoney(lineItems.reduce((sum, item) => sum + item.igst, 0)),
     totalGst: roundMoney(gstEnabled ? quote.tax : 0),
-    supplyType: recipientStateCode ? (intraState ? 'intra-state' : 'inter-state') : 'unregistered',
-    placeOfSupplyStateCode: recipientStateCode,
+    supplyType: intraState ? 'intra-state' : 'inter-state',
+    placeOfSupplyStateCode,
+    reverseCharge: false,
   }
   const number = invoiceNumberFor(settings.numbering, invoiceDate)
   const snapshot = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedBy: 'server',
     invoiceNumber: number,
     invoiceDate: new Date(invoiceDate).toISOString(),
@@ -173,8 +193,11 @@ function createInvoiceSnapshot({
       name: text(gstProfile?.legalName || customer?.name, 200) || 'Pride customer',
       email: text(customer?.email, 320),
       phone: text(billingAddress?.phone || customer?.phone, 30),
-      billingAddress: gstProfile?.address || partyAddress(billingAddress),
+      purchaseType: gstProfile ? 'business' : 'personal',
+      billingAddress: partyAddress(billingAddress),
       shippingAddress: partyAddress(shippingAddress),
+      billing: addressSnapshot(billingAddress),
+      shipping: addressSnapshot(shippingAddress),
       gst: gstProfile ? JSON.parse(JSON.stringify(gstProfile)) : null,
     },
     lineItems,
@@ -188,6 +211,12 @@ function createInvoiceSnapshot({
       total: roundMoney(quote.total),
     },
     tax,
+    payment: {
+      method: text(payment.method, 120),
+      status: text(payment.status, 40),
+      transactionId: text(payment.transactionId, 150),
+      paidAt: payment.paidAt ? text(payment.paidAt, 50) : '',
+    },
   }
   validateInvoiceSnapshot(snapshot, { gstRequired: Boolean(gstProfile), gstEnabled })
   return snapshot
@@ -215,15 +244,21 @@ function validateInvoiceSnapshot(invoice, { gstRequired = false, gstEnabled = tr
     Number.isNaN(new Date(invoice.invoiceDate).getTime()) ||
     !text(invoice.seller?.legalName, 200) ||
     !text(invoice.seller?.address, 500) ||
+    !text(invoice.seller?.phone, 30) ||
+    !/^\S+@\S+\.\S+$/.test(text(invoice.seller?.email, 320)) ||
     !Array.isArray(invoice.lineItems) ||
     invoice.lineItems.length < 1 ||
     invoice.lineItems.length > 100 ||
+    invoice.lineItems.some((item) => !/^(?:\d{4}|\d{6}|\d{8})$/.test(item.hsnCode)) ||
     !Number.isFinite(Number(amounts.total)) ||
     Number(amounts.total) < 0 ||
     roundMoney(invoice.tax?.totalGst) !== roundMoney(amounts.totalGst) ||
     roundMoney(amounts.total) !== expectedTotal ||
     lineTaxTotal !== roundMoney(amounts.totalGst) ||
-    (invoice.tax?.supplyType !== 'unregistered' && splitTaxTotal !== lineTaxTotal)
+    !['intra-state', 'inter-state'].includes(invoice.tax?.supplyType) ||
+    splitTaxTotal !== lineTaxTotal ||
+    !invoice.buyer?.billing?.formatted ||
+    !invoice.buyer?.shipping?.formatted
   ) {
     throw new Error('The server could not generate valid invoice data for this order.')
   }
@@ -231,12 +266,19 @@ function validateInvoiceSnapshot(invoice, { gstRequired = false, gstEnabled = tr
     throw new Error('Configure a valid seller GSTIN before accepting GST orders.')
   }
   if (
+    gstEnabled &&
+    (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(invoice.seller.pan) ||
+      invoice.seller.pan !== invoice.seller.gstin.slice(2, 12))
+  ) {
+    throw new Error('Configure a seller PAN that matches the GSTIN.')
+  }
+  if (
     gstRequired &&
     (!gstEnabled ||
       !isValidGstin(invoice.buyer?.gst?.gstin) ||
       !invoice.buyer.gst.legalName ||
-      !invoice.buyer.gst.address ||
-      invoice.buyer.gst.verificationStatus !== 'verified')
+      invoice.buyer.gst.stateCode !== invoice.buyer.billing.stateCode ||
+      invoice.buyer.gst.verificationStatus !== 'format-validated')
   ) {
     throw new Error('The verified buyer GST details are incomplete.')
   }

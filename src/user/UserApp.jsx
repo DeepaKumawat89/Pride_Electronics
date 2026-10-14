@@ -46,7 +46,7 @@ import {
   getProtectedRoute,
 } from './utils/protectedRoutes'
 import { transitionAccountSession } from './utils/accountSession'
-import { createInvoiceNumber, initialInvoiceSettings } from '../data/invoice'
+import { initialInvoiceSettings } from '../data/invoice'
 import { initialAdminSettings } from '../data/adminSettings'
 import {
   observeUserSession,
@@ -1533,7 +1533,6 @@ export default function UserApp({
       deliveryCharges: checkoutDetails.shipping || 0,
       taxAmount: checkoutDetails.tax || 0,
       couponCode: checkoutDetails.couponCode || '',
-      invoiceNumber: createInvoiceNumber(invoiceSettings, new Date()),
       itemsCount: activeCheckoutItems.reduce(
         (sum, item) => sum + item.quantity,
         0,
@@ -1555,7 +1554,7 @@ export default function UserApp({
       shippingAddress: checkoutDetails.address || null,
       billingAddress:
         checkoutDetails.billingAddress || checkoutDetails.address || null,
-      gstin: checkoutDetails.gstin || checkoutDetails.gstDetails?.gstin || '',
+      gstProfile: checkoutDetails.gstProfile || null,
       deliveryId: checkoutDetails.delivery?.id || 'standard',
       paymentMethod: checkoutDetails.cod
         ? 'Cash on Delivery'

@@ -290,6 +290,7 @@ test('admin product creates require complete fields and valid INR pricing', asyn
     discount: 10,
     stock: 5,
     modelNumber: 'MODEL-1',
+    hsnCode: '85365090',
     specs: ['Power: 10 W'],
   }
 
@@ -313,6 +314,12 @@ test('admin product creates require complete fields and valid INR pricing', asyn
     setDoc(doc(database, 'products', 'INVALID_DISCOUNT'), {
       ...validProduct,
       discount: 100.01,
+    }),
+  )
+  await assertFails(
+    setDoc(doc(database, 'products', 'INVALID_HSN'), {
+      ...validProduct,
+      hsnCode: '85-36',
     }),
   )
   await assertFails(

@@ -68,6 +68,7 @@ const blankProduct = {
   discount: '',
   stock: '',
   taxRate: 18,
+  hsnCode: '',
   lowStockThreshold: 10,
   enableBulkPricing: false,
   pricingTiers: [],
@@ -395,6 +396,8 @@ export default function ProductsPage({
         'Threshold must be a non-negative whole number.'
     if (Number(form.taxRate) < 0 || Number(form.taxRate) > 100)
       errors.taxRate = 'Tax must be between 0 and 100.'
+    if (!/^(?:\d{4}|\d{6}|\d{8})$/.test(String(form.hsnCode || '').trim()))
+      errors.hsnCode = 'Enter a valid 4, 6, or 8 digit HSN code.'
     const hasExistingImages = Boolean(
       editingProduct?.image || editingProduct?.images?.length,
     )
@@ -522,6 +525,7 @@ export default function ProductsPage({
         ? normalizePricingTiers(form.pricingTiers)
         : [],
       taxRate: Number(form.taxRate),
+      hsnCode: String(form.hsnCode || '').trim(),
       rating: editingProduct?.rating ?? 0,
       reviewsCount: editingProduct?.reviewsCount ?? 0,
       sku: form.sku.trim() || undefined,
@@ -942,6 +946,20 @@ export default function ProductsPage({
             </FormField>
             <FormField label="Tax / GST (%)" required>
               <input required type="number" min="0" max="100" step="0.01" {...field('taxRate')} className={inputClass} />
+            </FormField>
+            <FormField label="HSN code" required error={formErrors.hsnCode}>
+              <input
+                required
+                inputMode="numeric"
+                maxLength={8}
+                value={form.hsnCode}
+                onChange={(event) => setForm((current) => ({
+                  ...current,
+                  hsnCode: event.target.value.replace(/\D/g, '').slice(0, 8),
+                }))}
+                placeholder="4, 6, or 8 digits"
+                className={inputClass}
+              />
             </FormField>
 
             <FormField label="Stock" required error={formErrors.stock}>

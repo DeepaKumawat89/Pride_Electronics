@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
   ArrowLeft,
+  Building2,
   Edit3,
   FileText,
   LockKeyhole,
@@ -28,7 +29,11 @@ import {
   preferredRazorpayMethod,
 } from '../../utils/razorpayOptions'
 import { initialShippingSettings } from '../../../data/shipping'
-import { initialInvoiceSettings } from '../../../data/invoice'
+import {
+  getGstDetailsError,
+  initialInvoiceSettings,
+  normalizeGstin,
+} from '../../../data/invoice'
 import { initialAdminSettings } from '../../../data/adminSettings'
 
 const createPaymentReceipt = () => `pride_${Date.now()}`
@@ -130,6 +135,18 @@ export default function CheckoutPage({
   const [billingAddressForm, setBillingAddressForm] = useState(() => createCheckoutAddress(user))
   const [billingAddressError, setBillingAddressError] = useState('')
 
+  // Optional business tax identity. Billing and delivery remain independent,
+  // which covers both bill-to/ship-to GST purchase variants.
+  const [businessPurchase, setBusinessPurchase] = useState(
+    Boolean(taxSettings.gstEnabled && user?.gstDetails?.gstin),
+  )
+  const [gstDetails, setGstDetails] = useState({
+    legalName: user?.gstDetails?.legalName || '',
+    tradeName: user?.gstDetails?.tradeName || '',
+    gstin: normalizeGstin(user?.gstDetails?.gstin),
+  })
+  const [gstDetailsError, setGstDetailsError] = useState('')
+
   // Page 1 global error
   const [page1Error, setPage1Error] = useState('')
 
@@ -219,6 +236,7 @@ export default function CheckoutPage({
   const openBillingAddressForm = (address) => {
     setBillingAddressForm(createCheckoutAddress(user, address))
     setBillingAddressError('')
+    setGstDetailsError('')
     setUseManualBillingAddress(true)
   }
 
@@ -320,6 +338,7 @@ export default function CheckoutPage({
   const handleProceedToSummary = () => {
     setDeliveryAddressError('')
     setBillingAddressError('')
+    setGstDetailsError('')
     setPage1Error('')
 
     // Capture immutable checkout addresses before Firebase account snapshots or
@@ -368,9 +387,26 @@ export default function CheckoutPage({
       }
     }
 
+
+    let gstProfile = null
+    if (businessPurchase) {
+      const validationError = getGstDetailsError(gstDetails)
+      if (validationError) {
+        setGstDetailsError(validationError)
+        setPage1Error('Please fix the GST details before proceeding.')
+        return
+      }
+      gstProfile = {
+        legalName: gstDetails.legalName.trim(),
+        tradeName: gstDetails.tradeName.trim(),
+        gstin: normalizeGstin(gstDetails.gstin),
+      }
+    }
+
     setCheckoutAddresses({
       delivery: normalizeAddress(checkoutDeliveryAddress),
       billing: normalizeAddress(checkoutBillingAddress),
+      gstProfile,
     })
     setActivePage('summary')
     window.scrollTo({ top: 0, behavior: 'auto' })
@@ -431,6 +467,7 @@ export default function CheckoutPage({
       checkoutMode: checkoutMode === 'buy-now' ? 'buy-now' : 'cart',
       address: checkoutDeliveryAddress,
       billingAddress: checkoutBillingAddress,
+      gstProfile: checkoutAddresses?.gstProfile || null,
       payment: { type: paymentMode === 'online' ? 'Online Payment' : 'Cash on Delivery' },
       discount: pricing.couponDiscount,
       shipping: pricing.shipping,
@@ -494,6 +531,7 @@ export default function CheckoutPage({
         deliveryDate: checkoutDetails.delivery.estimatedDate,
         shippingAddress: checkoutDetails.address,
         billingAddress: checkoutDetails.billingAddress,
+        gstProfile: checkoutDetails.gstProfile,
         receipt: createPaymentReceipt(),
       })
 
@@ -995,6 +1033,82 @@ export default function CheckoutPage({
               )}
             </section>
 
+            {/* Optional GST details; combined with the two address choices this
+                explicitly supports all four personal/business invoice cases. */}
+            <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
+              <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3.5">
+                <Building2 size={18} className="text-[#397a4a]" />
+                <div>
+                  <h2 className="text-base font-extrabold text-slate-900">Business GST Details</h2>
+                  <p className="text-[11px] text-slate-500">Optional — add these details only when claiming input tax credit.</p>
+                </div>
+              </div>
+
+              <label className={`mt-4 flex items-center gap-3 rounded-xl border border-slate-200/60 bg-[#f8faf7] p-3.5 ${taxSettings.gstEnabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+                <input
+                  type="checkbox"
+                  disabled={!taxSettings.gstEnabled}
+                  checked={businessPurchase}
+                  onChange={(event) => {
+                    setBusinessPurchase(event.target.checked)
+                    setGstDetailsError('')
+                  }}
+                  className="size-4 rounded border-slate-300 text-[#397a4a] focus:ring-[#397a4a]"
+                />
+                <div>
+                  <strong className="text-xs font-bold text-slate-900">This is a business purchase</strong>
+                  <p className="text-[11px] text-slate-500">
+                    {taxSettings.gstEnabled
+                      ? 'Your GSTIN and registered name will appear on the tax invoice.'
+                      : 'Business GST invoicing is unavailable while GST is disabled by the store.'}
+                  </p>
+                </div>
+              </label>
+
+              {businessPurchase && (
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1.5 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                    Registered legal name <span className="sr-only">required</span>
+                    <input
+                      required
+                      maxLength={200}
+                      value={gstDetails.legalName}
+                      onChange={(event) => setGstDetails((current) => ({ ...current, legalName: event.target.value }))}
+                      placeholder="Business name as registered under GST"
+                      className="h-11 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-[#397a4a]"
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                    GSTIN <span className="sr-only">required</span>
+                    <input
+                      required
+                      inputMode="text"
+                      autoCapitalize="characters"
+                      maxLength={15}
+                      value={gstDetails.gstin}
+                      onChange={(event) => setGstDetails((current) => ({ ...current, gstin: normalizeGstin(event.target.value) }))}
+                      placeholder="27ABCDE1234F1Z5"
+                      className="h-11 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 font-mono text-xs font-bold uppercase tracking-wider text-slate-900 outline-none focus:border-[#397a4a]"
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 sm:col-span-2">
+                    Trade name <span className="font-semibold normal-case tracking-normal text-slate-400">(optional)</span>
+                    <input
+                      maxLength={200}
+                      value={gstDetails.tradeName}
+                      onChange={(event) => setGstDetails((current) => ({ ...current, tradeName: event.target.value }))}
+                      placeholder="Brand or trading name"
+                      className="h-11 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-[#397a4a]"
+                    />
+                  </label>
+                  <p className="text-[10px] leading-4 text-slate-500 sm:col-span-2">
+                    The GSTIN state code must match the selected billing address. The delivery state determines CGST/SGST or IGST.
+                  </p>
+                  {gstDetailsError && <p className="text-xs font-bold text-red-600 sm:col-span-2">{gstDetailsError}</p>}
+                </div>
+              )}
+            </section>
+
             {/* Page 1 Global Error Notice */}
             {page1Error && (
               <div className="flex items-center gap-2.5 rounded-xl bg-red-50 p-3.5 text-xs font-bold text-red-700 border border-red-200">
@@ -1058,7 +1172,18 @@ export default function CheckoutPage({
                     </p>
                   )}
 
-                  <p className="text-[10px] text-slate-400 mt-0.5">Regular Invoice</p>
+                  {checkoutAddresses?.gstProfile ? (
+                    <div className="mt-2 border-t border-slate-200 pt-2">
+                      <p className="font-bold text-slate-900">{checkoutAddresses.gstProfile.legalName}</p>
+                      <p className="mt-0.5 font-mono text-[10px] font-bold tracking-wide text-[#397a4a]">
+                        GSTIN {checkoutAddresses.gstProfile.gstin}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="mt-0.5 text-[10px] text-slate-400">
+                      Personal purchase · {taxSettings.gstEnabled ? 'GST invoice without buyer GSTIN' : 'standard invoice'}
+                    </p>
+                  )}
                 </div>
               </div>
             </section>

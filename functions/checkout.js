@@ -165,6 +165,7 @@ function calculateOrderQuote({
       productId: String(product.id),
       ...(variant ? { variantId: String(variant.id) } : {}),
       sku: String(variant?.sku || product.sku || `PE-${String(product.id).padStart(4, '0')}`).slice(0, 100),
+      hsnCode: String(variant?.hsnCode || product.hsnCode || '').replace(/\D/g, '').slice(0, 8),
       productName: String(product.name || 'Product').slice(0, 200),
       variant: String(variant?.name || product.variant || product.specification || '').slice(0, 200),
       variantModelNumber: String(variant?.modelNumber || '').slice(0, 100),

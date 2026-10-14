@@ -5,7 +5,7 @@ const { FieldValue, Timestamp, getFirestore } = require('firebase-admin/firestor
 const { defineSecret } = require('firebase-functions/params')
 const { HttpsError, onCall, onRequest } = require('firebase-functions/v2/https')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
-const { requireAdmin, requireUser } = require('./authz')
+const { hasAdminPermission, requireAdmin, requireUser } = require('./authz')
 const {
   calculateOrderQuote,
   itemSignature,
@@ -20,7 +20,9 @@ const {
 const {
   createInvoiceSnapshot,
   normalizeInvoiceSettings,
+  validateInvoiceSnapshot,
 } = require('./invoice')
+const { normalizeGstProfile } = require('./gst')
 
 initializeApp()
 
@@ -304,6 +306,7 @@ async function reserveCheckoutStock({
   requestData,
   shippingAddress,
   billingAddress,
+  gstProfile,
 }) {
   const items = normalizeOrderItems(requestedItems)
   const reservationReference = reservationReferenceFor(uid, requestId)
@@ -361,6 +364,12 @@ async function reserveCheckoutStock({
         transaction.get(invoiceSettingsReference),
         transaction.get(shippingSettingsReference),
       ])
+    if (!invoiceSettingsDocument.exists) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Invoice settings must be configured before accepting orders.',
+      )
+    }
 
     const couponCode = String(requestData.couponCode || '').trim().toUpperCase()
     let couponDocument = null
@@ -459,6 +468,7 @@ async function reserveCheckoutStock({
       expectedTotalPaise: quote.totalPaise,
       shippingAddress,
       billingAddress,
+      gstProfile,
       deliveryId: quote.deliveryId,
       deliveryDate: String(requestData.deliveryDate || 'Being scheduled').slice(0, 100),
       paymentMethod: 'Online payment',
@@ -627,6 +637,12 @@ async function createRazorpayOrderHandler(request) {
   const billingAddress = request.data?.billingAddress
     ? validateShippingAddress(request.data.billingAddress)
     : shippingAddress
+  let gstProfile
+  try {
+    gstProfile = normalizeGstProfile(request.data?.gstProfile, billingAddress)
+  } catch (error) {
+    throw new HttpsError('invalid-argument', error.message)
+  }
   const storefrontSettingsDocument = await db.doc('settings/storefront').get()
   const paymentConfiguration = normalizePaymentConfiguration(
     storefrontSettingsDocument.data()?.payment,
@@ -668,6 +684,7 @@ async function createRazorpayOrderHandler(request) {
     requestData: request.data || {},
     shippingAddress,
     billingAddress,
+    gstProfile,
   })
   const quote = reservation.quote
   if (reservation.reused && reservation.gatewayOrder) {
@@ -1258,7 +1275,7 @@ exports.razorpayWebhook = onRequest(
 
 exports.releaseExpiredStockReservations = onSchedule(
   {
-    schedule: 'every 10 minutes',
+    schedule: 'every 60 minutes',
     region,
     timeZone: 'Asia/Kolkata',
     retryCount: 3,
@@ -1309,6 +1326,12 @@ async function placeOrderHandler(request) {
   let billingAddress = submittedOrder.billingAddress
     ? validateShippingAddress(submittedOrder.billingAddress)
     : shippingAddress
+  let gstProfile
+  try {
+    gstProfile = normalizeGstProfile(submittedOrder.gstProfile, billingAddress)
+  } catch (error) {
+    throw new HttpsError('invalid-argument', error.message)
+  }
   let checkoutMode = submittedOrder.checkoutMode === 'buy-now'
     ? 'buy-now'
     : 'cart'
@@ -1349,6 +1372,12 @@ async function placeOrderHandler(request) {
     const paymentConfiguration = normalizePaymentConfiguration(
       storefrontSettingsDocument.data()?.payment,
     )
+    if (!invoiceSettingsDocument.exists) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Invoice settings must be configured before accepting orders.',
+      )
+    }
     const isCashOnDelivery = /cash|cod/i.test(submittedOrder.paymentMethod || '')
     if (isCashOnDelivery && paymentConfiguration.codEnabled !== true) {
       throw new HttpsError('failed-precondition', 'Cash on Delivery is not available.')
@@ -1412,6 +1441,14 @@ async function placeOrderHandler(request) {
         billingAddress = paymentIntent.checkoutOrder.billingAddress
           ? validateShippingAddress(paymentIntent.checkoutOrder.billingAddress)
           : shippingAddress
+        try {
+          gstProfile = normalizeGstProfile(
+            paymentIntent.checkoutOrder.gstProfile,
+            billingAddress,
+          )
+        } catch (error) {
+          throw new HttpsError('failed-precondition', error.message)
+        }
       }
     }
 
@@ -1616,6 +1653,13 @@ async function placeOrderHandler(request) {
         },
         shippingAddress,
         billingAddress,
+        gstProfile,
+        payment: {
+          method: paymentMethod,
+          status: paymentStatus,
+          transactionId: isCashOnDelivery ? '' : String(paymentIntent.paymentId),
+          paidAt: isCashOnDelivery ? '' : now,
+        },
       })
     } catch (error) {
       throw new HttpsError('failed-precondition', error.message)
@@ -1652,8 +1696,8 @@ async function placeOrderHandler(request) {
       deliveryOption: quote.deliveryId === 'express' ? 'Express delivery' : 'Standard delivery',
       shippingAddress,
       billingAddress,
+      gstProfile,
       gstBreakdown: invoice.tax,
-      invoice,
       paymentStatus,
       paymentDate: isCashOnDelivery ? null : now,
       paymentMethod,
@@ -1671,6 +1715,13 @@ async function placeOrderHandler(request) {
         },
       ],
     }
+    transaction.create(db.doc(`invoices/${orderReference.id}`), {
+      orderId: orderReference.id,
+      userId: uid,
+      invoice: cleanObject(invoice),
+      createdAt: now,
+      updatedAt: now,
+    })
     transaction.create(orderReference, cleanObject(order))
     if (invoiceSettingsDocument.exists) {
       transaction.update(invoiceSettingsReference, {
@@ -1799,6 +1850,62 @@ async function getMyCouponUsageHandler(request) {
 }
 
 exports.getMyCouponUsage = onCall(callableOptions, getMyCouponUsageHandler)
+
+async function getOrderInvoiceHandler(request) {
+  const uid = requireUser(request)
+  const orderId = String(request.data?.orderId || '').trim()
+  if (!/^[a-zA-Z0-9_-]{1,100}$/.test(orderId)) {
+    throw new HttpsError('invalid-argument', 'A valid order is required.')
+  }
+
+  const [orderDocument, invoiceDocument] = await Promise.all([
+    db.doc(`orders/${orderId}`).get(),
+    db.doc(`invoices/${orderId}`).get(),
+  ])
+  if (!orderDocument.exists) {
+    throw new HttpsError('not-found', 'Order not found.')
+  }
+
+  const order = orderDocument.data()
+  const canManageInvoices =
+    hasAdminPermission(request.auth.token, 'reports') ||
+    hasAdminPermission(request.auth.token, 'tax-invoice')
+  if (!canManageInvoices) {
+    if (order.userId !== uid) {
+      throw new HttpsError('permission-denied', 'This order belongs to another account.')
+    }
+    if (order.status !== 'Delivered') {
+      throw new HttpsError(
+        'failed-precondition',
+        'The invoice will be available after this order is delivered.',
+      )
+    }
+  }
+
+  const invoiceRecord = invoiceDocument.data()
+  const invoice = invoiceRecord?.invoice || order.invoice
+  if (
+    !invoice ||
+    (invoiceRecord && (
+      invoiceRecord.orderId !== orderId ||
+      invoiceRecord.userId !== order.userId
+    ))
+  ) {
+    throw new HttpsError('not-found', 'A verified invoice is not available for this order.')
+  }
+  try {
+    validateInvoiceSnapshot(invoice, {
+      gstRequired: Boolean(invoice.buyer?.gst),
+      gstEnabled: Boolean(invoice.seller?.gstin),
+    })
+  } catch {
+    throw new HttpsError('data-loss', 'The stored invoice could not be validated.')
+  }
+
+  return { invoice: cleanObject(invoice) }
+}
+
+exports.getOrderInvoice = onCall(callableOptions, getOrderInvoiceHandler)
 
 async function createReturnHandler(request) {
   const uid = requireUser(request)

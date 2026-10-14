@@ -26,6 +26,21 @@ export const initialInvoiceSettings = {
   },
 }
 
+export const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/
+
+export const normalizeGstin = (value) =>
+  String(value || '').replace(/\s+/g, '').toUpperCase().slice(0, 15)
+
+export function getGstDetailsError(details) {
+  if (!String(details?.legalName || '').trim()) {
+    return 'Enter the legal business name registered under GST.'
+  }
+  if (!GSTIN_PATTERN.test(normalizeGstin(details?.gstin))) {
+    return 'Enter a valid 15-character GSTIN.'
+  }
+  return ''
+}
+
 export function createInvoiceNumber(settings, date = new Date()) {
   const numbering = settings?.numbering || initialInvoiceSettings.numbering
   const invoiceDate = new Date(date)

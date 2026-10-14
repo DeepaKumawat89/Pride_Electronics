@@ -1,9 +1,3 @@
-import { parsePrice } from '../../utils/currency'
-import {
-  createInvoiceNumber,
-  initialInvoiceSettings,
-} from '../../../data/invoice'
-
 const COLORS = {
   dark: [37, 51, 41],
   orange: [255, 92, 53],
@@ -29,36 +23,6 @@ const formatDate = (value) => {
     month: '2-digit',
     year: 'numeric',
   })
-}
-
-const normalizeParty = (source, customer, order) => {
-  if (typeof source === 'string') {
-    return {
-      name: customer?.name || order.customer || 'Pride Customer',
-      phone: customer?.mobile || 'Not available',
-      email: customer?.email || order.email || 'Not available',
-      address: source,
-      gstin: '',
-    }
-  }
-
-  return {
-    name:
-      source?.fullName || customer?.name || order.customer || 'Pride Customer',
-    phone: source?.phone || customer?.mobile || 'Not available',
-    email: customer?.email || order.email || 'Not available',
-    address:
-      [
-        source?.line1,
-        source?.line2,
-        [source?.city, source?.state, source?.pincode]
-          .filter(Boolean)
-          .join(', '),
-      ]
-        .filter(Boolean)
-        .join(', ') || 'Address not available',
-    gstin: source?.gstin || '',
-  }
 }
 
 const toWordsBelowThousand = (value) => {
@@ -132,87 +96,8 @@ const numberToIndianWords = (value) => {
   return `Indian Rupees ${parts.join(' ')} Only`
 }
 
-const createInvoiceData = (order, taxSettings) => {
-  const items = (order.items || []).map((item, index) => {
-    const quantity = Number(item.qty || 1)
-    const unitPrice = parsePrice(item.unitPrice ?? item.price)
-    return {
-      ...item,
-      quantity,
-      unitPrice,
-      gross: unitPrice * quantity,
-      directDiscount: parsePrice(item.discount || 0),
-      sku:
-        item.sku ||
-        (item.productId ? `PE-${String(item.productId).padStart(4, '0')}` : '') ||
-        `PE-${String(index + 1).padStart(4, '0')}`,
-    }
-  })
-  const subtotal = items.reduce((sum, item) => sum + item.gross, 0)
-  const directDiscount = items.reduce(
-    (sum, item) => sum + item.directDiscount,
-    0,
-  )
-  const orderDiscount = parsePrice(order.discount || 0)
-  const discount = directDiscount + orderDiscount
-  const delivery = parsePrice(
-    order.deliveryCharges ?? order.shipping ?? order.deliveryFee ?? 0,
-  )
-  const taxableValue = Math.max(0, subtotal - discount)
-  const explicitTax = parsePrice(order.taxAmount ?? order.tax ?? 0)
-  const defaultTaxRate = taxSettings.gstEnabled === false
-    ? 0
-    : Number(taxSettings.defaultRate || 0)
-  const tax = taxSettings.gstEnabled === false
-    ? 0
-    : explicitTax || Math.round(
-        taxSettings.pricesIncludeTax
-          ? (taxableValue * defaultTaxRate) / (100 + defaultTaxRate || 100)
-          : (taxableValue * defaultTaxRate) / 100,
-      )
-  const total =
-    parsePrice(order.total) || Math.max(
-      0,
-      subtotal - discount + delivery + (taxSettings.pricesIncludeTax ? 0 : tax),
-    )
-
-  let allocatedDiscount = 0
-  const detailedItems = items.map((item, index) => {
-    const proportionalDiscount =
-      index === items.length - 1
-        ? Math.max(0, orderDiscount - allocatedDiscount)
-        : subtotal
-          ? Math.round((orderDiscount * item.gross) / subtotal)
-          : 0
-    allocatedDiscount += proportionalDiscount
-    const lineDiscount = item.directDiscount + proportionalDiscount
-    const lineAmount = Math.max(0, item.gross - lineDiscount)
-    const lineTaxRate = taxSettings.gstEnabled === false
-      ? 0
-      : Number(item.taxRate ?? defaultTaxRate)
-    const lineTax = Math.round(
-      taxSettings.pricesIncludeTax
-        ? (lineAmount * lineTaxRate) / (100 + lineTaxRate || 100)
-        : (lineAmount * lineTaxRate) / 100,
-    )
-    return { ...item, lineDiscount, lineAmount, lineTax }
-  })
-
-  return {
-    items: detailedItems,
-    subtotal,
-    discount,
-    delivery,
-    tax,
-    total,
-  }
-}
-
-async function createInvoicePdfDocument(
+export async function createInvoicePdfDocument(
   order,
-  customer,
-  address,
-  invoiceSettings = initialInvoiceSettings,
 ) {
   const { jsPDF } = await import('jspdf')
   const pdf = new jsPDF({
@@ -222,83 +107,57 @@ async function createInvoicePdfDocument(
     compress: true,
     putOnlyUsedFonts: true,
   })
-  const serverInvoice = order.invoice?.generatedBy === 'server' ? order.invoice : null
-  const business = serverInvoice?.seller || invoiceSettings.business || initialInvoiceSettings.business
-  const taxSettings = serverInvoice
-    ? {
-        gstEnabled: Boolean(serverInvoice.seller?.gstin),
-        gstin: serverInvoice.seller?.gstin || '',
-        pricesIncludeTax: serverInvoice.tax?.pricesIncludeTax === true,
-        defaultRate: serverInvoice.tax?.defaultRate || 0,
-      }
-    : invoiceSettings.tax || initialInvoiceSettings.tax
-  const data = serverInvoice
-    ? {
-        items: (serverInvoice.lineItems || []).map((item) => ({
-          ...item,
-          qty: item.quantity,
-          lineDiscount: item.discount,
-          lineAmount: item.lineTotal,
-        })),
-        subtotal: serverInvoice.amounts?.subtotal || 0,
-        discount: serverInvoice.amounts?.couponDiscount || 0,
-        delivery: serverInvoice.amounts?.shipping || 0,
-        tax: serverInvoice.amounts?.totalGst || 0,
-        total: serverInvoice.amounts?.total || 0,
-        gstBreakdown: serverInvoice.tax || null,
-      }
-    : createInvoiceData(order, taxSettings)
-  const legacySequence = Number(String(order.id || '').replace(/\D/g, ''))
-  const invoiceNumber =
-    serverInvoice?.invoiceNumber || order.invoiceNumber ||
-    createInvoiceNumber(
-      {
-        ...invoiceSettings,
-        numbering: {
-          ...invoiceSettings.numbering,
-          nextNumber: legacySequence || invoiceSettings.numbering.nextNumber,
-        },
-      },
-      order.date,
-    )
-  const invoiceDate = serverInvoice?.invoiceDate || order.invoiceDate || order.date
-  const billing = serverInvoice
-    ? {
-        name: serverInvoice.buyer?.gst?.legalName || serverInvoice.buyer?.name || 'Pride Customer',
-        phone: serverInvoice.buyer?.phone || 'Not available',
-        email: serverInvoice.buyer?.email || 'Not available',
-        address: serverInvoice.buyer?.gst?.address || serverInvoice.buyer?.billingAddress || 'Address not available',
-        gstin: serverInvoice.buyer?.gst?.gstin || '',
-      }
-    : normalizeParty(
-        order.billingAddress || order.shippingAddress || address,
-        customer,
-        order,
-      )
-  const shipping = serverInvoice
-    ? {
-        name: serverInvoice.buyer?.name || 'Pride Customer',
-        phone: serverInvoice.buyer?.phone || 'Not available',
-        email: serverInvoice.buyer?.email || 'Not available',
-        address: serverInvoice.buyer?.shippingAddress || 'Address not available',
-        gstin: '',
-      }
-    : normalizeParty(
-        order.shippingAddress || address,
-        customer,
-        order,
-      )
-  const paymentMethod = order.paymentMethod || 'Online payment'
+  const serverInvoice = order.invoice
+  if (
+    serverInvoice?.generatedBy !== 'server' ||
+    ![1, 2].includes(serverInvoice?.schemaVersion)
+  ) {
+    throw new Error('A verified server invoice is not available for this order.')
+  }
+  const business = serverInvoice.seller
+  const taxSettings = {
+    gstEnabled: Boolean(serverInvoice.seller?.gstin),
+    gstin: serverInvoice.seller?.gstin || '',
+  }
+  const data = {
+    items: (serverInvoice.lineItems || []).map((item) => ({
+      ...item,
+      lineDiscount: item.discount,
+      lineAmount: item.lineTotal,
+    })),
+    subtotal: serverInvoice.amounts?.subtotal || 0,
+    discount: serverInvoice.amounts?.couponDiscount || 0,
+    delivery: serverInvoice.amounts?.shipping || 0,
+    tax: serverInvoice.amounts?.totalGst || 0,
+    total: serverInvoice.amounts?.total || 0,
+    gstBreakdown: serverInvoice.tax,
+  }
+  const invoiceNumber = serverInvoice.invoiceNumber
+  const invoiceDate = serverInvoice.invoiceDate
+  const billing = {
+    name: serverInvoice.buyer?.gst?.legalName || serverInvoice.buyer?.billing?.fullName || serverInvoice.buyer?.name,
+    phone: serverInvoice.buyer?.billing?.phone || serverInvoice.buyer?.phone || 'Not available',
+    email: serverInvoice.buyer?.email || 'Not available',
+    address: serverInvoice.buyer?.billing?.formatted || serverInvoice.buyer?.billingAddress,
+    gstin: serverInvoice.buyer?.gst?.gstin || '',
+  }
+  const shipping = {
+    name: serverInvoice.buyer?.shipping?.fullName || serverInvoice.buyer?.name,
+    phone: serverInvoice.buyer?.shipping?.phone || serverInvoice.buyer?.phone || 'Not available',
+    email: serverInvoice.buyer?.email || 'Not available',
+    address: serverInvoice.buyer?.shipping?.formatted || serverInvoice.buyer?.shippingAddress,
+    gstin: '',
+  }
+  const paymentMethod = serverInvoice.payment?.method || order.paymentMethod || 'Online payment'
   const isCod = /cash|cod/i.test(paymentMethod)
   const paymentStatus =
-    order.paymentStatus ||
+    serverInvoice.payment?.status || order.paymentStatus ||
     (isCod
       ? order.status === 'Delivered'
         ? 'Paid'
         : 'Payment due on delivery'
       : 'Paid')
-  const transactionId =
-    order.razorpayPaymentId || order.transactionId || (isCod ? 'Not applicable' : 'Not available')
+  const transactionId = serverInvoice.payment?.transactionId || (isCod ? 'Not applicable' : 'Not available')
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
   const margin = 13
@@ -332,7 +191,7 @@ async function createInvoicePdfDocument(
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(18)
     pdf.setTextColor(...COLORS.dark)
-    pdf.text('TAX INVOICE', pageWidth - margin, y + 4, { align: 'right' })
+    pdf.text(taxSettings.gstEnabled ? 'TAX INVOICE' : 'INVOICE', pageWidth - margin, y + 4, { align: 'right' })
     pdf.setFontSize(7.3)
     pdf.text(`Invoice No: ${invoiceNumber}`, pageWidth - margin, y + 9, {
       align: 'right',
@@ -438,11 +297,12 @@ async function createInvoicePdfDocument(
 
   const columns = [
     { label: '#', width: 7, align: 'left' },
-    { label: 'Product Description', width: 49, align: 'left' },
-    { label: 'SKU', width: 22, align: 'left' },
-    { label: 'Qty', width: 10, align: 'right' },
-    { label: 'Unit Price', width: 25, align: 'right' },
-    { label: 'Discount', width: 22, align: 'right' },
+    { label: 'Product Description', width: 42, align: 'left' },
+    { label: 'HSN', width: 15, align: 'left' },
+    { label: 'SKU', width: 18, align: 'left' },
+    { label: 'Qty', width: 9, align: 'right' },
+    { label: 'Unit Price', width: 23, align: 'right' },
+    { label: 'Discount', width: 21, align: 'right' },
     { label: 'Tax', width: 21, align: 'right' },
     { label: 'Amount', width: 28, align: 'right' },
   ]
@@ -490,11 +350,12 @@ async function createInvoicePdfDocument(
       const values = [
         String(index + 1),
         descriptionLines,
+        item.hsnCode || '-',
         item.sku,
         String(item.quantity),
         formatMoney(item.unitPrice),
         formatMoney(item.lineDiscount),
-        formatMoney(item.lineTax),
+        `${item.gstRate}% / ${formatMoney(item.lineTax)}`,
         formatMoney(item.lineAmount),
       ]
       columns.forEach((column, valueIndex) => {
@@ -517,7 +378,7 @@ async function createInvoicePdfDocument(
   }
 
   const drawAmountSummary = () => {
-    ensureSpace(82)
+    ensureSpace(105)
     y += 7
     const summaryWidth = 83
     const summaryX = pageWidth - margin - summaryWidth
@@ -530,6 +391,11 @@ async function createInvoicePdfDocument(
       ['Subtotal', formatMoney(data.subtotal)],
       ['Discount', `- ${formatMoney(data.discount)}`],
       ['Delivery Charges', data.delivery ? formatMoney(data.delivery) : 'FREE'],
+      [
+        'Place of Supply',
+        `${serverInvoice.buyer?.shipping?.state || 'India'} (${data.gstBreakdown?.placeOfSupplyStateCode || '--'})`,
+      ],
+      ['Reverse Charge', data.gstBreakdown?.reverseCharge ? 'Yes' : 'No'],
     ]
     if (data.gstBreakdown?.supplyType === 'intra-state') {
       rows.push(
@@ -590,7 +456,7 @@ async function createInvoicePdfDocument(
     const fields = [
       ['Payment Method', paymentMethod],
       ['Transaction ID', transactionId],
-      ['Payment Date', formatDate(order.paymentDate || order.date)],
+      ['Payment Date', formatDate(serverInvoice.payment?.paidAt || order.paymentDate || order.date)],
       ['Payment Status', paymentStatus],
     ]
     const fieldWidth = contentWidth / 4
@@ -694,9 +560,6 @@ async function createInvoicePdfDocument(
 
 export async function viewInvoicePdf(
   order,
-  customer,
-  address,
-  invoiceSettings = initialInvoiceSettings,
 ) {
   const previewWindow = window.open('', '_blank')
   if (previewWindow) {
@@ -705,12 +568,7 @@ export async function viewInvoicePdf(
   }
   let pdf
   try {
-    const document = await createInvoicePdfDocument(
-      order,
-      customer,
-      address,
-      invoiceSettings,
-    )
+    const document = await createInvoicePdfDocument(order)
     pdf = document.pdf
   } catch (error) {
     previewWindow?.close()
@@ -732,15 +590,7 @@ export async function viewInvoicePdf(
 
 export default async function downloadInvoicePdf(
   order,
-  customer,
-  address,
-  invoiceSettings = initialInvoiceSettings,
 ) {
-  const { pdf, invoiceNumber } = await createInvoicePdfDocument(
-    order,
-    customer,
-    address,
-    invoiceSettings,
-  )
+  const { pdf, invoiceNumber } = await createInvoicePdfDocument(order)
   pdf.save(`${invoiceNumber}.pdf`)
 }

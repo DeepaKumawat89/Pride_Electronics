@@ -133,6 +133,7 @@ beforeEach(async () => {
     db.doc('products/LAST_UNIT').set({
       name: 'Last available unit',
       sku: 'LAST-1',
+      hsnCode: '85365090',
       price: 100,
       stock: 1,
       reservedStock: 0,
