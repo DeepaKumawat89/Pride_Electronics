@@ -11,11 +11,10 @@ import {
   Plus,
   Star,
   Trash2,
+  X,
 } from 'lucide-react'
 import SelectMenu from '../../components/ui/SelectMenu'
 import { EmptyState, Modal, PageHeader } from '../components/ui/AdminUI'
-import { DynamicProductSpecifications } from '../components/DynamicProductSpecifications'
-import ProductVariantsEditor from '../components/ProductVariantsEditor'
 import { parsePrice } from '../../user/utils/currency'
 import {
   MAX_PRODUCT_IMAGES,
@@ -27,21 +26,6 @@ import {
   normalizeProductTaxonomy,
   subcategoriesForCategory,
 } from '../../utils/catalogTaxonomy'
-import {
-  buildTechnicalSpecifications,
-  compactCustomSpecifications,
-  getDisplaySpecifications,
-  getProductSpecificationValues,
-  normalizeCustomSpecifications,
-  normalizeSpecificationFields,
-  validateCustomSpecifications,
-  validateSpecificationValues,
-} from '../../utils/productSpecifications'
-import {
-  createVariantId,
-  getProductVariants,
-  productForVariant,
-} from '../../utils/productVariants'
 import {
   getDefaultSamplePricingTiers,
   normalizePricingTiers,
@@ -68,7 +52,7 @@ const blankProduct = {
   discount: '',
   stock: '',
   taxRate: 18,
-  lowStockThreshold: 10,
+  lowStockThreshold: '',
   enableBulkPricing: false,
   pricingTiers: [],
   enabled: true,
@@ -88,6 +72,17 @@ const parseList = (value) =>
     .map((item) => item.trim())
     .filter(Boolean)
 
+const imageLabel = (path, url, index) => {
+  if (path) return path
+  const withoutQuery = String(url || '').split('?')[0]
+  const encodedName = withoutQuery.split('/').pop()
+  try {
+    return decodeURIComponent(encodedName) || `Product image ${index + 1}`
+  } catch {
+    return encodedName || `Product image ${index + 1}`
+  }
+}
+
 const LEGACY_SUBCATEGORY_VALUE = '__legacy_subcategory__'
 
 const createDuplicateProduct = (product) => {
@@ -99,13 +94,9 @@ const createDuplicateProduct = (product) => {
     sku: product.sku
       ? `${product.sku}-COPY-${String(duplicateId).slice(-4)}`
       : '',
-    variants: getProductVariants(product).map((variant, index) => ({
-      ...variant,
-      id: createVariantId(),
-      sku: `${variant.sku || `PE-${product.id}-V${index + 1}`}-COPY-${String(duplicateId).slice(-4)}`,
-      reservedStock: 0,
-      imageStoragePaths: [],
-    })),
+    technicalSpecifications: [],
+    customSpecifications: [],
+    variants: [],
     createdAt: new Date().toISOString().slice(0, 10),
     featured: false,
     enabled: false,
@@ -132,13 +123,10 @@ export default function ProductsPage({
   const [creatingProduct, setCreatingProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
   const [form, setForm] = useState(blankProduct)
-  const [specificationValues, setSpecificationValues] = useState({})
-  const [customSpecifications, setCustomSpecifications] = useState([])
-  const [variants, setVariants] = useState([])
-  const [variantErrors, setVariantErrors] = useState({})
   const [formErrors, setFormErrors] = useState({})
   const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [existingImages, setExistingImages] = useState([])
   const [selectedImages, setSelectedImages] = useState([])
   const [imagePreviews, setImagePreviews] = useState([])
   const [deleteTarget, setDeleteTarget] = useState(null)
@@ -149,9 +137,6 @@ export default function ProductsPage({
     (subcategory) =>
       String(subcategory.id) === String(form.subcategoryId) &&
       String(subcategory.categoryId) === String(selectedCategory?.id),
-  )
-  const specificationFields = normalizeSpecificationFields(
-    selectedSubcategory?.specificationFields,
   )
   const subcategoryOptions = [
     ...(form.subcategory && !form.subcategoryId
@@ -179,10 +164,7 @@ export default function ProductsPage({
     (product) =>
       (category === 'All' || product.category === category) &&
       (!searchQuery ||
-        `${product.name} ${product.sku || ''} ${product.brand || ''} ${product.category} ${product.subcategory || ''} ${getDisplaySpecifications(product).flatMap(({ label, value }) => [label, value]).join(' ')} ${getProductVariants(product).flatMap((variant) => {
-          const effectiveProduct = productForVariant(product, variant.id)
-          return [variant.name, variant.sku, variant.modelNumber, ...getDisplaySpecifications(effectiveProduct || variant).flatMap(({ label, value }) => [label, value])]
-        }).join(' ')}`
+        `${product.name} ${product.sku || ''} ${product.brand || ''} ${product.category} ${product.subcategory || ''}`
           .toLowerCase()
           .includes(searchQuery.toLowerCase())),
   )
@@ -193,69 +175,24 @@ export default function ProductsPage({
   )
 
   const clearImageSelection = () => {
+    setExistingImages([])
     setSelectedImages([])
     setImagePreviews([])
   }
 
-  const clearVariantImagePreviews = (items = variants) => {
-    items.forEach((variant) =>
-      (variant.imagePreviews || []).forEach((preview) => URL.revokeObjectURL(preview)),
-    )
-  }
-
-  const selectVariantImages = (variantIndex, event) => {
-    const files = Array.from(event.target.files || [])
-    if (files.length > MAX_PRODUCT_IMAGES) {
-      event.target.value = ''
-      setVariantErrors((current) => ({
-        ...current,
-        [variants[variantIndex]?.id]: {
-          ...(current[variants[variantIndex]?.id] || {}),
-          message: `Select no more than ${MAX_PRODUCT_IMAGES} images for a variant.`,
-        },
-      }))
-      return
-    }
-    const invalidImage = files.find(
-      (file) => !PRODUCT_IMAGE_TYPES.includes(file.type) || file.size > MAX_PRODUCT_IMAGE_SIZE,
-    )
-    if (invalidImage) {
-      event.target.value = ''
-      setVariantErrors((current) => ({
-        ...current,
-        [variants[variantIndex]?.id]: {
-          ...(current[variants[variantIndex]?.id] || {}),
-          message: PRODUCT_IMAGE_TYPES.includes(invalidImage.type)
-            ? `${invalidImage.name} must be smaller than 20 MB.`
-            : `${invalidImage.name} must be a JPG, PNG, or WebP image.`,
-        },
-      }))
-      return
-    }
-    setVariants((current) => current.map((variant, index) => {
-      if (index !== variantIndex) return variant
-      ;(variant.imagePreviews || []).forEach((preview) => URL.revokeObjectURL(preview))
-      return {
-        ...variant,
-        imageFiles: files,
-        imagePreviews: files.map((file) => URL.createObjectURL(file)),
-      }
-    }))
-  }
-
   const selectImages = (event) => {
     const files = Array.from(event.target.files || [])
-    if (files.length > MAX_PRODUCT_IMAGES) {
+    const nextImages = [...selectedImages, ...files]
+    if (existingImages.length + nextImages.length > MAX_PRODUCT_IMAGES) {
       event.target.value = ''
-      clearImageSelection()
       setFormErrors((current) => ({
         ...current,
         images: `Select between 1 and ${MAX_PRODUCT_IMAGES} images per product.`,
       }))
       return
     }
-    setSelectedImages(files)
-    setImagePreviews(files.map((file) => URL.createObjectURL(file)))
+    setSelectedImages(nextImages)
+    setImagePreviews(nextImages.map((file) => URL.createObjectURL(file)))
     setFormErrors((current) => {
       const next = { ...current }
       delete next.images
@@ -263,14 +200,21 @@ export default function ProductsPage({
     })
   }
 
+  const removeSelectedImage = (imageIndex) => {
+    const remainingImages = selectedImages.filter((_, index) => index !== imageIndex)
+    setSelectedImages(remainingImages)
+    setImagePreviews(remainingImages.map((file) => URL.createObjectURL(file)))
+  }
+
+  const removeExistingImage = (imageIndex) => {
+    setExistingImages((current) =>
+      current.filter((_, index) => index !== imageIndex),
+    )
+  }
+
   const openAdd = () => {
     clearImageSelection()
     setEditingProduct(null)
-    setSpecificationValues({})
-    setCustomSpecifications([])
-    clearVariantImagePreviews()
-    setVariants([])
-    setVariantErrors({})
     setForm(blankProduct)
     setFormErrors({})
     setSaveError('')
@@ -282,38 +226,19 @@ export default function ProductsPage({
       managedCategories,
       managedSubcategories,
     )
-    const productSubcategory = managedSubcategories.find(
-      (subcategory) =>
-        String(subcategory.id) === String(normalizedProduct.subcategoryId),
-    )
-    const productSpecificationFields = normalizeSpecificationFields(
-      productSubcategory?.specificationFields,
-    )
     clearImageSelection()
     setEditingProduct(product)
-    setSpecificationValues(
-      getProductSpecificationValues(product, productSpecificationFields),
-    )
-    setCustomSpecifications(
-      normalizeCustomSpecifications(product.customSpecifications),
-    )
-    clearVariantImagePreviews()
-    setVariants(getProductVariants(product).map((variant) => ({
-      ...variant,
-      price: parsePrice(variant.price),
-      discountPrice: variant.discountPrice ? parsePrice(variant.discountPrice) : '',
-      stock: Number(variant.stock) || 0,
-      imageFiles: [],
-      imagePreviews: [],
-      specificationValues: getProductSpecificationValues(
-        variant,
-        productSpecificationFields,
-      ),
-      customSpecifications: normalizeCustomSpecifications(
-        variant.customSpecifications,
-      ),
+    const productImages = Array.isArray(product.images) && product.images.length
+      ? product.images.filter(Boolean)
+      : [product.image].filter(Boolean)
+    const imageStoragePaths = Array.isArray(product.imageStoragePaths)
+      ? product.imageStoragePaths
+      : []
+    const storagePathOffset = Math.max(0, productImages.length - imageStoragePaths.length)
+    setExistingImages(productImages.map((url, index) => ({
+      url,
+      path: imageStoragePaths[index - storagePathOffset] || '',
     })))
-    setVariantErrors({})
     setForm({
       ...blankProduct,
       ...normalizedProduct,
@@ -338,11 +263,6 @@ export default function ProductsPage({
     clearImageSelection()
     setCreatingProduct(false)
     setEditingProduct(null)
-    setSpecificationValues({})
-    setCustomSpecifications([])
-    clearVariantImagePreviews()
-    setVariants([])
-    setVariantErrors({})
     setFormErrors({})
     setSaveError('')
   }
@@ -395,12 +315,9 @@ export default function ProductsPage({
         'Threshold must be a non-negative whole number.'
     if (Number(form.taxRate) < 0 || Number(form.taxRate) > 100)
       errors.taxRate = 'Tax must be between 0 and 100.'
-    const hasExistingImages = Boolean(
-      editingProduct?.image || editingProduct?.images?.length,
-    )
-    if (!selectedImages.length && !hasExistingImages)
+    if (!selectedImages.length && !existingImages.length)
       errors.images = 'Select at least one product image.'
-    if (selectedImages.length > MAX_PRODUCT_IMAGES)
+    if (selectedImages.length + existingImages.length > MAX_PRODUCT_IMAGES)
       errors.images = `Select between 1 and ${MAX_PRODUCT_IMAGES} images per product.`
     const invalidImage = selectedImages.find(
       (file) =>
@@ -421,74 +338,6 @@ export default function ProductsPage({
       )
     )
       errors.sku = 'This SKU is already in use.'
-    Object.entries(
-      validateSpecificationValues(specificationFields, specificationValues),
-    ).forEach(([fieldId, message]) => {
-      errors[`specification:${fieldId}`] = message
-    })
-    Object.entries(validateCustomSpecifications(customSpecifications)).forEach(
-      ([specificationId, message]) => {
-        errors[`customSpecification:${specificationId}`] = message
-      },
-    )
-    const nextVariantErrors = {}
-    const seenVariantSkus = new Set()
-    variants.forEach((variant, index) => {
-      const messages = []
-      const name = String(variant.name || '').trim()
-      const sku = String(variant.sku || '').trim()
-      const price = parsePrice(variant.price)
-      const discountPrice = parsePrice(variant.discountPrice)
-      const stock = Number(variant.stock)
-      if (!name) messages.push(`Variant ${index + 1} needs a name.`)
-      if (!sku) messages.push(`${name || `Variant ${index + 1}`} needs a SKU.`)
-      const normalizedSku = sku.toLowerCase()
-      if (sku && seenVariantSkus.has(normalizedSku)) messages.push(`SKU ${sku} is duplicated.`)
-      if (sku && normalizedSku === form.sku.trim().toLowerCase()) messages.push(`SKU ${sku} is already used by the base product.`)
-      if (sku) seenVariantSkus.add(normalizedSku)
-      if (
-        sku &&
-        products.some((product) =>
-          product.id !== editingProduct?.id &&
-          [product.sku, ...getProductVariants(product).map((item) => item.sku)]
-            .some((candidate) => String(candidate || '').toLowerCase() === normalizedSku),
-        )
-      ) messages.push(`SKU ${sku} is already in use.`)
-      if (price <= 0) messages.push(`${name || `Variant ${index + 1}`} needs a valid price.`)
-      if (discountPrice < 0 || discountPrice > price) messages.push('Discount price cannot exceed the variant price.')
-      if (!Number.isInteger(stock) || stock < Number(variant.reservedStock || 0)) {
-        messages.push(`Stock must be a whole number of at least ${Number(variant.reservedStock || 0)}.`)
-      }
-      const fields = validateSpecificationValues(
-        specificationFields,
-        variant.specificationValues,
-      )
-      const custom = validateCustomSpecifications(variant.customSpecifications)
-      if (Object.keys(fields).length || Object.keys(custom).length) {
-        messages.push('Complete the required variant specifications.')
-      }
-      if (messages.length) nextVariantErrors[variant.id] = {
-        message: messages.join(' '),
-        fields,
-        custom,
-      }
-    })
-    getProductVariants(editingProduct || {}).forEach((existingVariant) => {
-      if (
-        Number(existingVariant.reservedStock || 0) > 0 &&
-        !variants.some((variant) => String(variant.id) === String(existingVariant.id))
-      ) {
-        nextVariantErrors[existingVariant.id] = {
-          message: `${existingVariant.name} cannot be removed while it has stock reserved for open orders.`,
-          fields: {},
-          custom: {},
-        }
-      }
-    })
-    setVariantErrors(nextVariantErrors)
-    if (Object.keys(nextVariantErrors).length) {
-      errors.variants = 'Complete all variant details.'
-    }
     const bulkPricingError = validatePricingTiers(form.pricingTiers, form.enableBulkPricing)
     if (bulkPricingError) {
       errors.pricingTiers = bulkPricingError
@@ -528,44 +377,10 @@ export default function ProductsPage({
       discount:
         form.discount === '' ? undefined : roundToTwoDecimals(form.discount),
       specs: parseList(form.specs),
-      technicalSpecifications: selectedSubcategory
-        ? buildTechnicalSpecifications(
-            specificationFields,
-            specificationValues,
-          )
-        : form.subcategoryId === LEGACY_SUBCATEGORY_VALUE
-          ? editingProduct?.technicalSpecifications || []
-          : [],
-      customSpecifications: compactCustomSpecifications(customSpecifications),
-      variants: variants.map((variant) => {
-        const {
-          imageFiles = [],
-          specificationValues: variantSpecificationValues,
-          customSpecifications: variantCustomSpecifications,
-          ...variantFields
-        } = variant
-        delete variantFields.imagePreviews
-        return {
-          ...variantFields,
-          name: String(variant.name).trim(),
-          sku: String(variant.sku).trim(),
-          price: parsePrice(variant.price),
-          discountPrice: parsePrice(variant.discountPrice) || '',
-          stock: Number(variant.stock),
-          reservedStock: Number(variant.reservedStock || 0),
-          technicalSpecifications: buildTechnicalSpecifications(
-            specificationFields,
-            variantSpecificationValues,
-          ),
-          customSpecifications: compactCustomSpecifications(
-            variantCustomSpecifications,
-          ),
-          imageFiles,
-        }
-      }),
       imageFiles: selectedImages,
-      image: editingProduct?.image || '',
-      images: editingProduct?.images || [editingProduct?.image].filter(Boolean),
+      image: existingImages[0]?.url || '',
+      images: existingImages.map((item) => item.url),
+      imageStoragePaths: existingImages.map((item) => item.path).filter(Boolean),
       videos: [],
       featured: editingProduct?.featured ?? true,
       enabled: form.enabled !== false,
@@ -787,8 +602,8 @@ export default function ProductsPage({
               Live preview
             </p>
             <div className="overflow-hidden rounded-[24px] bg-white p-2 shadow-sm">
-              {imagePreviews[0] || form.image ? <img
-                  src={imagePreviews[0] || form.image}
+              {existingImages[0]?.url || imagePreviews[0] ? <img
+                  src={existingImages[0]?.url || imagePreviews[0]}
                   alt="Product preview"
                   className="aspect-square size-full rounded-[19px] object-cover"
                 /> : <div className="grid aspect-square size-full place-items-center rounded-[19px] bg-slate-100 text-[9px] font-bold text-slate-400">Image preview</div>}
@@ -851,7 +666,6 @@ export default function ProductsPage({
                     subcategoryId: '',
                     subcategory: '',
                   }))
-                  setSpecificationValues({})
                 }}
                 options={categoryOptions}
                 placeholder="Select Category"
@@ -876,16 +690,6 @@ export default function ProductsPage({
                         ? current.subcategory
                         : ''),
                   }))
-                  const nextFields = normalizeSpecificationFields(
-                    subcategory?.specificationFields,
-                  )
-                  setSpecificationValues((current) => {
-                    const defaults = getProductSpecificationValues({}, nextFields)
-                    return nextFields.reduce((next, item) => {
-                      next[item.id] = current[item.id] ?? defaults[item.id]
-                      return next
-                    }, {})
-                  })
                 }}
                 options={subcategoryOptions}
                 placeholder="Select Subcategory"
@@ -1108,17 +912,70 @@ export default function ProductsPage({
             <FormSectionTitle title="Images" />
             <FormField label="Product images" required wide>
               <input
-                required={!editingProduct?.image && !editingProduct?.images?.length}
                 type="file"
                 accept={PRODUCT_IMAGE_TYPES.join(',')}
                 multiple
+                onClick={(event) => {
+                  event.currentTarget.value = ''
+                }}
                 onChange={selectImages}
                 className={`${inputClass} py-2 file:mr-3 file:rounded-full file:border-0 file:bg-[#e4f1e7] file:px-3 file:py-1.5 file:text-[9px] file:font-extrabold file:text-[#397a4a]`}
               />
               <span className="mt-1.5 block text-[8px] font-bold text-slate-400">
                 JPG, PNG or WebP · minimum 1 and maximum {MAX_PRODUCT_IMAGES} images per product · 20 MB each. Images are optimized automatically.
-                {selectedImages.length ? ` ${selectedImages.length} selected.` : ''}
+                {existingImages.length + selectedImages.length
+                  ? ` ${existingImages.length + selectedImages.length} selected or uploaded.`
+                  : ''}
               </span>
+              {!!(existingImages.length || selectedImages.length) && (
+                <ul className="mt-3 space-y-2">
+                  {existingImages.map((item, index) => {
+                    const label = imageLabel(item.path, item.url, index)
+                    return (
+                      <li
+                        key={`${item.url}-${index}`}
+                        className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <img src={item.url} alt="" className="size-9 shrink-0 rounded-xl object-cover" />
+                          <span title={label} className="min-w-0 truncate text-[9px] font-bold text-slate-600">
+                            {label}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeExistingImage(index)}
+                          aria-label={`Remove ${label}`}
+                          className="grid size-7 shrink-0 place-items-center rounded-full bg-red-50 text-red-500 transition hover:bg-red-100"
+                        >
+                          <X size={13} />
+                        </button>
+                      </li>
+                    )
+                  })}
+                  {selectedImages.map((file, index) => (
+                    <li
+                      key={`${file.name}-${file.lastModified}-${index}`}
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <img src={imagePreviews[index]} alt="" className="size-9 shrink-0 rounded-xl object-cover" />
+                        <span title={file.webkitRelativePath || file.name} className="min-w-0 truncate text-[9px] font-bold text-slate-600">
+                          {file.webkitRelativePath || file.name}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeSelectedImage(index)}
+                        aria-label={`Remove ${file.name}`}
+                        className="grid size-7 shrink-0 place-items-center rounded-full bg-red-50 text-red-500 transition hover:bg-red-100"
+                      >
+                        <X size={13} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </FormField>
 
             <FormSectionTitle title="Technical Specifications" />
@@ -1132,23 +989,6 @@ export default function ProductsPage({
                 className={`${inputClass} min-h-20 py-3`}
               />
             </FormField>
-            <DynamicProductSpecifications
-              fields={specificationFields}
-              values={specificationValues}
-              onValueChange={(fieldId, value) => setSpecificationValues((current) => ({ ...current, [fieldId]: value }))}
-              customSpecifications={customSpecifications}
-              onCustomSpecificationsChange={setCustomSpecifications}
-              fieldErrors={Object.fromEntries(specificationFields.map((item) => [item.id, formErrors[`specification:${item.id}`]]).filter(([, message]) => message))}
-              customErrors={Object.fromEntries(customSpecifications.map((item) => [item.id, formErrors[`customSpecification:${item.id}`]]).filter(([, message]) => message))}
-            />
-            <ProductVariantsEditor
-              variants={variants}
-              fields={specificationFields}
-              errors={variantErrors}
-              onChange={setVariants}
-              onSelectImages={selectVariantImages}
-            />
-
             <FormSectionTitle title="Shipping" />
             <FormField label="Weight">
               <input {...field('weight')} placeholder="For example, 1.2 kg" className={inputClass} />

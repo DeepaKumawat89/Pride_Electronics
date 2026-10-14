@@ -11,7 +11,6 @@ import PaymentsPage from './pages/PaymentsPage'
 import ReturnsPage from './pages/ReturnsPage'
 import CouponsPage from './pages/CouponsPage'
 import OffersPage from './pages/OffersPage'
-import ShippingPage from './pages/ShippingPage'
 import { initialMarketingSettings } from '../data/marketing'
 import { initialShippingSettings } from '../data/shipping'
 import { initialInvoiceSettings } from '../data/invoice'
@@ -20,7 +19,6 @@ import AdminSettingsPage from './pages/AdminSettingsPage'
 import { initialAdminSettings } from '../data/adminSettings'
 import CategoriesPage from './pages/CategoriesPage'
 import ReviewsPage from './pages/ReviewsPage'
-import ReportsPage from './pages/ReportsPage'
 import { EmptyState } from './components/ui/AdminUI'
 
 export default function AdminApp({
@@ -42,7 +40,6 @@ export default function AdminApp({
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
-  inventoryHistory = [],
   onAdjustStock,
   onUpdateOrderStatus,
   onUpdateReturn,
@@ -57,10 +54,8 @@ export default function AdminApp({
   onDeleteSubcategory,
   onUpdateReview,
   onDeleteReview,
-  onUpdatePaymentStatus,
   onUpdateCustomer,
   onUpdateMarketingSettings,
-  onUpdateShippingSettings,
   onUpdateInvoiceSettings,
   onUpdateAdminSettings,
   onSwitchToStore,
@@ -78,11 +73,16 @@ export default function AdminApp({
   const [searchQuery, setSearchQuery] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const permissions = admin?.permissions || []
+  const availableTabs = new Set([
+    'dashboard', 'products', 'categories', 'orders', 'inventory', 'payments',
+    'returns', 'coupons', 'users', 'reviews', 'offers', 'tax-invoice', 'settings',
+  ])
   const canAccess = (tab) =>
-    permissions.includes('*') || permissions.includes(tab)
+    availableTabs.has(tab) &&
+    (permissions.includes('*') || permissions.includes(tab))
   const firstPermittedTab = permissions.includes('*')
     ? 'dashboard'
-    : permissions[0] || null
+    : permissions.find((permission) => availableTabs.has(permission)) || null
   const permittedTab = canAccess(activeTab) ? activeTab : firstPermittedTab
 
   useEffect(() => {
@@ -207,14 +207,12 @@ export default function AdminApp({
           orders={orders}
           onUpdateOrderStatus={onUpdateOrderStatus}
           searchQuery={searchQuery}
-          couriers={shippingSettings.couriers}
         />
       )}
 
       {permittedTab === 'inventory' && (
         <InventoryPage
           products={products}
-          history={inventoryHistory}
           searchQuery={searchQuery}
           onAdjustStock={onAdjustStock}
         />
@@ -225,7 +223,6 @@ export default function AdminApp({
           orders={orders}
           refunds={refunds}
           searchQuery={searchQuery}
-          onUpdatePaymentStatus={onUpdatePaymentStatus}
         />
       )}
 
@@ -252,8 +249,6 @@ export default function AdminApp({
         <CustomersPage
           customers={customers}
           orders={orders}
-          refunds={refunds}
-          returns={returns}
           searchQuery={searchQuery}
           onUpdateCustomer={onUpdateCustomer}
         />
@@ -276,13 +271,6 @@ export default function AdminApp({
         />
       )}
 
-      {permittedTab === 'shipping' && (
-        <ShippingPage
-          settings={shippingSettings}
-          onUpdate={onUpdateShippingSettings}
-        />
-      )}
-
       {permittedTab === 'tax-invoice' && (
         <TaxInvoicePage
           settings={invoiceSettings}
@@ -290,22 +278,10 @@ export default function AdminApp({
         />
       )}
 
-      {permittedTab === 'reports' && (
-        <ReportsPage
-          products={products}
-          orders={orders}
-          customers={customers}
-          refunds={refunds}
-          invoiceSettings={invoiceSettings}
-          searchQuery={searchQuery}
-        />
-      )}
-
       {permittedTab === 'settings' && (
         <AdminSettingsPage
           settings={adminSettings}
           admin={admin}
-          shippingSettings={shippingSettings}
           invoiceSettings={invoiceSettings}
           onUpdate={onUpdateAdminSettings}
           onUpdateAdmin={updateProfile}

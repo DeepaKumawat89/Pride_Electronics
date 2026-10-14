@@ -54,7 +54,6 @@ import {
   productBelongsToSubcategory,
   subcategoryForProduct,
 } from './utils/catalogTaxonomy'
-import { applyDefaultProductSpecificationTemplate } from './data/productSpecificationTemplates'
 import { productForStorefront } from './utils/productVariants'
 
 const getChangedProducts = (currentProducts, nextProducts) =>
@@ -149,7 +148,6 @@ function App() {
   const [productsLoading, setProductsLoading] = useState(true)
   const [productsError, setProductsError] = useState('')
   const [ordersList, setOrdersList] = useState([])
-  const [inventoryHistory, setInventoryHistory] = useState([])
   const [refundsList, setRefundsList] = useState([])
   const [customersList, setCustomersList] = useState([])
   const [returnsList, setReturnsList] = useState([])
@@ -164,7 +162,6 @@ function App() {
   const [invoiceSettings, setInvoiceSettings] = useState(initialInvoiceSettings)
   const [adminSettings, setAdminSettings] = useState(initialAdminSettings)
   const taxonomyMigrationKey = useRef('')
-  const specificationTemplateMigrationKey = useRef('')
 
   useEffect(() => {
     const syncPortalWithLocation = () =>
@@ -269,28 +266,6 @@ function App() {
   ])
 
   useEffect(() => {
-    if (!adminAuthenticated || !subcategoriesList.length) return
-    const updates = subcategoriesList.flatMap((subcategory) => {
-      const next = applyDefaultProductSpecificationTemplate(subcategory)
-      return next === subcategory ? [] : [next]
-    })
-    if (!updates.length) return
-
-    const migrationKey = updates
-      .map((subcategory) => `${subcategory.id}:${subcategory.specificationTemplateId}:${subcategory.specificationTemplateVersion}`)
-      .sort()
-      .join('|')
-    if (specificationTemplateMigrationKey.current === migrationKey) return
-    specificationTemplateMigrationKey.current = migrationKey
-    const updatesById = new Map(updates.map((subcategory) => [String(subcategory.id), subcategory]))
-    setSubcategoriesList((current) => current.map((subcategory) => updatesById.get(String(subcategory.id)) || subcategory))
-    void saveRecords('subcategories', updates).catch((error) => {
-      specificationTemplateMigrationKey.current = ''
-      setProductsError(error.message || 'Unable to add recommended product specification templates.')
-    })
-  }, [adminAuthenticated, subcategoriesList])
-
-  useEffect(() => {
     let restrictedUnsubscribers = []
     let authRevision = 0
     const stopRestrictedListeners = () => {
@@ -299,7 +274,6 @@ function App() {
     }
     const clearRestrictedData = () => {
       setOrdersList([])
-      setInventoryHistory([])
       setRefundsList([])
       setCustomersList([])
       setReturnsList([])
@@ -326,7 +300,6 @@ function App() {
       const ignoreUnauthorized = () => {}
       restrictedUnsubscribers = [
         subscribeToCollection('orders', setOrdersList, ignoreUnauthorized, { sort: true }),
-        subscribeToCollection('inventoryHistory', setInventoryHistory, ignoreUnauthorized, { sort: true }),
         subscribeToCollection('refunds', setRefundsList, ignoreUnauthorized, { sort: true }),
         subscribeToCollection('returns', setReturnsList, ignoreUnauthorized, { sort: true }),
         subscribeToCollection('users', (users) => setCustomersList(users.map(customerFromUserRecord)), ignoreUnauthorized),
@@ -365,10 +338,6 @@ function App() {
   const updateMarketingSettings = persistSettings(
     setMarketingSettings,
     'marketing',
-  )
-  const updateShippingSettings = persistSettings(
-    setShippingSettings,
-    'shipping',
   )
   const updateInvoiceSettings = persistSettings(
     setInvoiceSettings,
@@ -456,7 +425,6 @@ function App() {
           ? current
           : [product, ...current],
       )
-      setInventoryHistory((current) => [...result.history, ...current])
       void saveRecords('inventoryHistory', result.history).catch((error) =>
         setProductsError(error.message || 'Unable to save inventory history.'),
       )
@@ -484,20 +452,22 @@ function App() {
       productFields.variants,
       currentProduct.variants || [],
     )
-    const mediaFields = uploadedImages.urls.length
-      ? {
-          image: uploadedImages.urls[0],
-          images: uploadedImages.urls,
-          imageStoragePaths: uploadedImages.paths,
-        }
-      : {
-          image: productFields.image || currentProduct.image || '',
-          images: productFields.images || currentProduct.images || [],
-          imageStoragePaths:
-            productFields.imageStoragePaths ||
-            currentProduct.imageStoragePaths ||
-            [],
-        }
+    const retainedImages = Array.isArray(productFields.images)
+      ? productFields.images.filter(Boolean)
+      : [productFields.image].filter(Boolean)
+    const retainedImagePaths = Array.isArray(productFields.imageStoragePaths)
+      ? productFields.imageStoragePaths.filter(Boolean)
+      : []
+    const images = [...retainedImages, ...uploadedImages.urls]
+    const imageStoragePaths = [...retainedImagePaths, ...uploadedImages.paths]
+    const mediaFields = {
+      image: images[0] || '',
+      images,
+      imageStoragePaths,
+    }
+    const removedImagePaths = (currentProduct.imageStoragePaths || []).filter(
+      (path) => !retainedImagePaths.includes(path),
+    )
     const hasVariants = preparedVariants.variants.length > 0
     const reservedStock = hasVariants
       ? preparedVariants.variants.reduce((total, variant) => total + Number(variant.reservedStock || 0), 0)
@@ -543,7 +513,6 @@ function App() {
           (product) => product.id === productFields.id,
         )
         savedProduct = await saveProduct(productToSave)
-        setInventoryHistory((current) => [...result.history, ...current])
         void saveRecords('inventoryHistory', result.history).catch((error) =>
           setProductsError(error.message || 'Unable to save inventory history.'),
         )
@@ -553,9 +522,7 @@ function App() {
           product.id === savedProduct.id ? savedProduct : product,
         ),
       )
-      if (uploadedImages.paths.length) {
-        await removeProductImages(currentProduct.imageStoragePaths)
-      }
+      await removeProductImages(removedImagePaths)
       await removeProductImages(preparedVariants.replacedPaths)
       return savedProduct
     } catch (error) {
@@ -601,7 +568,6 @@ function App() {
       }
     }
     const history = [...transition.history].reverse()
-    setInventoryHistory((current) => [...history, ...current])
     void saveRecords('inventoryHistory', history).catch((error) =>
       setProductsError(error.message || 'Unable to save inventory history.'),
     )
@@ -858,41 +824,12 @@ function App() {
       )
   }
 
-  const handleUpdatePaymentStatus = (orderId, paymentStatus) => {
-    const order = ordersList.find((item) => item.id === orderId)
-    if (!order) return
-    const updatedOrder = {
-      ...order,
-      paymentStatus,
-      paymentDate:
-        paymentStatus === 'Paid' ? new Date().toISOString() : order.paymentDate,
-    }
-    setOrdersList((current) =>
-      current.map((item) => (item.id === orderId ? updatedOrder : item)),
-    )
-    void saveRecord('orders', updatedOrder, { merge: true }).catch((error) =>
-      setProductsError(error.message || 'Unable to update payment status.'),
-    )
-  }
-
-  const handleUpdateCustomer = (customer) => {
+  const handleUpdateCustomer = async (customerId, status) => {
+    await updateCustomerAccountStatus(customerId, status)
     setCustomersList((current) =>
-      current.map((item) => (item.id === customer.id ? customer : item)),
-    )
-    void saveRecord(
-      'users',
-      {
-        id: customer.id,
-        status: customer.status,
-        membershipRole: customer.membershipRole || customer.role,
-      },
-      { merge: true },
-    ).catch((error) =>
-      setProductsError(error.message || 'Unable to update the customer.'),
-    )
-    void updateCustomerAccountStatus(customer.id, customer.status).catch(
-      (error) =>
-        setProductsError(error.message || 'Unable to update Firebase Authentication.'),
+      current.map((customer) =>
+        customer.id === customerId ? { ...customer, status } : customer,
+      ),
     )
   }
 
@@ -902,7 +839,6 @@ function App() {
     const product = result.products.find((item) => item.id === productId)
     await saveProduct(product)
     setProductsList(result.products)
-    setInventoryHistory((current) => [...result.history, ...current])
     await saveRecords('inventoryHistory', result.history)
     return ''
   }
@@ -1018,7 +954,6 @@ function App() {
           onAddProduct={handleAddProduct}
           onUpdateProduct={handleUpdateProduct}
           onDeleteProduct={handleDeleteProduct}
-          inventoryHistory={inventoryHistory}
           onAdjustStock={handleAdjustStock}
           onUpdateOrderStatus={handleUpdateOrderStatus}
           onUpdateReturn={handleUpdateReturn}
@@ -1033,10 +968,8 @@ function App() {
           onDeleteSubcategory={handleDeleteSubcategory}
           onUpdateReview={handleUpdateReview}
           onDeleteReview={handleDeleteReview}
-          onUpdatePaymentStatus={handleUpdatePaymentStatus}
           onUpdateCustomer={handleUpdateCustomer}
           onUpdateMarketingSettings={updateMarketingSettings}
-          onUpdateShippingSettings={updateShippingSettings}
           onUpdateInvoiceSettings={updateInvoiceSettings}
           onUpdateAdminSettings={updateAdminSettings}
           onSwitchToStore={() => switchPortal('user')}

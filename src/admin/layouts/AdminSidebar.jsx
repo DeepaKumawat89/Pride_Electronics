@@ -10,10 +10,8 @@ import {
   Users,
   Warehouse,
   Images,
-  Truck,
   ReceiptText,
   Settings,
-  BarChart3,
   MessageSquareText,
   Tags,
   X,
@@ -88,22 +86,10 @@ const navItems = [
     icon: Images,
   },
   {
-    id: 'shipping',
-    label: 'Shipping',
-    caption: 'Delivery & couriers',
-    icon: Truck,
-  },
-  {
     id: 'tax-invoice',
     label: 'Tax & invoice',
     caption: 'GST & business details',
     icon: ReceiptText,
-  },
-  {
-    id: 'reports',
-    label: 'Reports',
-    caption: 'Exports & invoices',
-    icon: BarChart3,
   },
   {
     id: 'settings',

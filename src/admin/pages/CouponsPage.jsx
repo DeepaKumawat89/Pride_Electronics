@@ -38,7 +38,7 @@ export default function CouponsPage({
   onDeleteCoupon,
   searchQuery = '',
 }) {
-  const [modalOpen, setModalOpen] = useState(false)
+  const [showAddForm, setShowAddForm] = useState(false)
   const [editingCoupon, setEditingCoupon] = useState(null)
   const [form, setForm] = useState(emptyCoupon)
   const filtered = coupons.filter(
@@ -50,10 +50,11 @@ export default function CouponsPage({
   )
   const openAdd = () => {
     setEditingCoupon(null)
-    setForm(emptyCoupon)
-    setModalOpen(true)
+    setForm({ ...emptyCoupon })
+    setShowAddForm(true)
   }
   const openEdit = (coupon) => {
+    setShowAddForm(false)
     setEditingCoupon(coupon)
     setForm({
       ...emptyCoupon,
@@ -61,7 +62,6 @@ export default function CouponsPage({
       applicableProducts: (coupon.applicableProducts || []).join(', '),
       applicableCategories: (coupon.applicableCategories || []).join(', '),
     })
-    setModalOpen(true)
   }
   const field = (key) => ({
     value: form[key],
@@ -87,12 +87,43 @@ export default function CouponsPage({
     }
     if (editingCoupon) onUpdateCoupon(nextCoupon)
     else onAddCoupon(nextCoupon)
-    setModalOpen(false)
+    setEditingCoupon(null)
+    setShowAddForm(false)
   }
+
+  const closeForm = () => {
+    setEditingCoupon(null)
+    setShowAddForm(false)
+  }
+
+  const couponForm = (
+    <form onSubmit={submit} className="grid gap-4 p-5 sm:grid-cols-2 sm:p-7">
+      <Field label="Coupon code"><input required {...field('code')} className={fieldClass} placeholder="PRIDE10" /></Field>
+      <Field label="Discount type"><select {...field('discountType')} className={fieldClass}><option>Percentage</option><option>Fixed Amount</option><option>Free Shipping</option></select></Field>
+      <Field label="Discount amount"><input required min="0" type="number" {...field('amount')} className={fieldClass} /></Field>
+      <Field label="Maximum discount"><input required min="0" type="number" {...field('maximumDiscount')} className={fieldClass} /></Field>
+      <Field label="Minimum order"><input required min="0" type="number" {...field('minimumOrder')} className={fieldClass} /></Field>
+      <Field label="Per-user limit"><input required min="0" type="number" {...field('perUserLimit')} className={fieldClass} /></Field>
+      <Field label="Start date"><input required type="date" {...field('startDate')} className={fieldClass} /></Field>
+      <Field label="End date"><input required type="date" {...field('endDate')} className={fieldClass} /></Field>
+      <Field label="Usage limit"><input required min="0" type="number" {...field('usageLimit')} className={fieldClass} /></Field>
+      <Field label="Current usage"><input min="0" type="number" {...field('usageCount')} className={fieldClass} /></Field>
+      <Field label="Applicable products" wide><input {...field('applicableProducts')} className={fieldClass} placeholder="Product IDs or names, comma separated" /></Field>
+      <Field label="Applicable categories" wide><input {...field('applicableCategories')} className={fieldClass} placeholder="Audio, Wearables" /></Field>
+      <label className="flex items-center gap-2 text-[9px] font-extrabold uppercase tracking-wider text-slate-500"><input type="checkbox" checked={form.enabled !== false} onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))} className="size-4 accent-[#397a4a]" /> Coupon enabled</label>
+      <div className="flex justify-end gap-2 sm:col-span-2"><button type="button" onClick={closeForm} className="rounded-full border border-slate-200 px-4 py-2.5 text-[9px] font-extrabold text-slate-500">Cancel</button><button type="submit" className="rounded-full bg-[#397a4a] px-5 py-2.5 text-[9px] font-extrabold text-white">{editingCoupon ? 'Save changes' : 'Create coupon'}</button></div>
+    </form>
+  )
 
   return (
     <div className="space-y-6">
       <PageHeader eyebrow="Promotion management" title={`${coupons.length} coupons`} description="Create and maintain discount rules, usage limits, validity, and product or category eligibility." actions={<button type="button" onClick={openAdd} className="inline-flex h-11 items-center gap-2 rounded-full bg-[#397a4a] px-4 text-[9px] font-extrabold text-white shadow-sm hover:bg-[#2f663d]"><Plus size={15} /> Add coupon</button>} />
+      {showAddForm && (
+        <section className="overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-5 py-4"><p className="text-[8px] font-extrabold uppercase tracking-[0.18em] text-[#75916f]">Coupon configuration</p><h2 className="mt-1 text-sm font-extrabold text-slate-900">Add coupon</h2></div>
+          {couponForm}
+        </section>
+      )}
       {!filtered.length ? <EmptyState title="No matching coupons" /> : (
         <div className="overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-sm"><div className="overflow-x-auto"><table className="w-full min-w-[1180px] border-collapse text-left"><thead className="bg-[#f3f7f2]"><tr>{['Coupon', 'Discount', 'Minimum', 'Maximum', 'Validity', 'Usage', 'Per User', 'Applicable To', 'Status', 'Actions'].map((head) => <th key={head} className={`px-5 py-4 text-[8px] font-extrabold uppercase tracking-[0.14em] text-slate-500 ${head === 'Actions' ? 'text-right' : ''}`}>{head}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{filtered.map((coupon) => (
           <tr key={coupon.id} className="transition hover:bg-[#fafcf9]">
@@ -109,23 +140,8 @@ export default function CouponsPage({
           </tr>
         ))}</tbody></table></div></div>
       )}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} eyebrow="Coupon configuration" title={editingCoupon ? `Edit ${editingCoupon.code}` : 'Add coupon'} maxWidth="max-w-3xl">
-        <form onSubmit={submit} className="grid gap-4 p-5 sm:grid-cols-2 sm:p-7">
-          <Field label="Coupon code"><input required {...field('code')} className={fieldClass} placeholder="PRIDE10" /></Field>
-          <Field label="Discount type"><select {...field('discountType')} className={fieldClass}><option>Percentage</option><option>Fixed Amount</option><option>Free Shipping</option></select></Field>
-          <Field label="Discount amount"><input required min="0" type="number" {...field('amount')} className={fieldClass} /></Field>
-          <Field label="Maximum discount"><input required min="0" type="number" {...field('maximumDiscount')} className={fieldClass} /></Field>
-          <Field label="Minimum order"><input required min="0" type="number" {...field('minimumOrder')} className={fieldClass} /></Field>
-          <Field label="Per-user limit"><input required min="0" type="number" {...field('perUserLimit')} className={fieldClass} /></Field>
-          <Field label="Start date"><input required type="date" {...field('startDate')} className={fieldClass} /></Field>
-          <Field label="End date"><input required type="date" {...field('endDate')} className={fieldClass} /></Field>
-          <Field label="Usage limit"><input required min="0" type="number" {...field('usageLimit')} className={fieldClass} /></Field>
-          <Field label="Current usage"><input min="0" type="number" {...field('usageCount')} className={fieldClass} /></Field>
-          <Field label="Applicable products" wide><input {...field('applicableProducts')} className={fieldClass} placeholder="Product IDs or names, comma separated" /></Field>
-          <Field label="Applicable categories" wide><input {...field('applicableCategories')} className={fieldClass} placeholder="Audio, Wearables" /></Field>
-          <label className="flex items-center gap-2 text-[9px] font-extrabold uppercase tracking-wider text-slate-500"><input type="checkbox" checked={form.enabled !== false} onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))} className="size-4 accent-[#397a4a]" /> Coupon enabled</label>
-          <div className="flex justify-end gap-2 sm:col-span-2"><button type="button" onClick={() => setModalOpen(false)} className="rounded-full border border-slate-200 px-4 py-2.5 text-[9px] font-extrabold text-slate-500">Cancel</button><button type="submit" className="rounded-full bg-[#397a4a] px-5 py-2.5 text-[9px] font-extrabold text-white">{editingCoupon ? 'Save changes' : 'Create coupon'}</button></div>
-        </form>
+      <Modal open={Boolean(editingCoupon)} onClose={closeForm} eyebrow="Coupon configuration" title={editingCoupon ? `Edit ${editingCoupon.code}` : ''} maxWidth="max-w-3xl">
+        {editingCoupon && couponForm}
       </Modal>
     </div>
   )

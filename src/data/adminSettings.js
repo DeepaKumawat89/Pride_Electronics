@@ -10,9 +10,7 @@ export const adminPermissionOptions = [
   { id: 'users', label: 'Customers' },
   { id: 'reviews', label: 'Review moderation' },
   { id: 'offers', label: 'Offers & banners' },
-  { id: 'shipping', label: 'Shipping' },
   { id: 'tax-invoice', label: 'Tax & invoice' },
-  { id: 'reports', label: 'Reports & invoices' },
   { id: 'settings', label: 'Settings' },
 ]
 
@@ -76,7 +74,7 @@ export const initialAdminSettings = {
       id: 'role-order-manager',
       name: 'Order Manager',
       description: 'Manage orders, payments, returns, and customers.',
-      permissions: ['dashboard', 'orders', 'payments', 'returns', 'users', 'reports'],
+      permissions: ['dashboard', 'orders', 'payments', 'returns', 'users'],
     },
     {
       id: 'role-catalog-manager',

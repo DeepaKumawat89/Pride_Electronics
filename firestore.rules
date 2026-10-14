@@ -26,6 +26,14 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function hasActiveCustomerAccount() {
+      return isAuthenticated() && (
+        !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
+        !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAny(['status']) ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'Active'
+      );
+    }
+
     function uidUnchanged(userId) {
       return request.resource.data.uid == userId;
     }
@@ -118,7 +126,7 @@ service cloud.firestore {
         optionalString(data, 'joinedDate', 40) &&
         optionalString(data, 'registrationDate', 40) &&
         optionalString(data, 'lastOrderAt', 40) &&
-        (!data.keys().hasAny(['status']) || data.status in ['Active', 'Suspended']) &&
+        (!data.keys().hasAny(['status']) || data.status in ['Active', 'Disabled', 'Suspended']) &&
         (!data.keys().hasAny(['emailVerified']) || data.emailVerified is bool) &&
         optionalNonNegativeNumber(data, 'ordersCount') &&
         optionalNonNegativeNumber(data, 'totalSpentValue') &&
@@ -157,7 +165,7 @@ service cloud.firestore {
     }
 
     function owns(resourceData) {
-      return isAuthenticated() && resourceData.userId == request.auth.uid;
+      return hasActiveCustomerAccount() && resourceData.userId == request.auth.uid;
     }
 
     match /products/{productId} {
@@ -192,7 +200,6 @@ service cloud.firestore {
       ];
       allow write: if
         (settingId == 'admin' && hasAdminPermission('settings')) ||
-        (settingId == 'shipping' && hasAdminPermission('shipping')) ||
         (settingId == 'invoice' && hasAdminPermission('tax-invoice')) ||
         (settingId == 'marketing' && hasAdminPermission('offers')) ||
         (settingId == 'storefront' && hasAdminPermission('settings'));
@@ -222,12 +229,14 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if hasAdminPermission('users') || isOwner(userId);
+      allow read: if hasAdminPermission('users') ||
+        (isOwner(userId) && hasActiveCustomerAccount());
       allow create: if isOwner(userId) &&
         isValidClientProfileCreate(request.resource.data, userId);
       allow update: if backendGstFieldsUnchanged() &&
         hasAdminPermission('users') && uidUnchanged(userId) &&
         uidNotModified() &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) &&
         isValidUser(request.resource.data, userId);
       allow delete: if false;
     }

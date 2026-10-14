@@ -563,7 +563,16 @@ export default function UserApp({
       clearTimeout(toastTimer.current)
       toastTimer.current = setTimeout(() => setToast(''), 4200)
     }
-    const handleAccountError = () => {
+    const handleAccountError = (error) => {
+      if (error?.code === 'permission-denied') {
+        clearAuthenticatedState()
+        setAuthStatus('unauthenticated')
+        setToast('This account has been disabled. Please contact support.')
+        clearTimeout(toastTimer.current)
+        toastTimer.current = setTimeout(() => setToast(''), 4200)
+        void signOutUser().catch(() => undefined)
+        return
+      }
       setAccountError(
         'Unable to load your saved cart and account data. Check your connection and try again.',
       )
@@ -573,6 +582,17 @@ export default function UserApp({
       subscribeToUserAccount(
         user.uid,
         (account) => {
+          if (['disabled', 'suspended'].includes(
+            String(account.status || '').trim().toLowerCase(),
+          )) {
+            clearAuthenticatedState()
+            setAuthStatus('unauthenticated')
+            setToast('This account has been disabled. Please contact support.')
+            clearTimeout(toastTimer.current)
+            toastTimer.current = setTimeout(() => setToast(''), 4200)
+            void signOutUser().catch(() => undefined)
+            return
+          }
           setUser((current) => current?.uid === user.uid
             ? {
                 ...current,
@@ -620,7 +640,7 @@ export default function UserApp({
       clearTimeout(accountSaveTimer.current)
       unsubscribers.forEach((unsubscribe) => unsubscribe())
     }
-  }, [user?.uid, hydrateCart, accountLoadAttempt])
+  }, [user?.uid, hydrateCart, accountLoadAttempt, clearAuthenticatedState])
 
   useEffect(() => {
     if (!user?.uid) return undefined
@@ -1537,7 +1557,7 @@ export default function UserApp({
         (sum, item) => sum + item.quantity,
         0,
       ),
-      status: 'Pending',
+      status: checkoutDetails.cod ? 'Pending' : 'Confirmed',
       orderTime: new Date().toLocaleTimeString('en-IN', {
         hour: 'numeric',
         minute: '2-digit',

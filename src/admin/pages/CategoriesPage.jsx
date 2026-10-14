@@ -2,28 +2,16 @@ import { useState } from 'react'
 import { Edit2, Eye, EyeOff, Plus, Tags, Trash2 } from 'lucide-react'
 import SelectMenu from '../../components/ui/SelectMenu'
 import { EmptyState, Modal, PageHeader, StatCard } from '../components/ui/AdminUI'
-import { SpecificationTemplateEditor } from '../components/DynamicProductSpecifications'
 import {
   productBelongsToCategory,
   productBelongsToSubcategory,
 } from '../../utils/catalogTaxonomy'
-import {
-  normalizeSpecificationFields,
-  validateSpecificationFields,
-} from '../../utils/productSpecifications'
-import {
-  applyDefaultProductSpecificationTemplate,
-  applyProductSpecificationTemplate,
-  getProductSpecificationTemplate,
-} from '../../data/productSpecificationTemplates'
 
-const emptyCategory = { name: '', description: '', enabled: true }
+const emptyCategory = { name: '', enabled: true }
 const emptySubcategory = {
   name: '',
-  description: '',
   enabled: true,
   categoryId: '',
-  specificationFields: [],
 }
 const inputClass =
   'h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-xs outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#75916f]/10'
@@ -52,19 +40,14 @@ export default function CategoriesPage({
     value: String(category.id),
     label: category.name,
   }))
-  const recommendedSpecificationTemplate = getProductSpecificationTemplate(
-    subcategoryForm.name,
-  )
   const filtered = categories.filter((category) =>
-    `${category.name} ${category.description || ''}`
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase()),
+    category.name.toLowerCase().includes(searchQuery.toLowerCase()),
   )
   const filteredSubcategories = subcategories.filter((subcategory) => {
     const category = categories.find(
       (item) => String(item.id) === String(subcategory.categoryId),
     )
-    return `${subcategory.name} ${subcategory.description || ''} ${category?.name || subcategory.categoryName || ''}`
+    return `${subcategory.name} ${category?.name || subcategory.categoryName || ''}`
       .toLowerCase()
       .includes(searchQuery.toLowerCase())
   })
@@ -109,7 +92,6 @@ export default function CategoriesPage({
       ...form,
       id: editing?.id || `category-${Date.now()}`,
       name,
-      description: form.description.trim(),
     }
     if (editing) onUpdateCategory(category, editing.name)
     else onAddCategory(category)
@@ -128,12 +110,7 @@ export default function CategoriesPage({
   }
   const openEditSubcategory = (subcategory) => {
     setEditingSubcategory(subcategory)
-    setSubcategoryForm({
-      ...subcategory,
-      specificationFields: normalizeSpecificationFields(
-        subcategory.specificationFields,
-      ),
-    })
+    setSubcategoryForm(subcategory)
     setSubcategoryError('')
     setSubcategoryOpen(true)
   }
@@ -164,27 +141,13 @@ export default function CategoriesPage({
       )
       return
     }
-    const preparedSubcategory = applyDefaultProductSpecificationTemplate({
-      ...subcategoryForm,
-      name,
-    })
-    const specificationFields = normalizeSpecificationFields(
-      preparedSubcategory.specificationFields,
-    )
-    const specificationErrors = validateSpecificationFields(specificationFields)
-    if (Object.keys(specificationErrors).length) {
-      setSubcategoryError(Object.values(specificationErrors)[0])
-      return
-    }
     const subcategory = {
       ...editingSubcategory,
-      ...preparedSubcategory,
+      ...subcategoryForm,
       id: editingSubcategory?.id || `subcategory-${Date.now()}`,
       categoryId: category.id,
       categoryName: category.name,
       name,
-      description: subcategoryForm.description.trim(),
-      specificationFields,
     }
     if (editingSubcategory) {
       onUpdateSubcategory(subcategory, editingSubcategory)
@@ -229,7 +192,7 @@ export default function CategoriesPage({
               <tbody className="divide-y divide-slate-100">
                 {filtered.map((category) => (
                   <tr key={category.id} className="transition hover:bg-[#fafcf9]">
-                    <td className="px-5 py-4"><strong className="block text-[11px] text-slate-900">{category.name}</strong><span className="mt-1 block max-w-xl text-[9px] text-slate-400">{category.description || 'No description'}</span></td>
+                    <td className="px-5 py-4"><strong className="block text-[11px] text-slate-900">{category.name}</strong></td>
                     <td className="px-5 py-4 text-[10px] font-extrabold text-slate-700">{productCount(category)}</td>
                     <td className="px-5 py-4"><button type="button" onClick={() => openAddSubcategory(category.id)} className="rounded-full bg-[#eef6ef] px-3 py-1.5 text-[9px] font-extrabold text-[#397a4a]">{subcategories.filter((item) => String(item.categoryId) === String(category.id)).length} · Add</button></td>
                     <td className="px-5 py-4"><span className={`inline-flex rounded-full px-2.5 py-1.5 text-[8px] font-extrabold ${category.enabled === false ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-700'}`}>{category.enabled === false ? 'Disabled' : 'Enabled'}</span></td>
@@ -258,8 +221,7 @@ export default function CategoriesPage({
                 <tbody className="divide-y divide-slate-100">
                   {filteredSubcategories.map((subcategory) => {
                     const category = categories.find((item) => String(item.id) === String(subcategory.categoryId))
-                    const specificationCount = normalizeSpecificationFields(subcategory.specificationFields).length
-                    return <tr key={subcategory.id} className="transition hover:bg-[#fafcf9]"><td className="px-5 py-4"><strong className="block text-[11px] text-slate-900">{subcategory.name}</strong><span className="mt-1 block text-[9px] text-slate-400">{subcategory.description || 'No description'} · {specificationCount} technical {specificationCount === 1 ? 'field' : 'fields'}</span></td><td className="px-5 py-4 text-[10px] font-bold text-slate-600">{category?.name || subcategory.categoryName || 'Unknown category'}</td><td className="px-5 py-4 text-[10px] font-extrabold text-slate-700">{subcategoryProductCount(subcategory)}</td><td className="px-5 py-4"><span className={`inline-flex rounded-full px-2.5 py-1.5 text-[8px] font-extrabold ${subcategory.enabled === false ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-700'}`}>{subcategory.enabled === false ? 'Disabled' : 'Enabled'}</span></td><td className="px-5 py-4"><div className="flex justify-end gap-2"><button type="button" onClick={() => onUpdateSubcategory({ ...subcategory, enabled: subcategory.enabled === false }, subcategory)} className="grid size-9 place-items-center rounded-full bg-slate-100 text-slate-500 hover:text-[#397a4a]" aria-label={`${subcategory.enabled === false ? 'Enable' : 'Disable'} ${subcategory.name}`}>{subcategory.enabled === false ? <Eye size={13} /> : <EyeOff size={13} />}</button><button type="button" onClick={() => openEditSubcategory(subcategory)} className="grid size-9 place-items-center rounded-full bg-slate-100 text-slate-500 hover:text-[#397a4a]" aria-label={`Edit ${subcategory.name}`}><Edit2 size={13} /></button><button type="button" onClick={() => removeSubcategory(subcategory)} className="grid size-9 place-items-center rounded-full bg-red-50 text-red-500 hover:bg-red-100" aria-label={`Delete ${subcategory.name}`}><Trash2 size={13} /></button></div></td></tr>
+                    return <tr key={subcategory.id} className="transition hover:bg-[#fafcf9]"><td className="px-5 py-4"><strong className="block text-[11px] text-slate-900">{subcategory.name}</strong></td><td className="px-5 py-4 text-[10px] font-bold text-slate-600">{category?.name || subcategory.categoryName || 'Unknown category'}</td><td className="px-5 py-4 text-[10px] font-extrabold text-slate-700">{subcategoryProductCount(subcategory)}</td><td className="px-5 py-4"><span className={`inline-flex rounded-full px-2.5 py-1.5 text-[8px] font-extrabold ${subcategory.enabled === false ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-700'}`}>{subcategory.enabled === false ? 'Disabled' : 'Enabled'}</span></td><td className="px-5 py-4"><div className="flex justify-end gap-2"><button type="button" onClick={() => onUpdateSubcategory({ ...subcategory, enabled: subcategory.enabled === false }, subcategory)} className="grid size-9 place-items-center rounded-full bg-slate-100 text-slate-500 hover:text-[#397a4a]" aria-label={`${subcategory.enabled === false ? 'Enable' : 'Disable'} ${subcategory.name}`}>{subcategory.enabled === false ? <Eye size={13} /> : <EyeOff size={13} />}</button><button type="button" onClick={() => openEditSubcategory(subcategory)} className="grid size-9 place-items-center rounded-full bg-slate-100 text-slate-500 hover:text-[#397a4a]" aria-label={`Edit ${subcategory.name}`}><Edit2 size={13} /></button><button type="button" onClick={() => removeSubcategory(subcategory)} className="grid size-9 place-items-center rounded-full bg-red-50 text-red-500 hover:bg-red-100" aria-label={`Delete ${subcategory.name}`}><Trash2 size={13} /></button></div></td></tr>
                   })}
                 </tbody>
               </table>
@@ -271,7 +233,6 @@ export default function CategoriesPage({
       <Modal open={open} onClose={close} eyebrow="Category management" title={editing ? 'Edit category' : 'Add category'} maxWidth="max-w-xl">
         <form onSubmit={submit} className="space-y-4 p-5 sm:p-7">
           <label className="block"><span className="mb-2 block text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Category name</span><input required value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className={inputClass} /></label>
-          <label className="block"><span className="mb-2 block text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Description</span><textarea rows="4" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#75916f]/10" /></label>
           <label className="flex items-center justify-between rounded-2xl bg-white px-4 py-3"><span className="text-[10px] font-bold text-slate-700">Enabled on storefront</span><input type="checkbox" checked={form.enabled !== false} onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))} className="size-4 accent-[#397a4a]" /></label>
           {error && <p role="alert" className="text-[10px] font-bold text-red-600">{error}</p>}
           <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={close} className="h-11 rounded-full bg-white px-5 text-[10px] font-extrabold text-slate-500 shadow-sm">Cancel</button><button type="submit" className="h-11 rounded-full bg-[#397a4a] px-5 text-[10px] font-extrabold text-white">{editing ? 'Save changes' : 'Add category'}</button></div>
@@ -282,20 +243,6 @@ export default function CategoriesPage({
         <form onSubmit={submitSubcategory} className="space-y-4 p-5 sm:p-7">
           <label className="block"><span className="mb-2 block text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Parent category</span><SelectMenu value={subcategoryForm.categoryId} onChange={(categoryId) => setSubcategoryForm((current) => ({ ...current, categoryId }))} options={categoryOptions} ariaLabel="Parent category" buttonClassName={inputClass} /></label>
           <label className="block"><span className="mb-2 block text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Subcategory name</span><input required value={subcategoryForm.name} onChange={(event) => setSubcategoryForm((current) => ({ ...current, name: event.target.value }))} className={inputClass} /></label>
-          <label className="block"><span className="mb-2 block text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Description</span><textarea rows="4" value={subcategoryForm.description || ''} onChange={(event) => setSubcategoryForm((current) => ({ ...current, description: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#75916f]/10" /></label>
-          <SpecificationTemplateEditor
-            fields={subcategoryForm.specificationFields || []}
-            onChange={(specificationFields) => setSubcategoryForm((current) => ({
-              ...current,
-              specificationFields,
-              specificationTemplateId: '',
-              specificationTemplateVersion: 0,
-              specificationTemplateSource: 'custom',
-            }))}
-            errors={validateSpecificationFields(subcategoryForm.specificationFields)}
-            recommendedTemplate={recommendedSpecificationTemplate}
-            onApplyRecommendedTemplate={recommendedSpecificationTemplate ? () => setSubcategoryForm((current) => applyProductSpecificationTemplate(current, recommendedSpecificationTemplate)) : undefined}
-          />
           <label className="flex items-center justify-between rounded-2xl bg-white px-4 py-3"><span className="text-[10px] font-bold text-slate-700">Enabled on storefront</span><input type="checkbox" checked={subcategoryForm.enabled !== false} onChange={(event) => setSubcategoryForm((current) => ({ ...current, enabled: event.target.checked }))} className="size-4 accent-[#397a4a]" /></label>
           {subcategoryError && <p role="alert" className="text-[10px] font-bold text-red-600">{subcategoryError}</p>}
           <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={closeSubcategory} className="h-11 rounded-full bg-white px-5 text-[10px] font-extrabold text-slate-500 shadow-sm">Cancel</button><button type="submit" className="h-11 rounded-full bg-[#397a4a] px-5 text-[10px] font-extrabold text-white">{editingSubcategory ? 'Save changes' : 'Add subcategory'}</button></div>

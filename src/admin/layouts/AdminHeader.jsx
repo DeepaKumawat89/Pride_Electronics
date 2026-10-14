@@ -7,16 +7,14 @@ const titles = {
   products: ['Product catalog', 'Manage products and inventory'],
   categories: ['Category management', 'Organize the storefront catalog'],
   inventory: ['Inventory management', 'Control stock and reservations'],
-  payments: ['Payment management', 'Reconcile transactions and refunds'],
+  payments: ['Payment management', 'Review transactions and refunds'],
   returns: ['Return management', 'Review returns, pickups, and resolutions'],
   coupons: ['Coupon management', 'Configure discounts and eligibility'],
   orders: ['Order fulfillment', 'Track and process customer orders'],
   users: ['Customer accounts', 'Understand your growing audience'],
   reviews: ['Review moderation', 'Manage customer product feedback'],
   offers: ['Offers & banners', 'Manage storefront promotions'],
-  shipping: ['Shipping management', 'Configure delivery and courier operations'],
   'tax-invoice': ['Tax & invoice', 'Configure GST, business details, and numbering'],
-  reports: ['Reports & invoices', 'Export data and download order invoices'],
   settings: ['Admin settings', 'Manage store, access, and communications'],
 }
 

@@ -4,14 +4,9 @@ import {
   CheckCircle2,
   Copy,
   CreditCard,
-  Eye,
-  Package,
   PackageCheck,
-  Printer,
   RotateCcw,
-  Tag,
   Truck,
-  XCircle,
 } from 'lucide-react'
 import SelectMenu from '../../components/ui/SelectMenu'
 import {
@@ -25,10 +20,7 @@ import { getPaymentStatus } from '../utils/payments'
 
 const statuses = [
   'All',
-  'Pending',
   'Confirmed',
-  'Processing',
-  'Packed',
   'Shipped',
   'Out for Delivery',
   'Delivered',
@@ -40,34 +32,41 @@ const statusOptions = statuses.slice(1).map((status) => ({
   value: status,
   label: status,
 }))
+const statusForAdmin = (status) => {
+  const normalizedStatus = String(status || '').trim().toLowerCase()
+  if (['pending', 'processing', 'packed', 'confirmed'].includes(normalizedStatus)) {
+    return 'Confirmed'
+  }
+  return (
+    statuses.find(
+      (candidate) => candidate !== 'All' && candidate.toLowerCase() === normalizedStatus,
+    ) || String(status || '').trim()
+  )
+}
 
 export default function OrdersPage({
   orders = [],
   onUpdateOrderStatus,
   searchQuery = '',
-  couriers = [],
 }) {
   const [statusFilter, setStatusFilter] = useState('All')
-  const [selectedOrder, setSelectedOrder] = useState(null)
   const [returnOrder, setReturnOrder] = useState(null)
-  const [trackingOrder, setTrackingOrder] = useState(null)
-  const [trackingId, setTrackingId] = useState('')
-  const [courier, setCourier] = useState('')
-  const [trackingError, setTrackingError] = useState('')
   const [copiedId, setCopiedId] = useState(null)
   const filtered = orders.filter(
     (order) =>
-      (statusFilter === 'All' || order.status === statusFilter) &&
+      (statusFilter === 'All' || statusForAdmin(order.status) === statusFilter) &&
       (!searchQuery ||
         `${order.id} ${order.customer} ${order.email} ${order.trackingId || ''}`
           .toLowerCase()
           .includes(searchQuery.toLowerCase())),
   )
-  const pending = orders.filter((order) =>
-    ['Pending', 'Processing'].includes(order.status),
+  const inProgress = orders.filter((order) =>
+    ['Confirmed', 'Shipped', 'Out for Delivery'].includes(
+      statusForAdmin(order.status),
+    ),
   ).length
   const delivered = orders.filter(
-    (order) => order.status === 'Delivered',
+    (order) => statusForAdmin(order.status) === 'Delivered',
   ).length
   const verifiedPayments = orders.filter(
     (order) => getPaymentStatus(order) === 'Successful',
@@ -87,42 +86,6 @@ export default function OrdersPage({
       return
     }
     onUpdateOrderStatus(order.id, status, options)
-    if (selectedOrder?.id === order.id) {
-      setSelectedOrder((current) => ({
-        ...current,
-        status,
-        returnDisposition:
-          options?.returnDisposition || current.returnDisposition,
-        trackingId:
-          options?.trackingId === undefined
-            ? current.trackingId
-            : options.trackingId,
-        courier:
-          options?.courier === undefined ? current.courier : options.courier,
-        paymentStatus:
-          status === 'Refunded' ? 'Refunded' : current.paymentStatus,
-      }))
-    }
-  }
-  const openTracking = (order) => {
-    setTrackingOrder(order)
-    setTrackingId(order.trackingId || '')
-    setCourier(
-      order.courier || couriers.find((item) => item.enabled)?.name || '',
-    )
-    setTrackingError('')
-  }
-  const saveTracking = () => {
-    const normalizedTrackingId = trackingId.trim()
-    if (!normalizedTrackingId) {
-      setTrackingError('Enter a tracking ID before saving.')
-      return
-    }
-    updateOrderStatus(trackingOrder, trackingOrder.status, {
-      trackingId: normalizedTrackingId,
-      courier,
-    })
-    setTrackingOrder(null)
   }
 
   return (
@@ -130,7 +93,7 @@ export default function OrdersPage({
       <PageHeader
         eyebrow="Fulfillment centre"
         title={`${orders.length} customer orders`}
-        description="Review payments, inspect purchased products, and keep every delivery moving through the fulfillment pipeline."
+        description="Review payments and keep every delivery moving through the fulfillment pipeline."
       />
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
@@ -142,8 +105,8 @@ export default function OrdersPage({
         <StatCard
           icon={Truck}
           label="In progress"
-          value={pending}
-          detail="Pending or processing"
+          value={inProgress}
+          detail="Confirmed or in delivery"
           tone="amber"
         />
         <StatCard
@@ -175,7 +138,9 @@ export default function OrdersPage({
             >
               {status === 'All'
                 ? orders.length
-                : orders.filter((order) => order.status === status).length}
+                : orders.filter(
+                    (order) => statusForAdmin(order.status) === status,
+                  ).length}
             </span>
           </button>
         ))}
@@ -185,7 +150,7 @@ export default function OrdersPage({
       ) : (
         <div className="overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1050px] border-collapse text-left">
+            <table className="w-full min-w-[920px] border-collapse text-left">
               <thead className="bg-[#f3f7f2]">
                 <tr>
                   {[
@@ -196,11 +161,10 @@ export default function OrdersPage({
                     'Total',
                     'Payment',
                     'Status',
-                    'Action',
                   ].map((head) => (
                     <th
                       key={head}
-                      className={`px-5 py-4 text-[8px] font-extrabold uppercase tracking-[0.14em] text-slate-500 ${head === 'Action' ? 'text-right' : ''}`}
+                      className="px-5 py-4 text-[8px] font-extrabold uppercase tracking-[0.14em] text-slate-500"
                     >
                       {head}
                     </th>
@@ -274,23 +238,14 @@ export default function OrdersPage({
                     </td>
                     <td className="px-5 py-4">
                       <SelectMenu
-                        value={order.status}
+                        value={statusForAdmin(order.status)}
                         onChange={(status) => updateOrderStatus(order, status)}
                         options={statusOptions}
-                        ariaLabel={`Update status for order ${order.id}`}
+                        ariaLabel={`Status for order ${order.id}`}
                         className="w-32"
                         menuWidth={176}
-                        buttonClassName={`rounded-full px-3 py-2 text-[8px] font-extrabold ring-1 ring-inset ${statusTone[order.status] || statusTone.Pending}`}
+                        buttonClassName={`rounded-full px-3 py-2 text-[8px] font-extrabold ring-1 ring-inset ${statusTone[statusForAdmin(order.status)] || 'bg-slate-100 text-slate-600 ring-slate-200'}`}
                       />
-                    </td>
-                    <td className="px-5 py-4 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedOrder(order)}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#17251c] px-3 text-[8px] font-extrabold text-white transition hover:bg-[#397a4a]"
-                      >
-                        <Eye size={12} /> Inspect
-                      </button>
                     </td>
                   </tr>
                 ))}
@@ -299,185 +254,6 @@ export default function OrdersPage({
           </div>
         </div>
       )}
-
-      <Modal
-        open={Boolean(selectedOrder)}
-        onClose={() => setSelectedOrder(null)}
-        eyebrow="Invoice & fulfillment"
-        title={selectedOrder ? `Order ${selectedOrder.id}` : ''}
-        maxWidth="max-w-2xl"
-      >
-        {selectedOrder && (
-          <div className="p-5 sm:p-7">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <span
-                  className={`inline-flex rounded-full px-3 py-1.5 text-[8px] font-extrabold ring-1 ring-inset ${statusTone[selectedOrder.status] || statusTone.Pending}`}
-                >
-                  {selectedOrder.status}
-                </span>
-                <p className="mt-2 text-[10px] text-slate-500">
-                  Placed on {selectedOrder.date} by {selectedOrder.customer}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="flex h-10 items-center gap-2 rounded-full bg-white px-3 text-[9px] font-extrabold text-slate-600 shadow-sm"
-              >
-                <Printer size={13} /> Print slip
-              </button>
-            </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <InfoCard
-                label="Customer"
-                primary={selectedOrder.customer}
-                secondary={selectedOrder.email}
-              />
-              <InfoCard
-                label="Payment"
-                primary={selectedOrder.paymentMethod || 'Online payment'}
-                secondary={selectedOrder.paymentStatus || 'Verified'}
-              />
-              <InfoCard
-                label="Shipping address"
-                primary={formatShippingAddress(selectedOrder.shippingAddress)}
-                secondary={
-                  selectedOrder.shippingAddress?.phone ||
-                  'Phone number not provided'
-                }
-              />
-              <InfoCard
-                label="Tracking"
-                primary={selectedOrder.trackingId || 'Not added yet'}
-                secondary={selectedOrder.courier || selectedOrder.deliveryOption || 'Standard delivery'}
-              />
-            </div>
-            <section className="mt-5 rounded-[22px] bg-white p-4 shadow-sm">
-              <h4 className="text-xs font-extrabold text-slate-900">
-                Purchased products
-              </h4>
-              <div className="mt-3 divide-y divide-slate-100">
-                {selectedOrder.items?.map((item) => (
-                  <div
-                    key={`${item.productId || item.productName}-${item.variantId || ''}`}
-                    className="flex items-center justify-between gap-4 py-3"
-                  >
-                    <div>
-                      <strong className="text-[10px] text-slate-800">
-                        {item.productName}
-                      </strong>
-                      {item.variant && (
-                        <p className="mt-1 text-[8px] font-bold text-[#397a4a]">
-                          {item.variant}{item.variantModelNumber ? ` · ${item.variantModelNumber}` : ''}
-                        </p>
-                      )}
-                      <p className="mt-1 text-[8px] text-slate-400">
-                        Quantity: {item.qty} · Unit: {typeof item.unitPrice === 'number' ? `₹${item.unitPrice}` : item.price || 'N/A'}
-                        {(item.appliedTier || item.tierLabel) && (
-                          <span className="ml-1.5 inline-block rounded bg-[#e4f1e7] px-1.5 py-0.5 text-[7px] font-extrabold text-[#366643]">
-                            Bulk ({item.tierLabel || `${item.appliedTier?.minQty}+`})
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <strong className="shrink-0 text-[10px] text-[#397a4a]">
-                      {item.price}
-                    </strong>
-                  </div>
-                )) || (
-                  <p className="py-4 text-[10px] text-slate-400">
-                    {selectedOrder.itemsCount || 1} product package
-                  </p>
-                )}
-              </div>
-            </section>
-            <div className="mt-5 flex items-center justify-between rounded-[22px] bg-[#dcebdd] p-4">
-              <span className="text-xs font-bold text-[#253329]">
-                Grand total
-              </span>
-              <strong className="text-xl text-[#253329]">
-                {selectedOrder.total}
-              </strong>
-            </div>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <OrderActions
-                order={selectedOrder}
-                onStatusChange={(status) =>
-                  updateOrderStatus(selectedOrder, status)
-                }
-                onAddTracking={() => openTracking(selectedOrder)}
-              />
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      <Modal
-        open={Boolean(trackingOrder)}
-        onClose={() => setTrackingOrder(null)}
-        eyebrow="Delivery tracking"
-        title={trackingOrder ? `Tracking for ${trackingOrder.id}` : ''}
-        maxWidth="max-w-lg"
-      >
-        {trackingOrder && (
-          <form
-            className="space-y-4 p-5 sm:p-7"
-            onSubmit={(event) => {
-              event.preventDefault()
-              saveTracking()
-            }}
-          >
-            {!!couriers.filter((item) => item.enabled).length && (
-              <label className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-500">
-                Courier partner
-                <select
-                  value={courier}
-                  onChange={(event) => setCourier(event.target.value)}
-                  className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-xs font-semibold normal-case tracking-normal text-slate-800 outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#75916f]/10"
-                >
-                  {couriers.filter((item) => item.enabled).map((item) => (
-                    <option key={item.id} value={item.name}>{item.name}</option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <label className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-500">
-              Tracking ID
-              <input
-                autoFocus
-                value={trackingId}
-                onChange={(event) => {
-                  setTrackingId(event.target.value)
-                  setTrackingError('')
-                }}
-                placeholder="Enter courier tracking ID"
-                className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-xs font-semibold normal-case tracking-normal text-slate-800 outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#75916f]/10"
-              />
-            </label>
-            {trackingError && (
-              <p className="text-[9px] font-bold text-red-600">
-                {trackingError}
-              </p>
-            )}
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setTrackingOrder(null)}
-                className="rounded-full border border-slate-200 px-4 py-2.5 text-[9px] font-extrabold text-slate-500"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="rounded-full bg-[#397a4a] px-4 py-2.5 text-[9px] font-extrabold text-white hover:bg-[#2f663d]"
-              >
-                Save tracking ID
-              </button>
-            </div>
-          </form>
-        )}
-      </Modal>
 
       <Modal
         open={Boolean(returnOrder)}
@@ -522,118 +298,4 @@ export default function OrdersPage({
       </Modal>
     </div>
   )
-}
-
-function InfoCard({ label, primary, secondary }) {
-  return (
-    <div className="rounded-[20px] bg-white p-4 shadow-sm">
-      <p className="text-[8px] font-extrabold uppercase tracking-wider text-slate-400">
-        {label}
-      </p>
-      <strong className="mt-2 block text-[10px] text-slate-800">
-        {primary}
-      </strong>
-      <span className="mt-1 block text-[8px] text-slate-500">{secondary}</span>
-    </div>
-  )
-}
-
-const nextStatusAction = {
-  Pending: { status: 'Confirmed', label: 'Confirm order', icon: CheckCircle2 },
-  Confirmed: { status: 'Processing', label: 'Process order', icon: PackageCheck },
-  Processing: { status: 'Packed', label: 'Mark packed', icon: Package },
-  Packed: { status: 'Shipped', label: 'Ship order', icon: Truck },
-  Shipped: {
-    status: 'Out for Delivery',
-    label: 'Out for delivery',
-    icon: Truck,
-  },
-  'Out for Delivery': {
-    status: 'Delivered',
-    label: 'Mark delivered',
-    icon: CheckCircle2,
-  },
-}
-
-function OrderActions({ order, onStatusChange, onAddTracking }) {
-  const nextAction = nextStatusAction[order.status]
-  const NextIcon = nextAction?.icon
-  const canTrack = ['Packed', 'Shipped', 'Out for Delivery'].includes(
-    order.status,
-  )
-  const canCancel = [
-    'Pending',
-    'Confirmed',
-    'Processing',
-    'Packed',
-    'Shipped',
-    'Out for Delivery',
-  ].includes(order.status)
-  const canRefund = ['Delivered', 'Cancelled', 'Returned'].includes(
-    order.status,
-  )
-
-  return (
-    <>
-      {nextAction && (
-        <button
-          type="button"
-          onClick={() => onStatusChange(nextAction.status)}
-          className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#397a4a] px-4 text-[10px] font-extrabold text-white hover:bg-[#2f663d]"
-        >
-          <NextIcon size={15} /> {nextAction.label}
-        </button>
-      )}
-      {order.status === 'Shipped' && (
-        <button
-          type="button"
-          onClick={() => onStatusChange('Delivered')}
-          className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#17251c] px-4 text-[10px] font-extrabold text-white hover:bg-violet-700"
-        >
-          <CheckCircle2 size={15} /> Mark delivered
-        </button>
-      )}
-      {canTrack && (
-        <button
-          type="button"
-          onClick={onAddTracking}
-          className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-white px-4 text-[10px] font-extrabold text-slate-600 shadow-sm hover:text-[#397a4a]"
-        >
-          <Tag size={15} />
-          {order.trackingId ? 'Update tracking ID' : 'Add tracking ID'}
-        </button>
-      )}
-      {canCancel && (
-        <button
-          type="button"
-          onClick={() => onStatusChange('Cancelled')}
-          className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-red-50 px-4 text-[10px] font-extrabold text-red-600 hover:bg-red-100"
-        >
-          <XCircle size={15} /> Cancel order
-        </button>
-      )}
-      {canRefund && (
-        <button
-          type="button"
-          onClick={() => onStatusChange('Refunded')}
-          className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#17251c] px-4 text-[10px] font-extrabold text-white hover:bg-violet-700"
-        >
-          <RotateCcw size={15} /> Refund order
-        </button>
-      )}
-    </>
-  )
-}
-
-function formatShippingAddress(address) {
-  if (!address) return 'Address not provided'
-  if (typeof address === 'string') return address
-  const street =
-    address.line1 ||
-    [address.houseFlat, address.street, address.area]
-      .filter(Boolean)
-      .join(', ')
-  return [street, address.city, address.state, address.pincode]
-    .filter(Boolean)
-    .join(', ')
 }

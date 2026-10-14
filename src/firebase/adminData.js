@@ -3,19 +3,13 @@ import { adminFunctions } from './firebase'
 
 const updateCustomerStatusRecord = httpsCallable(
   adminFunctions,
-  'updateUserProfile',
+  'updateCustomerStatus',
 )
-const getOrderInvoiceRecord = httpsCallable(adminFunctions, 'getOrderInvoice')
 
 export async function updateCustomerAccountStatus(userId, status) {
   const result = await updateCustomerStatusRecord({
-    operation: 'updateCustomerStatus',
-    payload: { userId, status },
+    userId,
+    status,
   })
   return result.data
-}
-
-export async function getAdminOrderInvoice(orderId) {
-  const result = await getOrderInvoiceRecord({ orderId })
-  return result.data.invoice
 }

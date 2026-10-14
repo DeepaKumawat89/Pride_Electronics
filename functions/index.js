@@ -28,6 +28,26 @@ initializeApp()
 
 const db = getFirestore()
 const adminAuth = getAuth()
+
+const requireActiveCustomer = async (request) => {
+  const uid = requireUser(request)
+  const [authUser, profileDocument] = await Promise.all([
+    adminAuth.getUser(uid),
+    db.doc(`users/${uid}`).get(),
+  ])
+  const status = String(profileDocument.data()?.status || 'Active')
+  if (
+    authUser.disabled ||
+    ['disabled', 'suspended'].includes(status.trim().toLowerCase())
+  ) {
+    throw new HttpsError(
+      'permission-denied',
+      'This customer account is disabled. Contact support for assistance.',
+    )
+  }
+  return uid
+}
+
 const region = 'asia-south1'
 const callableOptions = { region, invoker: 'public' }
 const razorpayKeyId = defineSecret('RAZORPAY_KEY_ID')
@@ -49,6 +69,7 @@ const RAZORPAY_PAYMENT_PATTERN = /^pay_[a-zA-Z0-9]{6,100}$/
 const RAZORPAY_SIGNATURE_PATTERN = /^[a-fA-F0-9]{64}$/
 const STOCK_RESERVATION_TTL_MS = 15 * 60 * 1000
 const STOCK_RESERVATION_CLEANUP_LIMIT = 100
+const STOCK_RESERVATION_CLEANUP_BATCHES = 10
 
 const cleanObject = (value) => JSON.parse(JSON.stringify(value || {}))
 
@@ -223,9 +244,6 @@ exports.updateUserProfile = onCall(paymentCallableOptions, async (request) => {
   if (operation === 'submitOrderFeedback') {
     return submitOrderFeedbackHandler(operationRequest)
   }
-  if (operation === 'updateCustomerStatus') {
-    return updateCustomerStatusHandler(operationRequest)
-  }
   if (operation === 'createRazorpayOrder') {
     return createRazorpayOrderHandler(operationRequest)
   }
@@ -238,7 +256,7 @@ exports.updateUserProfile = onCall(paymentCallableOptions, async (request) => {
   if (operation) {
     throw new HttpsError('invalid-argument', 'Unsupported account operation.')
   }
-  const uid = requireUser(request)
+  const uid = await requireActiveCustomer(request)
   const profile = validateProfile(request.data)
   const authUser = await adminAuth.getUser(uid)
   const userReference = db.doc(`users/${uid}`)
@@ -526,10 +544,36 @@ async function releaseStockReservation({
       paymentIntentDocument = await transaction.get(
         db.doc(`paymentIntents/${reservation.paymentIntentId}`),
       )
-      const intent = paymentIntentDocument.data()
-      if (intent?.verified === true || intent?.consumed === true) {
-        return { released: false, state: 'payment-verified' }
+    }
+    const orderReference = db.doc(
+      `orders/${String(reservation.orderId || reservationReference.id)}`,
+    )
+    const orderDocument = await transaction.get(orderReference)
+    const intent = paymentIntentDocument?.data()
+    if (intent?.consumed === true || orderDocument.exists) {
+      transaction.update(reservationReference, {
+        status: 'consumed',
+        orderId: String(intent?.consumedByOrderId || orderDocument.id),
+        updatedAt: Timestamp.now(),
+      })
+      if (paymentIntentDocument?.exists) {
+        transaction.update(paymentIntentDocument.ref, {
+          reservationStatus: 'consumed',
+          updatedAt: now,
+        })
       }
+      return { released: false, state: 'consumed' }
+    }
+    if (intent?.verified === true) {
+      transaction.update(reservationReference, {
+        status: 'payment-verified',
+        updatedAt: Timestamp.now(),
+      })
+      transaction.update(paymentIntentDocument.ref, {
+        reservationStatus: 'payment-verified',
+        updatedAt: now,
+      })
+      return { released: false, state: 'payment-verified' }
     }
 
     const items = normalizeOrderItems(reservation.items)
@@ -606,7 +650,7 @@ async function releaseStockReservation({
 }
 
 async function releaseRazorpayReservationHandler(request) {
-  const uid = requireUser(request)
+  const uid = await requireActiveCustomer(request)
   const requestId = String(request.data?.requestId || '').trim()
   if (!ORDER_REQUEST_PATTERN.test(requestId)) {
     throw new HttpsError('invalid-argument', 'A valid checkout request is required.')
@@ -621,7 +665,7 @@ async function releaseRazorpayReservationHandler(request) {
 }
 
 async function createRazorpayOrderHandler(request) {
-  const uid = requireUser(request)
+  const uid = await requireActiveCustomer(request)
   const authUser = await adminAuth.getUser(uid)
   if (authUser.disabled) {
     throw new HttpsError('permission-denied', 'This customer account is suspended.')
@@ -903,7 +947,9 @@ async function refundCapturedRazorpayPayment(payment, intent, reason) {
 }
 
 async function verifyRazorpayPaymentHandler(request) {
-  const uid = requireUser(request)
+  const uid = request.allowDisabledCustomer === true
+    ? requireUser(request)
+    : await requireActiveCustomer(request)
   const allowConsumed = request.allowConsumed === true
   const orderId = String(request.data?.razorpay_order_id || '').trim()
   const paymentId = String(request.data?.razorpay_payment_id || '').trim()
@@ -1106,6 +1152,7 @@ async function verifyRazorpayPaymentHandler(request) {
         paymentStatus: savedPayment.status,
         payment: savedPayment,
         verified: true,
+        reservationStatus: 'payment-verified',
         verifiedAt,
         updatedAt: verifiedAt,
       })
@@ -1218,6 +1265,7 @@ exports.razorpayWebhook = onRequest(
       const verified = await verifyRazorpayPaymentHandler({
         auth: { uid: intent.userId },
         allowConsumed: true,
+        allowDisabledCustomer: true,
         data: {
           razorpay_order_id: orderId,
           razorpay_payment_id: paymentId,
@@ -1228,6 +1276,7 @@ exports.razorpayWebhook = onRequest(
       })
       const placed = await placeOrderHandler({
         auth: { uid: intent.userId },
+        allowDisabledCustomer: true,
         data: {
           order: {
             ...intent.checkoutOrder,
@@ -1281,25 +1330,37 @@ exports.releaseExpiredStockReservations = onSchedule(
     retryCount: 3,
   },
   async () => {
-    const expiredReservations = await db
-      .collection('stockReservations')
-      .where('status', '==', 'active')
-      .where('expiresAt', '<=', Timestamp.now())
-      .limit(STOCK_RESERVATION_CLEANUP_LIMIT)
-      .get()
-    const results = await Promise.allSettled(
-      expiredReservations.docs.map((document) =>
-        releaseStockReservation({
-          reservationId: document.id,
-          reason: 'Payment was not verified before the reservation timeout',
-          expired: true,
-        }),
-      ),
-    )
-    const failures = results.filter((result) => result.status === 'rejected')
+    const cleanupStartedAt = Timestamp.now()
+    let cursor = null
+    let attempted = 0
+    const failures = []
+    for (let batch = 0; batch < STOCK_RESERVATION_CLEANUP_BATCHES; batch += 1) {
+      let expiredQuery = db
+        .collection('stockReservations')
+        .where('status', '==', 'active')
+        .where('expiresAt', '<=', cleanupStartedAt)
+        .orderBy('expiresAt')
+        .limit(STOCK_RESERVATION_CLEANUP_LIMIT)
+      if (cursor) expiredQuery = expiredQuery.startAfter(cursor)
+      const expiredReservations = await expiredQuery.get()
+      if (expiredReservations.empty) break
+      attempted += expiredReservations.size
+      const results = await Promise.allSettled(
+        expiredReservations.docs.map((document) =>
+          releaseStockReservation({
+            reservationId: document.id,
+            reason: 'Payment was not verified before the reservation timeout',
+            expired: true,
+          }),
+        ),
+      )
+      failures.push(...results.filter((result) => result.status === 'rejected'))
+      cursor = expiredReservations.docs[expiredReservations.docs.length - 1]
+      if (expiredReservations.size < STOCK_RESERVATION_CLEANUP_LIMIT) break
+    }
     if (failures.length) {
       console.error('Some expired stock reservations could not be released', {
-        attempted: results.length,
+        attempted,
         failed: failures.length,
       })
       throw new Error('Expired reservation cleanup was only partially successful.')
@@ -1308,7 +1369,9 @@ exports.releaseExpiredStockReservations = onSchedule(
 )
 
 async function placeOrderHandler(request) {
-  const uid = requireUser(request)
+  const uid = request.allowDisabledCustomer === true
+    ? requireUser(request)
+    : await requireActiveCustomer(request)
   const authUser = await adminAuth.getUser(uid)
   const submittedOrder = cleanObject(request.data?.order)
   if (
@@ -1611,6 +1674,7 @@ async function placeOrderHandler(request) {
       transaction.update(paymentIntentReference, {
         consumed: true,
         consumedByOrderId: orderReference.id,
+        reservationStatus: 'consumed',
         consumedAt: now,
         updatedAt: now,
       })
@@ -1630,6 +1694,7 @@ async function placeOrderHandler(request) {
       : verifiedPayment.status === 'captured'
         ? 'Paid'
         : 'Authorized'
+    const orderStatus = isCashOnDelivery ? 'Pending' : 'Confirmed'
     const paymentEnvironment = paymentIntent?.environment === 'live'
       ? 'Razorpay'
       : 'Razorpay Test Mode'
@@ -1683,7 +1748,7 @@ async function placeOrderHandler(request) {
       deliveryId: quote.deliveryId,
       items: quote.items,
       itemsCount: quote.items.reduce((sum, item) => sum + item.qty, 0),
-      status: 'Pending',
+      status: orderStatus,
       invoiceNumber: invoice.invoiceNumber,
       invoiceDate: invoice.invoiceDate,
       inventoryState: 'reserved',
@@ -1708,7 +1773,7 @@ async function placeOrderHandler(request) {
       updatedAt: now,
       statusHistory: [
         {
-          status: 'Pending',
+          status: orderStatus,
           timestamp: now,
           date: now.slice(0, 10),
           time: '',
@@ -1757,7 +1822,7 @@ async function placeOrderHandler(request) {
 exports.placeOrder = onCall(callableOptions, placeOrderHandler)
 
 async function saveAccountStateHandler(request) {
-  const uid = requireUser(request)
+  const uid = await requireActiveCustomer(request)
   let account
   try {
     account = sanitizeAccountState(request.data)
@@ -1770,9 +1835,6 @@ async function saveAccountStateHandler(request) {
     const userData = userDocument.data()
     if (!userDocument.exists || userData?.uid !== uid || userData?.role !== 'customer') {
       throw new HttpsError('failed-precondition', 'Your customer profile is unavailable.')
-    }
-    if (userData.status === 'Suspended') {
-      throw new HttpsError('permission-denied', 'This customer account is suspended.')
     }
     transaction.set(
       userReference,
@@ -1789,7 +1851,7 @@ async function saveAccountStateHandler(request) {
 exports.saveAccountState = onCall(callableOptions, saveAccountStateHandler)
 
 async function removeCartItemsHandler(request) {
-  const uid = requireUser(request)
+  const uid = await requireActiveCustomer(request)
   const requestedItems = Array.isArray(request.data?.items)
     ? request.data.items.map((item) => ({
         productId: String(item?.productId || '').trim(),
@@ -1818,9 +1880,6 @@ async function removeCartItemsHandler(request) {
     if (!userDocument.exists || userData?.uid !== uid || userData?.role !== 'customer') {
       throw new HttpsError('failed-precondition', 'Your customer profile is unavailable.')
     }
-    if (userData.status === 'Suspended') {
-      throw new HttpsError('permission-denied', 'This customer account is suspended.')
-    }
     const remainingCartItems = removePurchasedCartItems(
       userData.cartItems,
       requestedItems,
@@ -1837,7 +1896,7 @@ async function removeCartItemsHandler(request) {
 exports.removeCartItems = onCall(callableOptions, removeCartItemsHandler)
 
 async function getMyCouponUsageHandler(request) {
-  const uid = requireUser(request)
+  const uid = await requireActiveCustomer(request)
   const usageDocuments = await db.collection('couponUsages').where('userId', '==', uid).get()
   return {
     usage: Object.fromEntries(
@@ -1852,7 +1911,11 @@ async function getMyCouponUsageHandler(request) {
 exports.getMyCouponUsage = onCall(callableOptions, getMyCouponUsageHandler)
 
 async function getOrderInvoiceHandler(request) {
-  const uid = requireUser(request)
+  const canManageInvoices =
+    hasAdminPermission(request.auth?.token, 'tax-invoice')
+  const uid = canManageInvoices
+    ? requireUser(request)
+    : await requireActiveCustomer(request)
   const orderId = String(request.data?.orderId || '').trim()
   if (!/^[a-zA-Z0-9_-]{1,100}$/.test(orderId)) {
     throw new HttpsError('invalid-argument', 'A valid order is required.')
@@ -1867,9 +1930,6 @@ async function getOrderInvoiceHandler(request) {
   }
 
   const order = orderDocument.data()
-  const canManageInvoices =
-    hasAdminPermission(request.auth.token, 'reports') ||
-    hasAdminPermission(request.auth.token, 'tax-invoice')
   if (!canManageInvoices) {
     if (order.userId !== uid) {
       throw new HttpsError('permission-denied', 'This order belongs to another account.')
@@ -1908,7 +1968,7 @@ async function getOrderInvoiceHandler(request) {
 exports.getOrderInvoice = onCall(callableOptions, getOrderInvoiceHandler)
 
 async function createReturnHandler(request) {
-  const uid = requireUser(request)
+  const uid = await requireActiveCustomer(request)
   const orderId = String(request.data?.orderId || '').trim()
   if (!orderId) throw new HttpsError('invalid-argument', 'An order is required.')
   const details = cleanObject(request.data?.details)
@@ -1957,7 +2017,7 @@ async function createReturnHandler(request) {
 exports.createReturn = onCall(callableOptions, createReturnHandler)
 
 async function cancelOrderHandler(request) {
-  const uid = requireUser(request)
+  const uid = await requireActiveCustomer(request)
   const orderId = String(request.data?.orderId || '').trim()
   const orderReference = db.doc(`orders/${orderId}`)
   const now = new Date().toISOString()
@@ -2070,7 +2130,7 @@ async function recalculateProductRatingStats(productId) {
 }
 
 async function submitOrderFeedbackHandler(request) {
-  const uid = requireUser(request)
+  const uid = await requireActiveCustomer(request)
   const orderId = String(request.data?.orderId || '').trim()
   const explicitProductId = String(request.data?.productId || '').trim()
   const feedback = cleanObject(request.data?.feedback)
@@ -2161,16 +2221,29 @@ async function updateCustomerStatusHandler(request) {
   await requireAdmin(request, 'users')
   const userId = String(request.data?.userId || '').trim()
   const status = String(request.data?.status || '').trim()
-  if (!userId || !['Active', 'Suspended'].includes(status)) {
+  if (!userId || !['Active', 'Disabled'].includes(status)) {
     throw new HttpsError('invalid-argument', 'A valid customer status is required.')
   }
-  await Promise.all([
-    adminAuth.updateUser(userId, { disabled: status === 'Suspended' }),
-    db.doc(`users/${userId}`).set(
-      { status, updatedAt: FieldValue.serverTimestamp() },
-      { merge: true },
-    ),
+  const userReference = db.doc(`users/${userId}`)
+  const [authUser, profileDocument] = await Promise.all([
+    adminAuth.getUser(userId),
+    userReference.get(),
   ])
+  if (
+    !profileDocument.exists ||
+    profileDocument.data()?.uid !== userId ||
+    profileDocument.data()?.role !== 'customer' ||
+    authUser.customClaims?.admin === true
+  ) {
+    throw new HttpsError('failed-precondition', 'A valid customer account is required.')
+  }
+  const disabled = status === 'Disabled'
+  await adminAuth.updateUser(userId, { disabled })
+  if (disabled) await adminAuth.revokeRefreshTokens(userId)
+  await userReference.set(
+    { status, updatedAt: FieldValue.serverTimestamp() },
+    { merge: true },
+  )
   return { success: true, status }
 }
 

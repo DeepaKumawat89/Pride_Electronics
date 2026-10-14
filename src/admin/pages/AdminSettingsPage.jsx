@@ -12,7 +12,6 @@ import {
   Save,
   ShieldCheck,
   Trash2,
-  Truck,
   UserRound,
   UsersRound,
 } from 'lucide-react'
@@ -28,7 +27,7 @@ const sections = [
   ['store', 'Store Settings', Building2],
   ['profile', 'Admin Profile', UserRound],
   ['payment', 'Payment Settings', CreditCard],
-  ['shipping-tax', 'Shipping & Tax', Truck],
+  ['tax', 'Tax & Invoice', ReceiptText],
   ['notifications', 'Notifications', Bell],
   ['email', 'Email Settings', Mail],
   ['security', 'Security', ShieldCheck],
@@ -55,7 +54,6 @@ function SettingsSection({ icon: Icon, title, description, children }) {
 export default function AdminSettingsPage({
   settings,
   admin,
-  shippingSettings,
   invoiceSettings,
   onUpdate,
   onUpdateAdmin,
@@ -127,7 +125,7 @@ export default function AdminSettingsPage({
 
           {activeSection === 'payment' && <SettingsSection icon={CreditCard} title="Payment settings" description="Configure checkout availability and payment processing preferences."><div className="grid gap-3 sm:grid-cols-2"><Toggle label="Razorpay checkout" description="Allow customers to complete online payments." checked={form.payment.razorpayEnabled} onChange={(razorpayEnabled) => update('payment', { razorpayEnabled })} /><Toggle label="Test mode" description="Use the existing Razorpay test environment." checked={form.payment.testMode} onChange={(testMode) => update('payment', { testMode })} /><Toggle label="Automatic capture" description="Capture authorized online payments automatically." checked={form.payment.autoCapture} onChange={(autoCapture) => update('payment', { autoCapture })} /><Toggle label="Cash on delivery" description="Make COD available when supported by checkout." checked={form.payment.codEnabled} onChange={(codEnabled) => update('payment', { codEnabled })} /><Toggle label="Cards" checked={form.payment.cardsEnabled} onChange={(cardsEnabled) => update('payment', { cardsEnabled })} /><Toggle label="UPI" checked={form.payment.upiEnabled} onChange={(upiEnabled) => update('payment', { upiEnabled })} /><Toggle label="Net banking" checked={form.payment.netBankingEnabled} onChange={(netBankingEnabled) => update('payment', { netBankingEnabled })} /><Toggle label="Wallets" checked={form.payment.walletsEnabled} onChange={(walletsEnabled) => update('payment', { walletsEnabled })} /></div><div className="mt-4 max-w-xs"><Field label="Refund processing window (days)"><input type="number" min="1" className={inputClass} value={form.payment.refundWindowDays} onChange={(e) => update('payment', { refundWindowDays: Number(e.target.value) })} /></Field></div></SettingsSection>}
 
-          {activeSection === 'shipping-tax' && <div className="grid gap-5 xl:grid-cols-2"><SettingsSection icon={Truck} title="Shipping settings" description="Charges, service areas, couriers, estimates, and pickup."><dl className="space-y-3 text-[10px]"><div className="flex justify-between"><dt className="text-slate-400">Standard charge</dt><dd className="font-bold text-slate-700">₹{shippingSettings.standardCharge}</dd></div><div className="flex justify-between"><dt className="text-slate-400">Free shipping</dt><dd className="font-bold text-slate-700">Above ₹{shippingSettings.freeShippingThreshold}</dd></div><div className="flex justify-between"><dt className="text-slate-400">Delivery areas</dt><dd className="font-bold text-slate-700">{shippingSettings.deliveryAreas.length}</dd></div></dl><button type="button" onClick={() => onNavigate('shipping')} className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#253329] px-4 py-2.5 text-[9px] font-extrabold text-white">Manage shipping <ChevronRight size={13} /></button></SettingsSection><SettingsSection icon={ReceiptText} title="Tax settings" description="GST registration, rates, business details, and invoices."><dl className="space-y-3 text-[10px]"><div className="flex justify-between"><dt className="text-slate-400">GST</dt><dd className="font-bold text-slate-700">{invoiceSettings.tax.gstEnabled ? 'Enabled' : 'Disabled'}</dd></div><div className="flex justify-between"><dt className="text-slate-400">Default rate</dt><dd className="font-bold text-slate-700">{invoiceSettings.tax.defaultRate}%</dd></div><div className="flex justify-between"><dt className="text-slate-400">GSTIN</dt><dd className="font-bold text-slate-700">{invoiceSettings.tax.gstin || 'Not configured'}</dd></div></dl><button type="button" onClick={() => onNavigate('tax-invoice')} className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#253329] px-4 py-2.5 text-[9px] font-extrabold text-white">Manage tax & invoice <ChevronRight size={13} /></button></SettingsSection></div>}
+          {activeSection === 'tax' && <SettingsSection icon={ReceiptText} title="Tax settings" description="GST registration, rates, business details, and invoices."><dl className="space-y-3 text-[10px]"><div className="flex justify-between"><dt className="text-slate-400">GST</dt><dd className="font-bold text-slate-700">{invoiceSettings.tax.gstEnabled ? 'Enabled' : 'Disabled'}</dd></div><div className="flex justify-between"><dt className="text-slate-400">Default rate</dt><dd className="font-bold text-slate-700">{invoiceSettings.tax.defaultRate}%</dd></div><div className="flex justify-between"><dt className="text-slate-400">GSTIN</dt><dd className="font-bold text-slate-700">{invoiceSettings.tax.gstin || 'Not configured'}</dd></div></dl><button type="button" onClick={() => onNavigate('tax-invoice')} className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#253329] px-4 py-2.5 text-[9px] font-extrabold text-white">Manage tax & invoice <ChevronRight size={13} /></button></SettingsSection>}
 
           {activeSection === 'notifications' && <SettingsSection icon={Bell} title="Notification settings" description="Choose which operational events display admin alerts."><div className="grid gap-3 sm:grid-cols-2"><Toggle label="New orders" checked={form.notifications.newOrders} onChange={(newOrders) => update('notifications', { newOrders })} /><Toggle label="Low stock" checked={form.notifications.lowStock} onChange={(lowStock) => update('notifications', { lowStock })} /><Toggle label="Failed payments" checked={form.notifications.failedPayments} onChange={(failedPayments) => update('notifications', { failedPayments })} /><Toggle label="Return requests" checked={form.notifications.returns} onChange={(returns) => update('notifications', { returns })} /><Toggle label="Browser alerts" checked={form.notifications.browserAlerts} onChange={(browserAlerts) => update('notifications', { browserAlerts })} /><Toggle label="Daily summary" checked={form.notifications.dailySummary} onChange={(dailySummary) => update('notifications', { dailySummary })} /></div></SettingsSection>}
 
