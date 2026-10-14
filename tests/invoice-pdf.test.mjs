@@ -33,7 +33,7 @@ test('server invoice snapshot produces a downloadable PDF document', async () =>
     quote: {
       items: [{
         productId: 'PRODUCT_1', productName: 'Industrial Sensor', sku: 'SENSOR-1',
-        hsnCode: '85365090', qty: 1, price: 1180, taxRate: 18,
+        qty: 1, price: 1180, taxRate: 18,
       }],
       sellingSubtotal: 1180,
       productDiscount: 0,

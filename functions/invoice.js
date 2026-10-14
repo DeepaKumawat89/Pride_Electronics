@@ -110,7 +110,6 @@ function allocateLineTaxes(items, couponDiscount, totalTax, pricesIncludeTax) {
       productName: text(item.productName, 200) || 'Product',
       variant: text(item.variant, 200),
       sku: text(item.sku, 100),
-      hsnCode: text(item.hsnCode, 8),
       quantity: Number(item.qty || 0),
       unitPrice: roundMoney(item.price),
       grossAmount: gross,
@@ -154,9 +153,6 @@ function createInvoiceSnapshot({
     const igst = !intraState ? item.lineTax : 0
     return { ...item, cgst, sgst, igst }
   })
-  if (lineItems.some((item) => !/^(?:\d{4}|\d{6}|\d{8})$/.test(item.hsnCode))) {
-    throw new Error('Configure a valid HSN code for every product before accepting orders.')
-  }
   const tax = {
     pricesIncludeTax: settings.tax.pricesIncludeTax === true,
     defaultRate: Math.max(0, Math.min(100, Number(settings.tax.defaultRate || 0))),
@@ -249,7 +245,6 @@ function validateInvoiceSnapshot(invoice, { gstRequired = false, gstEnabled = tr
     !Array.isArray(invoice.lineItems) ||
     invoice.lineItems.length < 1 ||
     invoice.lineItems.length > 100 ||
-    invoice.lineItems.some((item) => !/^(?:\d{4}|\d{6}|\d{8})$/.test(item.hsnCode)) ||
     !Number.isFinite(Number(amounts.total)) ||
     Number(amounts.total) < 0 ||
     roundMoney(invoice.tax?.totalGst) !== roundMoney(amounts.totalGst) ||

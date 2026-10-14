@@ -44,7 +44,6 @@ const quote = {
     productId: 'PRODUCT_1',
     productName: 'Industrial Sensor',
     sku: 'SENSOR-1',
-    hsnCode: '85365090',
     qty: 1,
     price: 1180,
     taxRate: 18,
@@ -99,7 +98,6 @@ test('server invoice snapshot keeps seller GST and exact totals for a regular bu
   assert.equal(invoice.tax.taxableValue, 1000)
   assert.equal(invoice.tax.totalGst, 180)
   assert.equal(invoice.amounts.total, 1180)
-  assert.equal(invoice.lineItems[0].hsnCode, '85365090')
   assert.equal(validateInvoiceSnapshot(invoice), true)
 })
 

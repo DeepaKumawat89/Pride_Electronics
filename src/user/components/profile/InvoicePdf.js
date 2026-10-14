@@ -297,9 +297,8 @@ export async function createInvoicePdfDocument(
 
   const columns = [
     { label: '#', width: 7, align: 'left' },
-    { label: 'Product Description', width: 42, align: 'left' },
-    { label: 'HSN', width: 15, align: 'left' },
-    { label: 'SKU', width: 18, align: 'left' },
+    { label: 'Product Description', width: 50, align: 'left' },
+    { label: 'SKU', width: 25, align: 'left' },
     { label: 'Qty', width: 9, align: 'right' },
     { label: 'Unit Price', width: 23, align: 'right' },
     { label: 'Discount', width: 21, align: 'right' },
@@ -350,7 +349,6 @@ export async function createInvoicePdfDocument(
       const values = [
         String(index + 1),
         descriptionLines,
-        item.hsnCode || '-',
         item.sku,
         String(item.quantity),
         formatMoney(item.unitPrice),

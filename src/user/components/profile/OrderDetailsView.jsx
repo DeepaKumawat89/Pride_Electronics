@@ -19,6 +19,7 @@ import { useState } from 'react'
 import { formatCurrency, parsePrice } from '../../utils/currency'
 import downloadInvoicePdf, { viewInvoicePdf } from './InvoicePdf'
 import { initialInvoiceSettings } from '../../../data/invoice'
+import { getCustomerOrderInvoice } from '../../../firebase/customerData'
 
 const RETURN_REASONS = [
   'Product is damaged',
@@ -192,7 +193,6 @@ function SummaryRow({ label, value, muted = false }) {
 
 export default function OrderDetailsView({
   order,
-  user,
   address,
   returnRequest,
   onSubmitReturn,
@@ -250,7 +250,8 @@ export default function OrderDetailsView({
     setInvoiceMessage({ tone: '', text: '' })
     setInvoiceDownloading(true)
     try {
-      await downloadInvoicePdf(order, user, address, invoiceSettings)
+      const invoice = await getCustomerOrderInvoice(order.id)
+      await downloadInvoicePdf({ ...order, invoice })
       setInvoiceMessage({ tone: 'success', text: 'Invoice downloaded successfully.' })
     } catch {
       setInvoiceMessage({
@@ -266,7 +267,8 @@ export default function OrderDetailsView({
     setInvoiceMessage({ tone: '', text: '' })
     setInvoiceViewing(true)
     try {
-      await viewInvoicePdf(order, user, address, invoiceSettings)
+      const invoice = await getCustomerOrderInvoice(order.id)
+      await viewInvoicePdf({ ...order, invoice })
       setInvoiceMessage({ tone: 'success', text: 'Invoice opened in a new tab.' })
     } catch {
       setInvoiceMessage({
@@ -551,7 +553,7 @@ export default function OrderDetailsView({
           )}
         </div>
 
-        <div className="flex flex-col gap-4 border-t border-slate-100 py-6 sm:flex-row sm:items-center sm:justify-between">
+        {delivered && <div className="flex flex-col gap-4 border-t border-slate-100 py-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <SectionTitle icon={ReceiptText}>Invoice</SectionTitle>
             <p className="mt-1 text-[9px] text-slate-400">
@@ -578,7 +580,7 @@ export default function OrderDetailsView({
               {invoiceDownloading ? 'Preparing PDF...' : 'Download Invoice'}
             </button>
           </div>
-        </div>
+        </div>}
       </section>
     </div>
   )

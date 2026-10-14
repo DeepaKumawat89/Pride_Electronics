@@ -172,6 +172,11 @@ export default function CheckoutPage({
       ? 'Pay Now'
       : 'Place Order'
 
+  useEffect(() => {
+    if (!onlinePaymentEnabled) return
+    void loadRazorpayCheckout()
+  }, [onlinePaymentEnabled])
+
   // Active delivery address computation
   const selectedDeliveryAddress = useManualDeliveryAddress
     ? normalizeAddress(deliveryAddressForm)
@@ -443,13 +448,28 @@ export default function CheckoutPage({
     if (orderConfirmationAttempt) {
       paymentInFlight.current = true
       setPaying(true)
+      let confirmationAttempt = orderConfirmationAttempt
       try {
-        await onPlaceOrder(orderConfirmationAttempt)
+        if (!confirmationAttempt.cod && !confirmationAttempt.verifiedPayment) {
+          const verification = await postRazorpayApi(
+            'verify',
+            confirmationAttempt.razorpay,
+          )
+          if (!verification.verified) {
+            throw new Error('Payment verification is still pending.')
+          }
+          confirmationAttempt = {
+            ...confirmationAttempt,
+            verifiedPayment: verification.payment,
+          }
+        }
+        await onPlaceOrder(confirmationAttempt)
       } catch (error) {
+        setOrderConfirmationAttempt(confirmationAttempt)
         setPaymentError(
           orderConfirmationAttempt.cod
             ? `${error.message || 'Order confirmation is temporarily unavailable.'} Retry confirmation; the same order will not be created twice.`
-            : `${error.message || 'Order confirmation is temporarily unavailable.'} Your payment is already verified; retry confirmation without paying again.`,
+            : `${error.message || 'Order confirmation is temporarily unavailable.'} Retry confirmation without paying again.`,
         )
         paymentInFlight.current = false
         setPaying(false)
@@ -496,10 +516,10 @@ export default function CheckoutPage({
 
     if (paymentMode === 'cod' || !onlinePaymentEnabled) {
       const codCheckout = { ...checkoutDetails, cod: true }
-      setOrderConfirmationAttempt(codCheckout)
       try {
         await onPlaceOrder(codCheckout)
       } catch (error) {
+        setOrderConfirmationAttempt(codCheckout)
         setPaymentError(
           `${error.message || 'Unable to confirm the order.'} Retry confirmation; the same order will not be created twice.`,
         )
@@ -510,30 +530,33 @@ export default function CheckoutPage({
     }
 
     try {
-      const loaded = await loadRazorpayCheckout()
+      const [loaded, paymentOrder] = await Promise.all([
+        loadRazorpayCheckout(),
+        postRazorpayApi('orders', {
+          amount: toRazorpayAmount(checkoutTotal),
+          requestId: checkoutRequestId.current,
+          checkoutMode: checkoutMode === 'buy-now' ? 'buy-now' : 'cart',
+          items: items.map(({ product, quantity }) => ({
+            productId: product.id,
+            ...(product.selectedVariantId ? { variantId: product.selectedVariantId } : {}),
+            quantity,
+          })),
+          couponCode: pricing.coupon.status === 'applied' ? appliedCoupon : '',
+          deliveryId: 'standard',
+          deliveryDate: checkoutDetails.delivery.estimatedDate,
+          shippingAddress: checkoutDetails.address,
+          billingAddress: checkoutDetails.billingAddress,
+          gstProfile: checkoutDetails.gstProfile,
+          receipt: createPaymentReceipt(),
+        }),
+      ])
       if (!loaded) {
         throw new Error(
           'Secure payment checkout could not be loaded. Check your connection or browser settings and try again.',
         )
       }
 
-      const { environment, keyId, order, quote, reservation } = await postRazorpayApi('orders', {
-        amount: toRazorpayAmount(checkoutTotal),
-        requestId: checkoutRequestId.current,
-        checkoutMode: checkoutMode === 'buy-now' ? 'buy-now' : 'cart',
-        items: items.map(({ product, quantity }) => ({
-          productId: product.id,
-          ...(product.selectedVariantId ? { variantId: product.selectedVariantId } : {}),
-          quantity,
-        })),
-        couponCode: pricing.coupon.status === 'applied' ? appliedCoupon : '',
-        deliveryId: 'standard',
-        deliveryDate: checkoutDetails.delivery.estimatedDate,
-        shippingAddress: checkoutDetails.address,
-        billingAddress: checkoutDetails.billingAddress,
-        gstProfile: checkoutDetails.gstProfile,
-        receipt: createPaymentReceipt(),
-      })
+      const { environment, keyId, order, quote, reservation } = paymentOrder
 
       if (!paymentAmountMatchesCheckout(
         checkoutTotal,
@@ -586,6 +609,7 @@ export default function CheckoutPage({
         },
         handler: async (response) => {
           let paymentVerified = false
+          let verifiedCheckout = null
           try {
             const verification = await postRazorpayApi('verify', response)
             if (!verification.verified) {
@@ -594,27 +618,24 @@ export default function CheckoutPage({
               )
             }
             paymentVerified = true
-            const verifiedCheckout = {
+            verifiedCheckout = {
               ...checkoutDetails,
               razorpay: response,
               verifiedPayment: verification.payment,
             }
-            setOrderConfirmationAttempt(verifiedCheckout)
             await onPlaceOrder(verifiedCheckout)
           } catch (error) {
+            setOrderConfirmationAttempt(verifiedCheckout || {
+              ...checkoutDetails,
+              razorpay: response,
+            })
             setPaymentError(
               paymentVerified
                 ? `${error.message || 'Order confirmation is temporarily unavailable.'} Your payment is already verified; retry confirmation without paying again.`
-                : error.message,
+                : `${error.message || 'Payment confirmation is temporarily unavailable.'} Retry confirmation without paying again.`,
             )
             paymentInFlight.current = false
             setPaying(false)
-            if (!paymentVerified) {
-              void releaseCheckoutReservation(
-                'Payment verification did not complete',
-                checkoutDetails.requestId,
-              )
-            }
           }
         },
       })

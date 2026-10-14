@@ -71,10 +71,6 @@ export function validateProductForCreate(product = {}) {
   if (!Number.isInteger(Number(product.stock)) || Number(product.stock) < 0) {
     errors.push('Stock must be a non-negative whole number.')
   }
-  if (!/^(?:\d{4}|\d{6}|\d{8})$/.test(cleanText(product.hsnCode))) {
-    errors.push('HSN code must contain 4, 6, or 8 digits.')
-  }
-
   if (product.discount !== '' && product.discount !== null && product.discount !== undefined) {
     if (!isValidDecimalInput(product.discount) || Number(product.discount) > 100) {
       errors.push('Discount must be between 0 and 100 with no more than 2 decimal places.')

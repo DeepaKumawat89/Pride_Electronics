@@ -290,7 +290,6 @@ test('admin product creates require complete fields and valid INR pricing', asyn
     discount: 10,
     stock: 5,
     modelNumber: 'MODEL-1',
-    hsnCode: '85365090',
     specs: ['Power: 10 W'],
   }
 
@@ -317,12 +316,6 @@ test('admin product creates require complete fields and valid INR pricing', asyn
     }),
   )
   await assertFails(
-    setDoc(doc(database, 'products', 'INVALID_HSN'), {
-      ...validProduct,
-      hsnCode: '85-36',
-    }),
-  )
-  await assertFails(
     setDoc(doc(database, 'products', 'MISMATCHED_DISCOUNT_PRICE'), {
       ...validProduct,
       price: 950,
@@ -337,6 +330,7 @@ test('payment and backend index collections are inaccessible to customers', asyn
     'stockReservations',
     'couponUsages',
     '_authPhoneIndex',
+    'invoices',
   ]) {
     await assertFails(getDoc(doc(database, collectionName, 'private-record')))
     await assertFails(

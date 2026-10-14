@@ -25,7 +25,7 @@ Application queries found:
 - Arbitrary order/invoice creation or updates: denied for customers.
 - Invoice manipulation: amounts, tax split, seller identity, number, and date are generated and validated in the order transaction; direct customer order writes remain denied.
 - Invoice PII/GSTIN disclosure: order documents are readable only by their owner or an administrator with the `orders` permission. Public invoice settings contain seller details only.
-- Product HSN schema pollution: new/fully edited products require a 4, 6, or 8 digit `hsnCode`; narrowly scoped operational updates remain possible for legacy products, and every product write still requires the `products` admin permission.
+- Product schema pollution: validated product fields are enforced for full writes; narrowly scoped operational updates remain possible for legacy products, and every product write still requires the `products` admin permission.
 - Query mismatch: owner order/return queries include the required `userId` equality filter; published review query includes the required status filter.
 - Orphaned subcollections: none are exposed by current rules.
 

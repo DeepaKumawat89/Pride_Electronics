@@ -5,6 +5,7 @@ import downloadInvoicePdf from '../../user/components/profile/InvoicePdf'
 import { createPaymentRecords } from '../utils/payments'
 import { formatAdminCurrency, moneyValue } from '../utils/adminFormatters'
 import { getAvailableStock } from '../utils/inventory'
+import { getAdminOrderInvoice } from '../../firebase/adminData'
 
 const csvCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`
 
@@ -29,7 +30,6 @@ export default function ReportsPage({
   orders = [],
   customers = [],
   refunds = [],
-  invoiceSettings,
   searchQuery = '',
 }) {
   const [invoiceState, setInvoiceState] = useState({ id: '', error: '' })
@@ -71,11 +71,9 @@ export default function ReportsPage({
   const downloadInvoice = async (order) => {
     setInvoiceState({ id: order.id, error: '' })
     try {
+      const invoice = await getAdminOrderInvoice(order.id)
       await downloadInvoicePdf(
-        order,
-        { name: order.customer, email: order.email, mobile: order.shippingAddress?.phone },
-        order.shippingAddress,
-        invoiceSettings,
+        { ...order, invoice },
       )
       setInvoiceState({ id: '', error: '' })
     } catch (error) {

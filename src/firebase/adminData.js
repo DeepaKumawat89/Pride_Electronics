@@ -5,6 +5,7 @@ const updateCustomerStatusRecord = httpsCallable(
   adminFunctions,
   'updateUserProfile',
 )
+const getOrderInvoiceRecord = httpsCallable(adminFunctions, 'getOrderInvoice')
 
 export async function updateCustomerAccountStatus(userId, status) {
   const result = await updateCustomerStatusRecord({
@@ -12,4 +13,9 @@ export async function updateCustomerAccountStatus(userId, status) {
     payload: { userId, status },
   })
   return result.data
+}
+
+export async function getAdminOrderInvoice(orderId) {
+  const result = await getOrderInvoiceRecord({ orderId })
+  return result.data.invoice
 }

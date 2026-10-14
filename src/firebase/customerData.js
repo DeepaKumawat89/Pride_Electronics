@@ -4,6 +4,7 @@ import { userAuth, userFunctions, userStorage } from './firebase'
 
 const operationGateway = httpsCallable(userFunctions, 'updateUserProfile')
 const placeOrderGateway = httpsCallable(userFunctions, 'placeOrder')
+const getOrderInvoiceGateway = httpsCallable(userFunctions, 'getOrderInvoice')
 const callOperation = (operation, payload = {}) =>
   operationGateway({ operation, payload })
 
@@ -96,6 +97,15 @@ export async function getCustomerCouponUsage() {
     return result.data.usage || {}
   } catch (error) {
     throw messageFor(error, 'Unable to load coupon usage.')
+  }
+}
+
+export async function getCustomerOrderInvoice(orderId) {
+  try {
+    const result = await getOrderInvoiceGateway({ orderId })
+    return result.data.invoice
+  } catch (error) {
+    throw messageFor(error, 'Unable to load this invoice. Please try again.')
   }
 }
 

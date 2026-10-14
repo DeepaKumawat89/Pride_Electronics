@@ -33,9 +33,9 @@ const checkoutPayload = (requestId) => ({
   receipt: `receipt_${requestId}`,
 })
 
-const invoke = (uid, operation, payload) =>
+const invoke = (uid, operation, payload, token = {}) =>
   deployedFunctions[operation].run({
-    auth: { uid, token: {} },
+    auth: { uid, token },
     data: payload,
   })
 
@@ -133,7 +133,6 @@ beforeEach(async () => {
     db.doc('products/LAST_UNIT').set({
       name: 'Last available unit',
       sku: 'LAST-1',
-      hsnCode: '85365090',
       price: 100,
       stock: 1,
       reservedStock: 0,
@@ -270,9 +269,31 @@ test('server verification consumes the existing hold without reserving twice', a
   })
 
   assert.equal(placed.order.paymentStatus, 'Paid')
-  assert.equal(placed.order.invoice.generatedBy, 'server')
-  assert.match(placed.order.invoice.invoiceNumber, /^TEST-\/\d{2}-\d{2}\/0001$/)
-  assert.equal(placed.order.invoice.amounts.total, 100)
+  assert.equal(placed.order.invoice, undefined)
+  assert.match(placed.order.invoiceNumber, /^TEST-\/\d{2}-\d{2}\/0001$/)
+  const storedInvoice = (await db.doc(`invoices/${placed.order.id}`).get()).data()
+  assert.equal(storedInvoice.invoice.generatedBy, 'server')
+  assert.equal(storedInvoice.invoice.amounts.total, 100)
+  const adminInvoice = await invoke(
+    'ADMIN',
+    'getOrderInvoice',
+    { orderId: placed.order.id },
+    { admin: true, role: 'Order Manager', permissions: ['reports'] },
+  )
+  assert.equal(adminInvoice.invoice.invoiceNumber, storedInvoice.invoice.invoiceNumber)
+  await assert.rejects(
+    invoke('BUYER_A', 'getOrderInvoice', { orderId: placed.order.id }),
+    (error) => error.code === 'failed-precondition',
+  )
+  await db.doc(`orders/${placed.order.id}`).update({ status: 'Delivered' })
+  const deliveredInvoice = await invoke('BUYER_A', 'getOrderInvoice', {
+    orderId: placed.order.id,
+  })
+  assert.equal(deliveredInvoice.invoice.invoiceNumber, storedInvoice.invoice.invoiceNumber)
+  await assert.rejects(
+    invoke('BUYER_B', 'getOrderInvoice', { orderId: placed.order.id }),
+    (error) => error.code === 'permission-denied',
+  )
   assert.equal(placed.order.inventoryState, 'reserved')
   assert.equal((await db.doc('products/LAST_UNIT').get()).data().reservedStock, 1)
   assert.equal(

@@ -64,7 +64,7 @@ service cloud.firestore {
       return data.keys().hasAll([
           'name', 'brand', 'description', 'categoryId', 'category',
           'subcategoryId', 'subcategory', 'originalPrice', 'price', 'stock',
-          'modelNumber', 'specs', 'hsnCode'
+          'modelNumber', 'specs'
         ]) &&
         data.name is string && data.name.size() >= 3 && data.name.size() <= 200 &&
         data.brand is string && data.brand.size() > 0 && data.brand.size() <= 100 &&
@@ -81,8 +81,6 @@ service cloud.firestore {
         data.specs is list && data.specs.size() > 0 && data.specs.size() <= 100 &&
         (!data.keys().hasAny(['sku']) ||
           (data.sku is string && data.sku.size() > 0 && data.sku.size() <= 100)) &&
-        data.hsnCode is string &&
-        data.hsnCode.matches('^([0-9]{4}|[0-9]{6}|[0-9]{8})$') &&
         (!data.keys().hasAny(['discount']) ||
           (isCurrencyAmount(data.discount, true) &&
             data.discount <= 100 &&
