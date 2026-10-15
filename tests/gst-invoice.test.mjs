@@ -44,6 +44,7 @@ const quote = {
     productId: 'PRODUCT_1',
     productName: 'Industrial Sensor',
     sku: 'SENSOR-1',
+    hsnCode: '85371000',
     qty: 1,
     price: 1180,
     taxRate: 18,
@@ -88,7 +89,8 @@ test('server invoice snapshot keeps seller GST and exact totals for a regular bu
 
   assert.equal(invoice.generatedBy, 'server')
   assert.equal(invoice.invoiceNumber, 'PE/26-27/00042')
-  assert.equal(invoice.schemaVersion, 2)
+  assert.equal(invoice.schemaVersion, 3)
+  assert.equal(invoice.lineItems[0].hsnCode, '85371000')
   assert.equal(invoice.seller.gstin, settings.tax.gstin)
   assert.equal(invoice.buyer.gst, null)
   assert.equal(invoice.buyer.purchaseType, 'personal')
@@ -161,4 +163,60 @@ test('tampered invoice totals fail server validation', () => {
   invoice.amounts.total = 1
 
   assert.throws(() => validateInvoiceSnapshot(invoice))
+})
+
+test('rejects an invalid HSN code in a current invoice snapshot', () => {
+  const invoice = createInvoice()
+  invoice.lineItems[0].hsnCode = '85371A00'
+
+  assert.throws(() => validateInvoiceSnapshot(invoice), /valid invoice data/i)
+})
+
+test('keeps invoice generation compatible with legacy products that predate HSN storage', () => {
+  const legacyQuote = {
+    ...quote,
+    items: quote.items.map(({ hsnCode: _hsnCode, ...item }) => item),
+  }
+  const invoice = createInvoice({ quote: legacyQuote })
+
+  assert.equal(invoice.lineItems[0].hsnCode, '')
+  assert.equal(validateInvoiceSnapshot(invoice), true)
+})
+
+test('validates existing version-1 non-GST invoice snapshots', () => {
+  const invoice = createInvoice()
+  invoice.schemaVersion = 1
+  invoice.seller.gstin = ''
+  invoice.tax.supplyType = 'unregistered'
+  invoice.tax.cgst = 0
+  invoice.tax.sgst = 0
+  invoice.tax.igst = 0
+  delete invoice.buyer.billing
+  delete invoice.buyer.shipping
+
+  assert.equal(validateInvoiceSnapshot(invoice, { gstEnabled: false }), true)
+})
+
+test('validates historical version-2 invoices with formerly optional metadata', () => {
+  const invoice = createInvoice()
+  invoice.schemaVersion = 2
+  invoice.seller.gstin = ''
+  delete invoice.seller.phone
+  delete invoice.seller.email
+  delete invoice.seller.pan
+  invoice.tax.supplyType = 'unregistered'
+  invoice.tax.cgst = 0
+  invoice.tax.sgst = 0
+  invoice.tax.igst = 0
+  delete invoice.buyer.billing
+  delete invoice.buyer.shipping
+
+  assert.equal(validateInvoiceSnapshot(invoice, { gstEnabled: false }), true)
+})
+
+test('keeps current version-3 invoice metadata validation strict', () => {
+  const invoice = createInvoice()
+  delete invoice.seller.email
+
+  assert.throws(() => validateInvoiceSnapshot(invoice), /valid invoice data/i)
 })

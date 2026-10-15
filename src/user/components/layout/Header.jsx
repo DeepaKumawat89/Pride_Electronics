@@ -6,7 +6,7 @@ import {
   UserRound,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import Brand from '../common/Brand'
+import prideCircuitLogo from '../../../../images/PRIDECIRCUIT Electronic Logo.png'
 import ProfileMenu from '../profile/ProfileMenu'
 import ProductSearch from './ProductSearch'
 
@@ -88,10 +88,14 @@ export default function Header({
               aria-label="Pride Electronics home"
               className="shrink-0"
             >
-              <Brand />
+              <img
+                src={prideCircuitLogo}
+                alt="PrideCircuit Electronic Components & More"
+                className="block h-auto w-56"
+              />
             </button>
 
-            <div className="min-w-56 max-w-2xl flex-1">
+            <div className="ml-auto min-w-56 max-w-2xl flex-1">
               <ProductSearch
                 products={products}
                 value={searchQuery}
@@ -102,7 +106,7 @@ export default function Header({
               />
             </div>
 
-            <div className="ml-auto flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               {authStatus === 'loading' ? (
                 <button
                   type="button"
@@ -159,7 +163,11 @@ export default function Header({
               aria-label="Pride Electronics home"
               className="shrink-0"
             >
-              <Brand compact />
+              <img
+                src={prideCircuitLogo}
+                alt="PrideCircuit Electronic Components & More"
+                className="block h-auto w-28 sm:w-36"
+              />
             </button>
 
             <div className="min-w-0 flex-1">

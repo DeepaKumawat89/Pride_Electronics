@@ -16,6 +16,8 @@ const messageFor = (error, fallback) => {
     'functions/permission-denied': 'You do not have access to this order.',
     'functions/unauthenticated': 'Please sign in again to continue.',
     'functions/not-found': 'The requested order was not found.',
+    'functions/data-loss':
+      backendMessage || 'The saved invoice data is incomplete. Please contact support.',
     'functions/resource-exhausted':
       backendMessage || 'One or more products no longer have enough stock.',
     'functions/already-exists':

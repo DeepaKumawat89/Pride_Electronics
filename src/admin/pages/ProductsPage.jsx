@@ -34,6 +34,7 @@ import {
 import {
   calculateDiscountedPrice,
   isValidDecimalInput,
+  isValidHsnCode,
   normalizeDiscount,
   roundToTwoDecimals,
 } from '../../utils/productValidation'
@@ -49,6 +50,7 @@ const blankProduct = {
   price: '',
   originalPrice: '',
   badge: '',
+  hsnCode: '',
   discount: '',
   stock: '',
   taxRate: 18,
@@ -274,6 +276,8 @@ export default function ProductsPage({
     if (form.name.trim().length < 3)
       errors.name = 'Enter at least 3 characters.'
     if (!form.brand.trim()) errors.brand = 'Brand is required.'
+    if (!isValidHsnCode(form.hsnCode))
+      errors.hsnCode = 'Enter exactly 8 numeric digits.'
     if (!selectedCategory) errors.category = 'Select a valid category.'
     if (!form.subcategoryId) {
       errors.subcategory = 'Select a subcategory.'
@@ -374,6 +378,7 @@ export default function ProductsPage({
       rating: editingProduct?.rating ?? 0,
       reviewsCount: editingProduct?.reviewsCount ?? 0,
       sku: form.sku.trim() || undefined,
+      hsnCode: form.hsnCode.trim(),
       discount:
         form.discount === '' ? undefined : roundToTwoDecimals(form.discount),
       specs: parseList(form.specs),
@@ -642,6 +647,23 @@ export default function ProductsPage({
             </FormField>
             <FormField label="Badge">
               <input {...field('badge')} className={inputClass} />
+            </FormField>
+            <FormField label="HSN Code" required error={formErrors.hsnCode}>
+              <input
+                required
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={8}
+                pattern="[0-9]{8}"
+                title="Enter exactly 8 numeric digits"
+                value={form.hsnCode ?? ''}
+                onChange={(event) => {
+                  const hsnCode = event.target.value.replace(/[^0-9]/g, '').slice(0, 8)
+                  setForm((current) => ({ ...current, hsnCode }))
+                }}
+                className={inputClass}
+              />
             </FormField>
             <FormField label="Description" required error={formErrors.description} wide>
               <textarea

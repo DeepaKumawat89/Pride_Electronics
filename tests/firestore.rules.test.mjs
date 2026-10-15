@@ -7,6 +7,7 @@ import {
 } from '@firebase/rules-unit-testing'
 import {
   collection,
+  deleteField,
   deleteDoc,
   doc,
   getDoc,
@@ -290,6 +291,7 @@ test('admin product creates require complete fields and valid INR pricing', asyn
     discount: 10,
     stock: 5,
     modelNumber: 'MODEL-1',
+    hsnCode: '85371000',
     specs: ['Power: 10 W'],
   }
 
@@ -302,6 +304,19 @@ test('admin product creates require complete fields and valid INR pricing', asyn
       subcategoryId: '',
       subcategory: '',
     }),
+  )
+  await assertFails(
+    setDoc(doc(database, 'products', 'INVALID_HSN'), {
+      ...validProduct,
+      hsnCode: '85371A00',
+    }),
+  )
+  await assertFails(
+    setDoc(doc(database, 'products', 'MISSING_HSN'),
+      Object.fromEntries(
+        Object.entries(validProduct).filter(([key]) => key !== 'hsnCode'),
+      ),
+    ),
   )
   await assertFails(
     setDoc(doc(database, 'products', 'INVALID_PRECISION'), {
@@ -320,6 +335,75 @@ test('admin product creates require complete fields and valid INR pricing', asyn
       ...validProduct,
       price: 950,
     }),
+  )
+})
+
+test('authorized admins can add and update a valid HSN code on legacy products', async () => {
+  const database = testEnvironment
+    .authenticatedContext('UID_ADMIN', { admin: true, role: 'Store Administrator' })
+    .firestore()
+  const legacyProduct = doc(database, 'products', 'PRODUCT_1')
+
+  await assertFails(
+    setDoc(legacyProduct, { hsnCode: '85371A00', updatedAt: '2026-10-15T00:00:00.000Z' }, { merge: true }),
+  )
+  await assertSucceeds(
+    setDoc(legacyProduct, { hsnCode: '85371000', updatedAt: '2026-10-15T00:00:00.000Z' }, { merge: true }),
+  )
+  await assertSucceeds(
+    setDoc(legacyProduct, { hsnCode: '85423900', updatedAt: '2026-10-15T00:01:00.000Z' }, { merge: true }),
+  )
+  await assertFails(
+    setDoc(legacyProduct, { hsnCode: '', updatedAt: '2026-10-15T00:02:00.000Z' }, { merge: true }),
+  )
+})
+
+test('authorized admins can normalize legacy pricing while adding an HSN code', async () => {
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'products', 'LEGACY_PRICING_PRODUCT'), {
+      name: 'Legacy pricing product',
+      brand: 'Pride',
+      description: 'A legacy product with string-formatted INR pricing.',
+      categoryId: 'CATEGORY_1',
+      category: 'Electronics',
+      subcategoryId: 'SUBCATEGORY_1',
+      subcategory: 'Accessories',
+      originalPrice: '₹50',
+      price: '₹50',
+      discount: '',
+      stock: 5,
+      modelNumber: 'MODEL-1',
+      specs: ['Power: 10 W'],
+    })
+  })
+  const database = testEnvironment
+    .authenticatedContext('UID_ADMIN', { admin: true, role: 'Store Administrator' })
+    .firestore()
+
+  await assertSucceeds(
+    setDoc(
+      doc(database, 'products', 'LEGACY_PRICING_PRODUCT'),
+      {
+        originalPrice: 50,
+        price: 50,
+        discount: deleteField(),
+        hsnCode: '85371000',
+        updatedAt: '2026-10-15T00:00:00.000Z',
+      },
+      { merge: true },
+    ),
+  )
+})
+
+test('non-admin users cannot add an HSN code to legacy products', async () => {
+  const database = testEnvironment.authenticatedContext('UID_A').firestore()
+
+  await assertFails(
+    setDoc(
+      doc(database, 'products', 'PRODUCT_1'),
+      { hsnCode: '85371000', updatedAt: '2026-10-15T00:00:00.000Z' },
+      { merge: true },
+    ),
   )
 })
 

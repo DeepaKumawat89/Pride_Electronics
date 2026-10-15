@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   CreditCard,
   Download,
-  Eye,
   Headphones,
   ImagePlus,
   MapPin,
@@ -17,7 +16,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { formatCurrency, parsePrice } from '../../utils/currency'
-import downloadInvoicePdf, { viewInvoicePdf } from './InvoicePdf'
+import downloadInvoicePdf from './InvoicePdf'
 import { initialInvoiceSettings } from '../../../data/invoice'
 import { getCustomerOrderInvoice } from '../../../firebase/customerData'
 
@@ -92,53 +91,37 @@ const getFinancials = (order, taxSettings) => {
 }
 
 const getProgress = (order) => {
-  const statusMoment = (status, fallbackDate, fallbackTime) => {
+  const statusMoment = (statuses, fallbackDate, fallbackTime) => {
     const event = [...(order.statusHistory || [])]
       .reverse()
-      .find((item) => item.status === status)
+      .find((item) => statuses.includes(item.status))
     return {
       date: event?.date || fallbackDate,
       time: event?.time || fallbackTime,
     }
   }
-  const orderedEvent = [...(order.statusHistory || [])]
-    .reverse()
-    .find((item) => ['Pending', 'Ordered'].includes(item.status))
-  const ordered = {
-    date: orderedEvent?.date || order.date,
-    time: orderedEvent?.time || order.orderTime,
-  }
   const confirmed = statusMoment(
-    'Confirmed',
-    order.confirmedDate,
-    order.confirmedTime,
+    ['Confirmed', 'Processing', 'Packed', 'Pending', 'Ordered'],
+    order.confirmedDate || order.date,
+    order.confirmedTime || order.orderTime,
   )
-  const processing = statusMoment(
-    'Processing',
-    order.processingDate,
-    order.processingTime,
-  )
-  const packed = statusMoment('Packed', order.packedDate, order.packedTime)
   const shipped = statusMoment(
-    'Shipped',
+    ['Shipped'],
     order.shippedDate,
     order.shippedTime,
   )
   const outForDelivery = statusMoment(
-    'Out for Delivery',
+    ['Out for Delivery'],
     order.outForDeliveryDate,
     order.outForDeliveryTime,
   )
   const delivered = statusMoment(
-    'Delivered',
+    ['Delivered'],
     order.status === 'Delivered' ? order.deliveryDate : undefined,
     order.deliveredTime,
   )
   const stages = [
-    { label: 'Ordered', ...ordered },
-    { label: 'Confirmed', ...confirmed },
-    { label: 'Processing', ...processing },
-    { label: 'Packed', ...packed },
+    { label: 'Order Confirmed', ...confirmed },
     { label: 'Shipped', ...shipped },
     { label: 'Out for Delivery', ...outForDelivery },
     { label: 'Delivered', ...delivered },
@@ -146,14 +129,14 @@ const getProgress = (order) => {
   const stageByStatus = {
     Pending: 0,
     Ordered: 0,
-    Confirmed: 1,
-    Processing: 2,
-    Packed: 3,
-    Shipped: 4,
-    'Out for Delivery': 5,
-    Delivered: 6,
-    Returned: 6,
-    Refunded: 6,
+    Confirmed: 0,
+    Processing: 0,
+    Packed: 0,
+    Shipped: 1,
+    'Out for Delivery': 2,
+    Delivered: 3,
+    Returned: 3,
+    Refunded: 3,
   }
   return { stages, current: stageByStatus[order.status] ?? 0 }
 }
@@ -212,7 +195,6 @@ export default function OrderDetailsView({
   const [returnSubmitted, setReturnSubmitted] = useState(false)
   const [returnImages, setReturnImages] = useState([])
   const [invoiceDownloading, setInvoiceDownloading] = useState(false)
-  const [invoiceViewing, setInvoiceViewing] = useState(false)
   const [invoiceMessage, setInvoiceMessage] = useState({ tone: '', text: '' })
   const financials = getFinancials(order, invoiceSettings.tax)
   const delivery = getAddressParts(address)
@@ -253,30 +235,13 @@ export default function OrderDetailsView({
       const invoice = await getCustomerOrderInvoice(order.id)
       await downloadInvoicePdf({ ...order, invoice })
       setInvoiceMessage({ tone: 'success', text: 'Invoice downloaded successfully.' })
-    } catch {
+    } catch (error) {
       setInvoiceMessage({
         tone: 'error',
-        text: 'Unable to generate the invoice. Please try again.',
+        text: error.message || 'Unable to generate the invoice. Please try again.',
       })
     } finally {
       setInvoiceDownloading(false)
-    }
-  }
-
-  const viewInvoice = async () => {
-    setInvoiceMessage({ tone: '', text: '' })
-    setInvoiceViewing(true)
-    try {
-      const invoice = await getCustomerOrderInvoice(order.id)
-      await viewInvoicePdf({ ...order, invoice })
-      setInvoiceMessage({ tone: 'success', text: 'Invoice opened in a new tab.' })
-    } catch {
-      setInvoiceMessage({
-        tone: 'error',
-        text: 'Unable to open the invoice. Allow pop-ups and try again.',
-      })
-    } finally {
-      setInvoiceViewing(false)
     }
   }
 
@@ -321,10 +286,9 @@ export default function OrderDetailsView({
             This order was cancelled. Any applicable refund is being processed.
           </div>
         ) : (
-          <ol className="flex min-w-[720px] items-start px-1 pt-1">
+          <ol className="flex min-w-[520px] items-start px-1 pt-1">
             {progress.stages.map((stage, index) => {
-              const completed = index < progress.current
-              const current = index === progress.current
+              const completed = index <= progress.current
               return (
                 <li key={stage.label} className="relative flex-1 text-center">
                   {index > 0 && (
@@ -333,13 +297,13 @@ export default function OrderDetailsView({
                   {index < progress.stages.length - 1 && (
                     <span className={`absolute right-0 top-3.5 h-0.5 w-1/2 ${index < progress.current ? 'bg-[#75916f]' : 'bg-slate-200'}`} />
                   )}
-                  <span className={`relative z-10 mx-auto grid size-7 place-items-center rounded-full border-2 ${completed ? 'border-[#75916f] bg-[#75916f] text-white' : current ? 'border-[#ff5c35] bg-white text-[#ff5c35]' : 'border-slate-200 bg-white text-slate-300'}`}>
+                  <span className={`relative z-10 mx-auto grid size-7 place-items-center rounded-full border-2 ${completed ? 'border-[#75916f] bg-[#75916f] text-white' : 'border-slate-200 bg-white text-slate-300'}`}>
                     {completed ? <Check size={13} strokeWidth={3} /> : <span className="size-1.5 rounded-full bg-current" />}
                   </span>
-                  <strong className={`mt-2 block text-[9px] ${completed || current ? 'text-slate-800' : 'text-slate-400'}`}>
+                  <strong className={`mt-2 block text-[9px] ${completed ? 'text-slate-800' : 'text-slate-400'}`}>
                     {stage.label}
                   </strong>
-                  {(stage.date || stage.time) && (completed || current) && (
+                  {(stage.date || stage.time) && completed && (
                     <span className="mt-1 block text-[8px] text-slate-400">
                       {[stage.date, stage.time].filter(Boolean).join(' · ')}
                     </span>
@@ -571,11 +535,7 @@ export default function OrderDetailsView({
             {invoiceMessage.text && <p className={`mt-2 text-[9px] font-bold ${invoiceMessage.tone === 'success' ? 'text-emerald-700' : 'text-red-600'}`}>{invoiceMessage.text}</p>}
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <button type="button" onClick={viewInvoice} disabled={invoiceViewing} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 text-[10px] font-extrabold text-slate-600 transition hover:border-[#75916f] hover:text-[#253329] disabled:opacity-60">
-              <Eye size={15} />
-              {invoiceViewing ? 'Preparing Preview...' : 'View Invoice'}
-            </button>
-            <button type="button" onClick={downloadInvoice} disabled={invoiceDownloading} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#253329] px-5 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35] disabled:opacity-60">
+            <button type="button" onClick={downloadInvoice} disabled={invoiceDownloading} aria-busy={invoiceDownloading} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#253329] px-5 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-wait disabled:opacity-60">
               <Download size={15} />
               {invoiceDownloading ? 'Preparing PDF...' : 'Download Invoice'}
             </button>

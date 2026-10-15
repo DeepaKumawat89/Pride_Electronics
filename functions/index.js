@@ -1704,13 +1704,23 @@ async function placeOrderHandler(request) {
     const invoiceSettings = normalizeInvoiceSettings(
       invoiceSettingsDocument.exists ? invoiceSettingsDocument.data() : {},
     )
+    const invoiceProductsById = new Map(
+      productDocuments.map((document) => [document.id, document.data() || {}]),
+    )
+    const invoiceQuote = {
+      ...quote,
+      items: quote.items.map((item) => ({
+        ...item,
+        hsnCode: String(invoiceProductsById.get(item.productId)?.hsnCode || '').trim(),
+      })),
+    }
     let invoice
     try {
       invoice = createInvoiceSnapshot({
         orderId: orderReference.id,
         invoiceSettings,
         invoiceDate: now,
-        quote,
+        quote: invoiceQuote,
         customer: {
           name: authUser.displayName || userDocument.data()?.name || 'Pride customer',
           email: String(authUser.email || '').toLowerCase(),

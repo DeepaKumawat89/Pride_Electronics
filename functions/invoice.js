@@ -110,6 +110,7 @@ function allocateLineTaxes(items, couponDiscount, totalTax, pricesIncludeTax) {
       productName: text(item.productName, 200) || 'Product',
       variant: text(item.variant, 200),
       sku: text(item.sku, 100),
+      hsnCode: text(item.hsnCode, 8),
       quantity: Number(item.qty || 0),
       unitPrice: roundMoney(item.price),
       grossAmount: gross,
@@ -167,7 +168,7 @@ function createInvoiceSnapshot({
   }
   const number = invoiceNumberFor(settings.numbering, invoiceDate)
   const snapshot = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     generatedBy: 'server',
     invoiceNumber: number,
     invoiceDate: new Date(invoiceDate).toISOString(),
@@ -219,6 +220,8 @@ function createInvoiceSnapshot({
 }
 
 function validateInvoiceSnapshot(invoice, { gstRequired = false, gstEnabled = true } = {}) {
+  const schemaVersion = Number(invoice?.schemaVersion || 1)
+  const historicalInvoice = schemaVersion < 3
   const amounts = invoice?.amounts || {}
   const expectedTotal = roundMoney(
     Number(amounts.subtotal || 0) -
@@ -240,8 +243,8 @@ function validateInvoiceSnapshot(invoice, { gstRequired = false, gstEnabled = tr
     Number.isNaN(new Date(invoice.invoiceDate).getTime()) ||
     !text(invoice.seller?.legalName, 200) ||
     !text(invoice.seller?.address, 500) ||
-    !text(invoice.seller?.phone, 30) ||
-    !/^\S+@\S+\.\S+$/.test(text(invoice.seller?.email, 320)) ||
+    (!historicalInvoice && !text(invoice.seller?.phone, 30)) ||
+    (!historicalInvoice && !/^\S+@\S+\.\S+$/.test(text(invoice.seller?.email, 320))) ||
     !Array.isArray(invoice.lineItems) ||
     invoice.lineItems.length < 1 ||
     invoice.lineItems.length > 100 ||
@@ -250,30 +253,38 @@ function validateInvoiceSnapshot(invoice, { gstRequired = false, gstEnabled = tr
     roundMoney(invoice.tax?.totalGst) !== roundMoney(amounts.totalGst) ||
     roundMoney(amounts.total) !== expectedTotal ||
     lineTaxTotal !== roundMoney(amounts.totalGst) ||
-    !['intra-state', 'inter-state'].includes(invoice.tax?.supplyType) ||
-    splitTaxTotal !== lineTaxTotal ||
-    !invoice.buyer?.billing?.formatted ||
-    !invoice.buyer?.shipping?.formatted
+    (!historicalInvoice && !['intra-state', 'inter-state'].includes(invoice.tax?.supplyType)) ||
+    (!historicalInvoice && splitTaxTotal !== lineTaxTotal) ||
+    (!historicalInvoice && !invoice.buyer?.billing?.formatted) ||
+    (!historicalInvoice && !invoice.buyer?.shipping?.formatted) ||
+    (schemaVersion >= 3 &&
+      invoice.lineItems.some((item) =>
+        text(item.hsnCode, 8) && !/^[0-9]{8}$/.test(text(item.hsnCode, 8)),
+      ))
   ) {
     throw new Error('The server could not generate valid invoice data for this order.')
   }
-  if (gstEnabled && !isValidGstin(invoice.seller.gstin)) {
+  if (!historicalInvoice && gstEnabled && !isValidGstin(invoice.seller.gstin)) {
     throw new Error('Configure a valid seller GSTIN before accepting GST orders.')
   }
   if (
+    !historicalInvoice &&
     gstEnabled &&
     (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(invoice.seller.pan) ||
       invoice.seller.pan !== invoice.seller.gstin.slice(2, 12))
   ) {
     throw new Error('Configure a seller PAN that matches the GSTIN.')
   }
+  const invalidCurrentBuyerGst = !historicalInvoice && (
+    invoice.buyer?.gst?.stateCode !== invoice.buyer?.billing?.stateCode ||
+    invoice.buyer?.gst?.verificationStatus !== 'format-validated'
+  )
   if (
     gstRequired &&
     (!gstEnabled ||
       !isValidGstin(invoice.buyer?.gst?.gstin) ||
-      !invoice.buyer.gst.legalName ||
-      invoice.buyer.gst.stateCode !== invoice.buyer.billing.stateCode ||
-      invoice.buyer.gst.verificationStatus !== 'format-validated')
+      !invoice.buyer?.gst?.legalName ||
+      invalidCurrentBuyerGst)
   ) {
     throw new Error('The verified buyer GST details are incomplete.')
   }

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { test } from 'node:test'
-import { createInvoicePdfDocument } from '../src/user/components/profile/InvoicePdf.js'
+import {
+  createInvoiceDownloadName,
+  createInvoicePdfDocument,
+} from '../src/user/components/profile/InvoicePdf.js'
 
 const functionsRequire = createRequire(new URL('../functions/package.json', import.meta.url))
 const { createInvoiceSnapshot } = functionsRequire('./invoice.js')
@@ -33,7 +36,7 @@ test('server invoice snapshot produces a downloadable PDF document', async () =>
     quote: {
       items: [{
         productId: 'PRODUCT_1', productName: 'Industrial Sensor', sku: 'SENSOR-1',
-        qty: 1, price: 1180, taxRate: 18,
+        hsnCode: '85371000', qty: 1, price: 1180, taxRate: 18,
       }],
       sellingSubtotal: 1180,
       productDiscount: 0,
@@ -62,6 +65,11 @@ test('server invoice snapshot produces a downloadable PDF document', async () =>
   const bytes = new Uint8Array(pdf.output('arraybuffer'))
 
   assert.equal(invoiceNumber, 'PE/26-27/00007')
+  assert.match(pdf.internal.pages.flat().join('\n'), /85371000/)
   assert.equal(new TextDecoder().decode(bytes.slice(0, 4)), '%PDF')
   assert.ok(bytes.byteLength > 5_000)
+})
+
+test('creates a filesystem-safe PDF name from the invoice number', () => {
+  assert.equal(createInvoiceDownloadName('PE/26-27/00007'), 'PE-26-27-00007.pdf')
 })

@@ -133,6 +133,7 @@ beforeEach(async () => {
     db.doc('products/LAST_UNIT').set({
       name: 'Last available unit',
       sku: 'LAST-1',
+      hsnCode: '85371000',
       price: 100,
       stock: 1,
       reservedStock: 0,
@@ -273,6 +274,7 @@ test('server verification consumes the existing hold without reserving twice', a
   assert.match(placed.order.invoiceNumber, /^TEST-\/\d{2}-\d{2}\/0001$/)
   const storedInvoice = (await db.doc(`invoices/${placed.order.id}`).get()).data()
   assert.equal(storedInvoice.invoice.generatedBy, 'server')
+  assert.equal(storedInvoice.invoice.lineItems[0].hsnCode, '85371000')
   assert.equal(storedInvoice.invoice.amounts.total, 100)
   const adminInvoice = await invoke(
     'ADMIN',

@@ -110,7 +110,7 @@ export async function createInvoicePdfDocument(
   const serverInvoice = order.invoice
   if (
     serverInvoice?.generatedBy !== 'server' ||
-    ![1, 2].includes(serverInvoice?.schemaVersion)
+    ![1, 2, 3].includes(serverInvoice?.schemaVersion)
   ) {
     throw new Error('A verified server invoice is not available for this order.')
   }
@@ -297,13 +297,14 @@ export async function createInvoicePdfDocument(
 
   const columns = [
     { label: '#', width: 7, align: 'left' },
-    { label: 'Product Description', width: 50, align: 'left' },
-    { label: 'SKU', width: 25, align: 'left' },
+    { label: 'Product Description', width: 42, align: 'left' },
+    { label: 'SKU', width: 22, align: 'left' },
+    { label: 'HSN Code', width: 18, align: 'left' },
     { label: 'Qty', width: 9, align: 'right' },
-    { label: 'Unit Price', width: 23, align: 'right' },
-    { label: 'Discount', width: 21, align: 'right' },
+    { label: 'Unit Price', width: 21, align: 'right' },
+    { label: 'Discount', width: 18, align: 'right' },
     { label: 'Tax', width: 21, align: 'right' },
-    { label: 'Amount', width: 28, align: 'right' },
+    { label: 'Amount', width: 26, align: 'right' },
   ]
   let columnX = margin
   columns.forEach((column) => {
@@ -350,6 +351,7 @@ export async function createInvoicePdfDocument(
         String(index + 1),
         descriptionLines,
         item.sku,
+        item.hsnCode || '—',
         String(item.quantity),
         formatMoney(item.unitPrice),
         formatMoney(item.lineDiscount),
@@ -556,39 +558,29 @@ export async function createInvoicePdfDocument(
   return { pdf, invoiceNumber }
 }
 
-export async function viewInvoicePdf(
-  order,
-) {
-  const previewWindow = window.open('', '_blank')
-  if (previewWindow) {
-    previewWindow.document.title = 'Preparing invoice preview…'
-    previewWindow.document.body.textContent = 'Preparing invoice preview…'
-  }
-  let pdf
-  try {
-    const document = await createInvoicePdfDocument(order)
-    pdf = document.pdf
-  } catch (error) {
-    previewWindow?.close()
-    throw error
-  }
-  const previewUrl = pdf.output('bloburl')
-  if (previewWindow) {
-    previewWindow.opener = null
-    previewWindow.location.href = previewUrl
-  } else {
-    const fallbackWindow = window.open(
-      previewUrl,
-      '_blank',
-      'noopener,noreferrer',
-    )
-    if (!fallbackWindow) throw new Error('Invoice preview was blocked.')
-  }
+export const createInvoiceDownloadName = (invoiceNumber) => {
+  const safeInvoiceNumber = String(invoiceNumber || 'invoice')
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return `${safeInvoiceNumber || 'invoice'}.pdf`
 }
 
 export default async function downloadInvoicePdf(
   order,
 ) {
   const { pdf, invoiceNumber } = await createInvoicePdfDocument(order)
-  pdf.save(`${invoiceNumber}.pdf`)
+  const blob = pdf.output('blob')
+  const downloadUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = downloadUrl
+  link.download = createInvoiceDownloadName(invoiceNumber)
+  link.style.display = 'none'
+  document.body.appendChild(link)
+  try {
+    link.click()
+  } finally {
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000)
+  }
 }

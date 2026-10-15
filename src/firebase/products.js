@@ -1,18 +1,33 @@
 import {
   collection,
   deleteDoc,
+  deleteField,
   doc,
   onSnapshot,
   setDoc,
 } from 'firebase/firestore'
 import { db } from './firebase'
-import { assertValidProductForCreate } from '../utils/productValidation'
+import {
+  assertValidHsnCode,
+  assertValidProductForCreate,
+} from '../utils/productValidation'
 
 const productsCollection = collection(db, 'products')
 
 const serializeProduct = (product) => {
   const serialized = JSON.parse(JSON.stringify(product))
   delete serialized.id
+  return serialized
+}
+
+const serializeProductUpdate = (product) => {
+  const serialized = serializeProduct(product)
+  if (
+    Object.prototype.hasOwnProperty.call(product, 'discount') &&
+    (product.discount === undefined || product.discount === '')
+  ) {
+    serialized.discount = deleteField()
+  }
   return serialized
 }
 
@@ -59,13 +74,16 @@ export const createProductId = () => doc(productsCollection).id
 
 export async function saveProduct(product) {
   if (!product?.id) throw new Error('A Firestore product ID is required.')
+  if (Object.prototype.hasOwnProperty.call(product, 'hsnCode')) {
+    assertValidHsnCode(product.hsnCode)
+  }
   const savedProduct = {
     ...product,
     updatedAt: new Date().toISOString(),
   }
   await setDoc(
     doc(productsCollection, String(product.id)),
-    serializeProduct(savedProduct),
+    serializeProductUpdate(savedProduct),
     { merge: true },
   )
   return savedProduct

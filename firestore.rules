@@ -68,11 +68,17 @@ service cloud.firestore {
         value * 100 == int(value * 100);
     }
 
+    function hasValidHsnCode(data) {
+      return data.keys().hasAny(['hsnCode']) &&
+        data.hsnCode is string &&
+        data.hsnCode.matches('^[0-9]{8}$');
+    }
+
     function isValidProduct(data) {
       return data.keys().hasAll([
           'name', 'brand', 'description', 'categoryId', 'category',
           'subcategoryId', 'subcategory', 'originalPrice', 'price', 'stock',
-          'modelNumber', 'specs'
+          'modelNumber', 'specs', 'hsnCode'
         ]) &&
         data.name is string && data.name.size() >= 3 && data.name.size() <= 200 &&
         data.brand is string && data.brand.size() > 0 && data.brand.size() <= 100 &&
@@ -86,6 +92,7 @@ service cloud.firestore {
         data.price <= data.originalPrice &&
         data.stock is int && data.stock >= 0 &&
         data.modelNumber is string && data.modelNumber.size() > 0 && data.modelNumber.size() <= 200 &&
+        hasValidHsnCode(data) &&
         data.specs is list && data.specs.size() > 0 && data.specs.size() <= 100 &&
         (!data.keys().hasAny(['sku']) ||
           (data.sku is string && data.sku.size() > 0 && data.sku.size() <= 100)) &&
@@ -100,8 +107,11 @@ service cloud.firestore {
       return !isValidProduct(resource.data) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'stock', 'reservedStock', 'variants', 'rating', 'reviewsCount',
-          'categoryId', 'category', 'subcategoryId', 'subcategory', 'updatedAt'
-        ]);
+          'categoryId', 'category', 'subcategoryId', 'subcategory', 'updatedAt',
+          'hsnCode'
+        ]) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['hsnCode']) ||
+          hasValidHsnCode(request.resource.data));
     }
 
     function isValidUser(data, userId) {

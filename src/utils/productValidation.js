@@ -1,4 +1,5 @@
 const DECIMAL_INPUT_PATTERN = /^\d+(?:\.\d{1,2})?$/
+const HSN_CODE_PATTERN = /^\d{8}$/
 
 const cleanText = (value) => String(value ?? '').trim()
 
@@ -8,6 +9,8 @@ export const isValidDecimalInput = (value, { allowZero = true } = {}) => {
   const amount = Number(text)
   return Number.isFinite(amount) && (allowZero ? amount >= 0 : amount > 0)
 }
+
+export const isValidHsnCode = (value) => HSN_CODE_PATTERN.test(cleanText(value))
 
 export const roundToTwoDecimals = (value) =>
   Math.round((Number(value) + Number.EPSILON) * 100) / 100
@@ -46,6 +49,9 @@ export function validateProductForCreate(product = {}) {
     cleanText(product.description).length < 20
   ) {
     errors.push('Description must contain at least 20 characters.')
+  }
+  if (!isValidHsnCode(product.hsnCode)) {
+    errors.push('HSN Code must contain exactly 8 numeric digits.')
   }
 
   if (
@@ -89,4 +95,10 @@ export function validateProductForCreate(product = {}) {
 export function assertValidProductForCreate(product) {
   const errors = validateProductForCreate(product)
   if (errors.length) throw new Error(errors.join(' '))
+}
+
+export function assertValidHsnCode(value) {
+  if (!isValidHsnCode(value)) {
+    throw new Error('HSN Code must contain exactly 8 numeric digits.')
+  }
 }
