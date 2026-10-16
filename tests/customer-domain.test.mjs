@@ -44,7 +44,8 @@ const product = {
   name: 'Server-priced product',
   category: 'Audio',
   price: 1000,
-  originalPrice: 1200,
+  pricingModel: 'gst-exclusive-v1',
+  priceIncludesTax: false,
   stock: 5,
   reservedStock: 0,
   enabled: true,
@@ -60,20 +61,20 @@ const quoteFor = (overrides = {}) =>
       freeShippingThreshold: 999,
       expressCharge: 199,
     },
-    taxSettings: { gstEnabled: true, defaultRate: 18, pricesIncludeTax: true },
+    taxSettings: { gstEnabled: true, defaultRate: 18, pricesIncludeTax: false },
     ...overrides,
   })
 
 test('backend quote uses current product price and preserves a purchase snapshot', () => {
   const quote = quoteFor()
   assert.equal(quote.sellingSubtotal, 2000)
-  assert.equal(quote.total, 2000)
-  assert.equal(quote.totalPaise, 200000)
+  assert.equal(quote.total, 2360)
+  assert.equal(quote.totalPaise, 236000)
   assert.equal(quote.items[0].price, 1000)
   assert.equal(quote.items[0].qty, 2)
 
   const changedQuote = quoteFor({ products: [{ ...product, price: 1250 }] })
-  assert.equal(changedQuote.total, 2500)
+  assert.equal(changedQuote.total, 2950)
   assert.equal(quote.items[0].price, 1000)
 })
 
@@ -132,8 +133,8 @@ test('backend quote authoritatively calculates coupon, shipping, and GST', () =>
   })
   assert.equal(quote.couponDiscount, 100)
   assert.equal(quote.shipping, 0)
-  assert.equal(quote.total, 900)
-  assert.equal(quote.tax, 137.29)
+  assert.equal(quote.total, 1062)
+  assert.equal(quote.tax, 162)
 })
 
 test('express shipping and out-of-stock changes are enforced by the quote', () => {
@@ -180,14 +181,14 @@ test('browser pricing computes quantities and subtotal consistently', () => {
     [],
     '',
     { standardCharge: 99, freeShippingThreshold: 999 },
-    { gstEnabled: true, defaultRate: 18, pricesIncludeTax: true },
+    { gstEnabled: true, defaultRate: 18, pricesIncludeTax: false },
   )
   assert.equal(pricing.sellingSubtotal, 2000)
-  assert.equal(pricing.total, 2000)
+  assert.equal(pricing.total, 2360)
 })
 
 test('browser and backend totals use the same paise rounding', () => {
-  const decimalProduct = { ...product, price: 333.33, originalPrice: 399.99 }
+  const decimalProduct = { ...product, price: 333.33 }
   const taxSettings = {
     gstEnabled: true,
     defaultRate: 18,
@@ -221,6 +222,7 @@ test('checkout accepts old and new Razorpay quote response shapes', () => {
   assert.equal(paymentAmountMatchesCheckout(18000, 1800000, undefined), true)
   assert.equal(paymentAmountMatchesCheckout(18000, 1800000, 1800000), true)
   assert.equal(paymentAmountMatchesCheckout(18000, 1800000, 1800100), false)
+  assert.equal(paymentAmountMatchesCheckout(18000, 1800100, 1800000), false)
 })
 
 test('checkout exposes only Razorpay methods enabled by Admin settings', () => {
@@ -488,7 +490,6 @@ test('variant checkout uses variant price, stock, media, and purchase snapshot',
         sku: 'SENSOR-24V',
         modelNumber: 'PX-24',
         price: 1500,
-        discountPrice: 1250,
         stock: 4,
         reservedStock: 1,
         images: ['https://example.com/variant-a.webp'],
@@ -504,10 +505,10 @@ test('variant checkout uses variant price, stock, media, and purchase snapshot',
   assert.equal(quote.items[0].variant, '24 V DC')
   assert.equal(quote.items[0].sku, 'SENSOR-24V')
   assert.equal(quote.items[0].variantModelNumber, 'PX-24')
-  assert.equal(quote.items[0].price, 1250)
+  assert.equal(quote.items[0].price, 1500)
   assert.equal(quote.items[0].unitPrice, 1500)
   assert.equal(quote.items[0].image, 'https://example.com/variant-a.webp')
-  assert.equal(quote.sellingSubtotal, 2500)
+  assert.equal(quote.sellingSubtotal, 3000)
 })
 
 test('variant products require a current selection and allow sibling variants as separate rows', () => {

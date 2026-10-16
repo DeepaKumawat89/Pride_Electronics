@@ -1,4 +1,4 @@
-import { parsePrice } from './currency.js'
+import { getProductBasePrice } from '../../utils/productPricing.js'
 
 export const catalogCategories = [
   'All',
@@ -14,7 +14,6 @@ export const defaultCatalogFilters = {
   price: 'all',
   rating: 'all',
   availability: 'all',
-  discount: 'all',
   feature: 'All',
   ram: 'All',
   storage: 'All',
@@ -47,19 +46,6 @@ export const availabilityFilterOptions = [
   { value: 'out-of-stock', label: 'Out of stock' },
 ]
 
-export const discountFilterOptions = [
-  { value: 'all', label: 'Any discount' },
-  { value: '15', label: '15% & above' },
-  { value: '20', label: '20% & above' },
-]
-
-function getDiscountPercent(product) {
-  const mrp = parsePrice(product.originalPrice)
-  const sellingPrice = parsePrice(product.price)
-  if (!mrp || sellingPrice >= mrp) return 0
-  return Math.round(((mrp - sellingPrice) / mrp) * 100)
-}
-
 function getAvailability(product) {
   if (product.stock <= 0) return 'out-of-stock'
   if (product.stock <= 10) return 'low-stock'
@@ -68,15 +54,12 @@ function getAvailability(product) {
 
 export function sortCatalogProducts(products, sortBy) {
   return [...products].sort((a, b) => {
-    if (sortBy === 'price-low') return parsePrice(a.price) - parsePrice(b.price)
-    if (sortBy === 'price-high') return parsePrice(b.price) - parsePrice(a.price)
+    if (sortBy === 'price-low') return getProductBasePrice(a) - getProductBasePrice(b)
+    if (sortBy === 'price-high') return getProductBasePrice(b) - getProductBasePrice(a)
     if (sortBy === 'newest') {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     }
     if (sortBy === 'rating') return (Number(b.rating) || 0) - (Number(a.rating) || 0)
-    if (sortBy === 'discount') {
-      return getDiscountPercent(b) - getDiscountPercent(a)
-    }
     if (sortBy === 'recommended') {
       return (
         Number(b.featured) - Number(a.featured) ||
@@ -89,7 +72,7 @@ export function sortCatalogProducts(products, sortBy) {
 }
 
 const matchesPrice = (product, range) => {
-  const price = parsePrice(product.price)
+  const price = getProductBasePrice(product)
   if (range === 'under-10000') return price < 10000
   if (range === '10000-20000') return price >= 10000 && price <= 20000
   if (range === '20000-40000') return price > 20000 && price <= 40000
@@ -114,12 +97,6 @@ export function filterCatalogProducts(products, subcategory, filters) {
     if (
       filters.availability !== 'all' &&
       getAvailability(product) !== filters.availability
-    ) {
-      return false
-    }
-    if (
-      filters.discount !== 'all' &&
-      getDiscountPercent(product) < Number(filters.discount)
     ) {
       return false
     }

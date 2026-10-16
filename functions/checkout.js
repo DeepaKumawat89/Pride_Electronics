@@ -5,6 +5,37 @@ const money = (value) => {
 
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100
 const normalizedText = (value) => String(value || '').trim().toLowerCase()
+const GST_EXCLUSIVE_PRICING_MODEL = 'gst-exclusive-v1'
+
+const taxRateFor = (product = {}, fallbackRate = 18) => {
+  const value = Number(product.taxRate ?? fallbackRate)
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0
+}
+
+const priceBreakdown = (product, storedPrice, fallbackRate = 18) => {
+  const price = roundMoney(money(storedPrice))
+  const taxRate = taxRateFor(product, fallbackRate)
+  const taxExclusive = product.pricingModel === GST_EXCLUSIVE_PRICING_MODEL ||
+    product.priceIncludesTax === false
+  if (taxExclusive) {
+    const gstAmount = roundMoney(price * taxRate / 100)
+    return {
+      basePrice: price,
+      gstAmount,
+      finalPrice: roundMoney(price + gstAmount),
+      taxRate,
+    }
+  }
+  const basePrice = taxRate > 0
+    ? roundMoney(price * 100 / (100 + taxRate))
+    : price
+  return {
+    basePrice,
+    gstAmount: roundMoney(price - basePrice),
+    finalPrice: price,
+    taxRate,
+  }
+}
 
 const DEFAULT_PAYMENT_CONFIGURATION = Object.freeze({
   razorpayEnabled: true,
@@ -93,7 +124,6 @@ function calculateOrderQuote({
   coupon = null,
   couponCode = '',
   shippingSettings = {},
-  taxSettings = {},
   deliveryId = 'standard',
 }) {
   const productsById = products instanceof Map
@@ -126,12 +156,14 @@ function calculateOrderQuote({
       error.code = 'insufficient-stock'
       throw error
     }
-    const variantListPrice = money(variant?.price)
-    const variantDiscountPrice = money(variant?.discountPrice)
-    let price = variant
-      ? variantDiscountPrice > 0 && variantDiscountPrice <= variantListPrice
-        ? variantDiscountPrice
-        : variantListPrice
+    const variantPrice = money(variant?.price)
+    const legacyVariantDiscountPrice = money(variant?.discountPrice)
+    const usesExclusivePricing = product.pricingModel === GST_EXCLUSIVE_PRICING_MODEL ||
+      product.priceIncludesTax === false
+    let storedPrice = variant
+      ? !usesExclusivePricing && legacyVariantDiscountPrice > 0 && legacyVariantDiscountPrice <= variantPrice
+        ? legacyVariantDiscountPrice
+        : variantPrice
       : money(product.price)
 
     let appliedTier = null
@@ -144,23 +176,31 @@ function calculateOrderQuote({
         .sort((a, b) => a.minQty - b.minQty)
       for (let i = 0; i < tiers.length; i++) {
         if (tiers[i].minQty <= qty) {
-          price = tiers[i].unitPrice
-          appliedTier = { minQty: tiers[i].minQty, unitPrice: tiers[i].unitPrice }
+          storedPrice = tiers[i].unitPrice
+          appliedTier = { minQty: tiers[i].minQty }
         } else {
           break
         }
       }
     }
 
-    const rawUnitPrice = variant
-      ? variantListPrice || price
-      : money(product.originalPrice || product.price)
-    if (!(price > 0)) {
+    const price = priceBreakdown(
+      product,
+      storedPrice,
+      18,
+    )
+    if (!(price.basePrice > 0)) {
       const error = new Error('A product does not have a valid current price.')
       error.code = 'product-unavailable'
       throw error
     }
-    const unitPrice = Math.max(price, rawUnitPrice)
+    if (appliedTier) {
+      appliedTier = {
+        ...appliedTier,
+        unitPrice: price.basePrice,
+        baseUnitPrice: price.basePrice,
+      }
+    }
     return {
       productId: String(product.id),
       ...(variant ? { variantId: String(variant.id) } : {}),
@@ -174,17 +214,15 @@ function calculateOrderQuote({
       image: String(variant?.images?.[0] || variant?.image || product.image || '').slice(0, 2000),
       category: String(product.category || '').slice(0, 100),
       qty,
-      price,
-      unitPrice,
+      price: price.basePrice,
+      baseUnitPrice: price.basePrice,
+      unitPrice: price.basePrice,
+      unitGst: price.gstAmount,
       appliedTier,
-      discount: roundMoney(Math.max(0, rawUnitPrice - price) * qty),
-      taxRate: Number(product.taxRate ?? taxSettings.defaultRate ?? 0),
+      taxRate: price.taxRate,
     }
   })
 
-  const mrpSubtotal = roundMoney(
-    items.reduce((sum, item) => sum + item.unitPrice * item.qty, 0),
-  )
   const sellingSubtotal = roundMoney(
     items.reduce((sum, item) => sum + item.price * item.qty, 0),
   )
@@ -235,29 +273,22 @@ function calculateOrderQuote({
         ? 0
         : standardShipping,
   )
-  const taxRate = taxSettings.gstEnabled === false
-    ? 0
-    : Number(taxSettings.defaultRate || 0)
-  const tax = taxSettings.gstEnabled === false
-    ? 0
-    : roundMoney(
+  const tax = roundMoney(
         items.reduce((sum, item) => {
           const lineValue = item.price * item.qty
           const couponShare = sellingSubtotal
             ? (couponDiscount * lineValue) / sellingSubtotal
             : 0
           const taxable = Math.max(0, lineValue - couponShare)
-          const lineRate = Number(item.taxRate ?? taxRate)
-          return sum + (taxSettings.pricesIncludeTax
-            ? (taxable * lineRate) / (100 + lineRate || 100)
-            : (taxable * lineRate) / 100)
+          if (!couponDiscount) return sum + item.unitGst * item.qty
+          const lineRate = Number(item.taxRate || 0)
+          return sum + (taxable * lineRate) / 100
         }, 0),
       )
   const total = roundMoney(
     Math.max(
       0,
-      sellingSubtotal - couponDiscount + shipping +
-        (taxSettings.pricesIncludeTax ? 0 : tax),
+      sellingSubtotal - couponDiscount + shipping + tax,
     ),
   )
 
@@ -267,9 +298,8 @@ function calculateOrderQuote({
     couponId: coupon ? String(coupon.id || '') : '',
     couponCode: coupon ? String(couponCode || coupon.code || '').toUpperCase() : '',
     deliveryId: deliveryId === 'express' ? 'express' : 'standard',
-    mrpSubtotal,
+    pricingModel: GST_EXCLUSIVE_PRICING_MODEL,
     sellingSubtotal,
-    productDiscount: roundMoney(Math.max(0, mrpSubtotal - sellingSubtotal)),
     couponDiscount,
     shipping,
     tax,

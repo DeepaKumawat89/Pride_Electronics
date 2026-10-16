@@ -197,7 +197,6 @@ export default function CheckoutPage({
     coupons,
     user?.email,
     shippingSettings,
-    taxSettings,
   )
 
   const checkoutTotal = pricing.total
@@ -1257,7 +1256,7 @@ export default function CheckoutPage({
                             </span>
                           )}
                           <p className="mt-0.5 text-[11px] font-bold text-slate-500">
-                            Unit: {validPrice ? formatCurrency(unitPrice) : 'N/A'}
+                            Unit: {validPrice ? `${formatCurrency(unitPrice)} (Excl. GST)` : 'N/A'}
                             {applicableTier.isBulkTier && (
                               <span className="ml-1.5 rounded bg-[#e4f1e7] px-1.5 py-0.5 text-[9px] font-extrabold text-[#366643]">
                                 Bulk Tier ({applicableTier.tierLabel})
@@ -1306,7 +1305,7 @@ export default function CheckoutPage({
                             {validPrice ? formatCurrency(lineTotal) : 'N/A'}
                           </strong>
                           <span className={`text-[9px] font-bold ${available ? 'text-emerald-700' : 'text-red-600'}`}>
-                            {available ? 'In Stock' : 'Out of Stock'}
+                            (Excl. GST) · {available ? 'In Stock' : 'Out of Stock'}
                           </span>
                         </div>
                       </div>
@@ -1402,11 +1401,7 @@ export default function CheckoutPage({
 
               {/* Complete Price Breakdown (Indian Rupees ₹) */}
               <div className="mt-4 space-y-2.5 text-xs text-slate-600">
-                <SummaryRow label="Item Subtotal (Base Price)" value={formatCurrency(pricing.mrpSubtotal)} />
-
-                {pricing.productDiscount > 0 && (
-                  <SummaryRow label="Product Savings" value={`−${formatCurrency(pricing.productDiscount)}`} accent />
-                )}
+                <SummaryRow label="Item Subtotal (excluding GST)" value={formatCurrency(pricing.sellingSubtotal)} />
 
                 {pricing.couponDiscount > 0 && (
                   <SummaryRow label="Coupon Discount" value={`−${formatCurrency(pricing.couponDiscount)}`} accent />
@@ -1420,7 +1415,7 @@ export default function CheckoutPage({
 
                 <SummaryRow
                   label="GST / Tax Amount"
-                  value={`${formatCurrency(pricing.tax)} ${taxSettings.pricesIncludeTax ? '(Inclusive)' : '(Calculated)'}`}
+                  value={`${formatCurrency(pricing.tax)} (added)`}
                 />
               </div>
 

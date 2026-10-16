@@ -46,11 +46,13 @@ const quote = {
     sku: 'SENSOR-1',
     hsnCode: '85371000',
     qty: 1,
-    price: 1180,
+    price: 1000,
+    baseUnitPrice: 1000,
+    unitGst: 180,
     taxRate: 18,
   }],
-  sellingSubtotal: 1180,
-  productDiscount: 0,
+  pricingModel: 'gst-exclusive-v1',
+  sellingSubtotal: 1000,
   couponDiscount: 0,
   shipping: 0,
   tax: 180,
@@ -89,7 +91,7 @@ test('server invoice snapshot keeps seller GST and exact totals for a regular bu
 
   assert.equal(invoice.generatedBy, 'server')
   assert.equal(invoice.invoiceNumber, 'PE/26-27/00042')
-  assert.equal(invoice.schemaVersion, 3)
+  assert.equal(invoice.schemaVersion, 4)
   assert.equal(invoice.lineItems[0].hsnCode, '85371000')
   assert.equal(invoice.seller.gstin, settings.tax.gstin)
   assert.equal(invoice.buyer.gst, null)
@@ -99,6 +101,7 @@ test('server invoice snapshot keeps seller GST and exact totals for a regular bu
   assert.equal(invoice.tax.sgst, 90)
   assert.equal(invoice.tax.taxableValue, 1000)
   assert.equal(invoice.tax.totalGst, 180)
+  assert.equal(invoice.tax.pricesIncludeTax, false)
   assert.equal(invoice.amounts.total, 1180)
   assert.equal(validateInvoiceSnapshot(invoice), true)
 })

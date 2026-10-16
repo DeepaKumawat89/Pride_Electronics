@@ -10,19 +10,13 @@ export const isValidDecimalInput = (value, { allowZero = true } = {}) => {
   return Number.isFinite(amount) && (allowZero ? amount >= 0 : amount > 0)
 }
 
-export const isValidHsnCode = (value) => HSN_CODE_PATTERN.test(cleanText(value))
+export const isValidHsnCode = (value) => {
+  const text = cleanText(value)
+  return !text || HSN_CODE_PATTERN.test(text)
+}
 
 export const roundToTwoDecimals = (value) =>
   Math.round((Number(value) + Number.EPSILON) * 100) / 100
-
-export const calculateDiscountedPrice = (mrp, discount) =>
-  roundToTwoDecimals(Number(mrp) * (1 - Number(discount) / 100))
-
-export const normalizeDiscount = (value) => {
-  if (value === '' || value === null || value === undefined) return ''
-  const match = cleanText(value).match(/^(\d+(?:\.\d{1,2})?)(?:\s*%\s*(?:off)?)?$/i)
-  return match ? match[1] : cleanText(value)
-}
 
 export function validateProductForCreate(product = {}) {
   const errors = []
@@ -50,7 +44,7 @@ export function validateProductForCreate(product = {}) {
   ) {
     errors.push('Description must contain at least 20 characters.')
   }
-  if (!isValidHsnCode(product.hsnCode)) {
+  if (cleanText(product.hsnCode) && !isValidHsnCode(product.hsnCode)) {
     errors.push('HSN Code must contain exactly 8 numeric digits.')
   }
 
@@ -61,32 +55,18 @@ export function validateProductForCreate(product = {}) {
     errors.push('Technical specifications are required.')
   }
 
-  if (!isValidDecimalInput(product.originalPrice, { allowZero: false })) {
-    errors.push('MRP must be a positive INR amount with no more than 2 decimal places.')
-  }
-  if (!isValidDecimalInput(product.price)) {
-    errors.push('Selling price must be an INR amount with no more than 2 decimal places.')
-  }
-
-  const mrp = Number(product.originalPrice)
-  const sellingPrice = Number(product.price)
-  if (Number.isFinite(mrp) && Number.isFinite(sellingPrice) && sellingPrice > mrp) {
-    errors.push('Selling price cannot exceed MRP.')
+  if (!isValidDecimalInput(product.price, { allowZero: false })) {
+    errors.push('Selling price must be a positive INR amount with no more than 2 decimal places.')
   }
 
   if (!Number.isInteger(Number(product.stock)) || Number(product.stock) < 0) {
     errors.push('Stock must be a non-negative whole number.')
   }
-  if (product.discount !== '' && product.discount !== null && product.discount !== undefined) {
-    if (!isValidDecimalInput(product.discount) || Number(product.discount) > 100) {
-      errors.push('Discount must be between 0 and 100 with no more than 2 decimal places.')
-    } else if (
-      Number.isFinite(mrp) &&
-      Number.isFinite(sellingPrice) &&
-      sellingPrice !== calculateDiscountedPrice(mrp, product.discount)
-    ) {
-      errors.push('Selling price must match the price calculated from MRP and discount.')
-    }
+  if (product.pricingModel !== 'gst-exclusive-v1' || product.priceIncludesTax !== false) {
+    errors.push('Products must use GST-exclusive selling prices.')
+  }
+  if (!isValidDecimalInput(product.taxRate) || Number(product.taxRate) > 100) {
+    errors.push('GST must be between 0 and 100 with no more than 2 decimal places.')
   }
 
   return errors

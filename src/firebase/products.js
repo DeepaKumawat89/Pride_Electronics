@@ -22,11 +22,15 @@ const serializeProduct = (product) => {
 
 const serializeProductUpdate = (product) => {
   const serialized = serializeProduct(product)
-  if (
-    Object.prototype.hasOwnProperty.call(product, 'discount') &&
-    (product.discount === undefined || product.discount === '')
-  ) {
+  if (product.pricingModel === 'gst-exclusive-v1') {
+    serialized.originalPrice = deleteField()
     serialized.discount = deleteField()
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(product, 'hsnCode') &&
+    !String(product.hsnCode || '').trim()
+  ) {
+    serialized.hsnCode = ''
   }
   return serialized
 }

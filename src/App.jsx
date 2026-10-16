@@ -24,6 +24,9 @@ import {
   updateProductRatingStats,
 } from './firebase/products'
 import {
+  copyProductImages,
+  MAX_PRODUCT_IMAGES,
+  MIN_PRODUCT_IMAGES,
   removeProductImages,
   uploadProductImages,
   uploadVariantImages,
@@ -103,7 +106,10 @@ const prepareProductVariants = async (productId, variants = [], currentVariants 
     })
     return { variants: prepared, uploadedPaths, replacedPaths }
   } catch (error) {
-    await removeProductImages(uploadedPaths)
+    await removeProductImages(uploadedPaths, {
+      ignoreErrors: true,
+      skipAuthorizationCheck: true,
+    })
     throw error
   }
 }
@@ -202,8 +208,13 @@ function App() {
         setMarketingSettings(mergeSetting(initialMarketingSettings, value)), reportError),
       subscribeToSetting('shipping', (value) =>
         setShippingSettings(mergeSetting(initialShippingSettings, value)), reportError),
-      subscribeToSetting('invoice', (value) =>
-        setInvoiceSettings(mergeSetting(initialInvoiceSettings, value)), reportError),
+      subscribeToSetting('invoice', (value) => {
+        const settings = mergeSetting(initialInvoiceSettings, value)
+        setInvoiceSettings({
+          ...settings,
+          tax: { ...settings.tax, gstEnabled: true, pricesIncludeTax: false },
+        })
+      }, reportError),
       subscribeToSetting('storefront', (value) =>
         setAdminSettings((current) => ({
           ...current,
@@ -372,7 +383,12 @@ function App() {
   // Handlers for Admin actions on Products
   const handleAddProduct = async (newProduct) => {
     const { imageFiles = [], ...productFields } = newProduct
-    delete productFields.imageStoragePaths
+    const sourceImages = Array.isArray(productFields.images)
+      ? productFields.images.filter(Boolean)
+      : [productFields.image].filter(Boolean)
+    const sourceImagePaths = Array.isArray(productFields.imageStoragePaths)
+      ? productFields.imageStoragePaths.slice(0, sourceImages.length)
+      : []
     const productId = createProductId()
     let uploadedImages = { paths: [], urls: [] }
     let preparedVariants = { variants: [], uploadedPaths: [], replacedPaths: [] }
@@ -380,17 +396,28 @@ function App() {
     try {
       if (imageFiles.length) {
         uploadedImages = await uploadProductImages(productId, imageFiles)
+      } else if (sourceImages.length) {
+        uploadedImages = await copyProductImages(
+          productId,
+          sourceImages,
+          sourceImagePaths,
+        )
       }
       preparedVariants = await prepareProductVariants(
         productId,
         productFields.variants,
       )
-      const existingImages = Array.isArray(productFields.images)
-        ? productFields.images.filter(Boolean)
-        : [productFields.image].filter(Boolean)
       const images = uploadedImages.urls.length
         ? uploadedImages.urls
-        : existingImages
+        : sourceImages
+      if (
+        images.length < MIN_PRODUCT_IMAGES ||
+        images.length > MAX_PRODUCT_IMAGES
+      ) {
+        throw new Error(
+          `A product must have between ${MIN_PRODUCT_IMAGES} and ${MAX_PRODUCT_IMAGES} unique images.`,
+        )
+      }
       const openingStock = preparedVariants.variants.length
         ? preparedVariants.variants.reduce((total, variant) => total + Number(variant.stock || 0), 0)
         : Math.max(0, Number(productFields.stock) || 0)
@@ -404,7 +431,9 @@ function App() {
         id: productId,
         image: images[0] || '',
         images,
-        imageStoragePaths: uploadedImages.paths,
+        imageStoragePaths: uploadedImages.paths.length
+          ? uploadedImages.paths
+          : images.map(() => ''),
         videos: [],
         stock: openingStock,
         reservedStock,
@@ -430,8 +459,14 @@ function App() {
       )
       return product
     } catch (error) {
-      await removeProductImages(uploadedImages.paths)
-      await removeProductImages(preparedVariants.uploadedPaths)
+      await removeProductImages(uploadedImages.paths, {
+        ignoreErrors: true,
+        skipAuthorizationCheck: true,
+      })
+      await removeProductImages(preparedVariants.uploadedPaths, {
+        ignoreErrors: true,
+        skipAuthorizationCheck: true,
+      })
       throw error
     }
   }
@@ -444,53 +479,65 @@ function App() {
     if (!currentProduct) throw new Error('Product not found.')
     let uploadedImages = { paths: [], urls: [] }
     let preparedVariants = { variants: [], uploadedPaths: [], replacedPaths: [] }
-    if (imageFiles.length) {
-      uploadedImages = await uploadProductImages(currentProduct.id, imageFiles)
-    }
-    preparedVariants = await prepareProductVariants(
-      currentProduct.id,
-      productFields.variants,
-      currentProduct.variants || [],
-    )
-    const retainedImages = Array.isArray(productFields.images)
-      ? productFields.images.filter(Boolean)
-      : [productFields.image].filter(Boolean)
-    const retainedImagePaths = Array.isArray(productFields.imageStoragePaths)
-      ? productFields.imageStoragePaths.filter(Boolean)
-      : []
-    const images = [...retainedImages, ...uploadedImages.urls]
-    const imageStoragePaths = [...retainedImagePaths, ...uploadedImages.paths]
-    const mediaFields = {
-      image: images[0] || '',
-      images,
-      imageStoragePaths,
-    }
-    const removedImagePaths = (currentProduct.imageStoragePaths || []).filter(
-      (path) => !retainedImagePaths.includes(path),
-    )
-    const hasVariants = preparedVariants.variants.length > 0
-    const reservedStock = hasVariants
-      ? preparedVariants.variants.reduce((total, variant) => total + Number(variant.reservedStock || 0), 0)
-      : Number(currentProduct.reservedStock || 0)
-    const requestedStock = Math.max(
-      reservedStock,
-      hasVariants
-        ? preparedVariants.variants.reduce((total, variant) => total + Number(variant.stock || 0), 0)
-        : Number(productFields.stock) || 0,
-    )
-    const updatedProducts = productsList.map((product) =>
-      product.id === productFields.id
-        ? {
-            ...productFields,
-            variants: preparedVariants.variants,
-            ...mediaFields,
-            videos: [],
-            stock: currentProduct.stock,
-            reservedStock,
-          }
-        : product,
-    )
     try {
+      if (imageFiles.length) {
+        uploadedImages = await uploadProductImages(currentProduct.id, imageFiles)
+      }
+      preparedVariants = await prepareProductVariants(
+        currentProduct.id,
+        productFields.variants,
+        currentProduct.variants || [],
+      )
+      const retainedImages = Array.isArray(productFields.images)
+        ? productFields.images.filter(Boolean)
+        : [productFields.image].filter(Boolean)
+      const retainedImagePaths = Array.isArray(productFields.imageStoragePaths)
+        ? productFields.imageStoragePaths.slice(0, retainedImages.length)
+        : []
+      const images = [...retainedImages, ...uploadedImages.urls]
+      const imageStoragePaths = [
+        ...retainedImages.map((_, index) => retainedImagePaths[index] || ''),
+        ...uploadedImages.paths,
+      ]
+      if (
+        images.length < MIN_PRODUCT_IMAGES ||
+        images.length > MAX_PRODUCT_IMAGES
+      ) {
+        throw new Error(
+          `A product must have between ${MIN_PRODUCT_IMAGES} and ${MAX_PRODUCT_IMAGES} unique images.`,
+        )
+      }
+      const mediaFields = {
+        image: images[0] || '',
+        images,
+        imageStoragePaths,
+      }
+      const retainedPathSet = new Set(retainedImagePaths.filter(Boolean))
+      const removedImagePaths = (currentProduct.imageStoragePaths || [])
+        .filter(Boolean)
+        .filter((path) => !retainedPathSet.has(path))
+      const hasVariants = preparedVariants.variants.length > 0
+      const reservedStock = hasVariants
+        ? preparedVariants.variants.reduce((total, variant) => total + Number(variant.reservedStock || 0), 0)
+        : Number(currentProduct.reservedStock || 0)
+      const requestedStock = Math.max(
+        reservedStock,
+        hasVariants
+          ? preparedVariants.variants.reduce((total, variant) => total + Number(variant.stock || 0), 0)
+          : Number(productFields.stock) || 0,
+      )
+      const updatedProducts = productsList.map((product) =>
+        product.id === productFields.id
+          ? {
+              ...productFields,
+              variants: preparedVariants.variants,
+              ...mediaFields,
+              videos: [],
+              stock: currentProduct.stock,
+              reservedStock,
+            }
+          : product,
+      )
       let savedProduct
       if (hasVariants || requestedStock === Number(currentProduct.stock)) {
         savedProduct = await saveProduct(
@@ -522,12 +569,24 @@ function App() {
           product.id === savedProduct.id ? savedProduct : product,
         ),
       )
-      await removeProductImages(removedImagePaths)
-      await removeProductImages(preparedVariants.replacedPaths)
+      try {
+        await removeProductImages(removedImagePaths)
+        await removeProductImages(preparedVariants.replacedPaths)
+      } catch (cleanupError) {
+        setProductsError(
+          cleanupError.message || 'The product was saved, but an old image could not be removed.',
+        )
+      }
       return savedProduct
     } catch (error) {
-      await removeProductImages(uploadedImages.paths)
-      await removeProductImages(preparedVariants.uploadedPaths)
+      await removeProductImages(uploadedImages.paths, {
+        ignoreErrors: true,
+        skipAuthorizationCheck: true,
+      })
+      await removeProductImages(preparedVariants.uploadedPaths, {
+        ignoreErrors: true,
+        skipAuthorizationCheck: true,
+      })
       throw error
     }
   }
@@ -535,11 +594,17 @@ function App() {
   const handleDeleteProduct = async (productId) => {
     const product = productsList.find((item) => item.id === productId)
     await removeProduct(productId)
-    await removeProductImages(product?.imageStoragePaths)
-    await removeProductImages(
-      (product?.variants || []).flatMap((variant) => variant.imageStoragePaths || []),
-    )
     setProductsList((prev) => prev.filter((p) => p.id !== productId))
+    try {
+      await removeProductImages(product?.imageStoragePaths)
+      await removeProductImages(
+        (product?.variants || []).flatMap((variant) => variant.imageStoragePaths || []),
+      )
+    } catch (cleanupError) {
+      setProductsError(
+        cleanupError.message || 'The product was deleted, but an image could not be removed.',
+      )
+    }
   }
 
   // Handler for Admin action on Order Status

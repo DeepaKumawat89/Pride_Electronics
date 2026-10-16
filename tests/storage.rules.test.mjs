@@ -51,10 +51,26 @@ test('only an admin claim can mutate product images', async () => {
   const admin = testEnvironment
     .authenticatedContext('UID_ADMIN', { admin: true })
     .storage(bucket)
-  const productPath = 'products/product-1/photo.png'
+  const productPath = 'products/product-1/photo.webp'
+  const productMetadata = {
+    contentType: 'image/webp',
+    customMetadata: { adminUid: 'UID_ADMIN' },
+  }
 
-  await assertFails(uploadBytes(ref(user, productPath), image, metadata))
-  await assertSucceeds(uploadBytes(ref(admin, productPath), image, metadata))
+  await assertFails(uploadBytes(ref(user, productPath), image, productMetadata))
+  await assertFails(
+    uploadBytes(ref(admin, productPath), image, {
+      contentType: 'image/webp',
+      customMetadata: { adminUid: 'UID_OTHER' },
+    }),
+  )
+  await assertFails(
+    uploadBytes(ref(admin, 'products/product-1/photo.png'), image, {
+      contentType: 'image/png',
+      customMetadata: { adminUid: 'UID_ADMIN' },
+    }),
+  )
+  await assertSucceeds(uploadBytes(ref(admin, productPath), image, productMetadata))
   await assertSucceeds(deleteObject(ref(admin, productPath)))
 })
 

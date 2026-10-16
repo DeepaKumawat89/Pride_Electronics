@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { hasValidPrice, parsePrice } from '../utils/currency'
+import { hasValidPrice } from '../utils/currency'
 import {
   productForVariant,
   productHasVariants,
@@ -44,7 +44,8 @@ export function useCart(initialProduct, liveProducts = null) {
         product: liveProduct,
         quantity,
         priceChanged:
-          parsePrice(item.product.price) !== parsePrice(liveProduct.price),
+          calculateProductUnitPrice(item.product, quantity) !==
+          calculateProductUnitPrice(liveProduct, quantity),
         quantityAdjusted: quantity !== item.quantity,
       }]
     }),

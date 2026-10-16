@@ -69,6 +69,9 @@ test('validatePricingTiers validates ascending minQty order and positive unit pr
 test('getApplicablePricingTier resolves exact unit prices per Mouser example', () => {
   const sampleProduct = {
     price: 54.98,
+    pricingModel: 'gst-exclusive-v1',
+    priceIncludesTax: false,
+    taxRate: 18,
     enableBulkPricing: true,
     pricingTiers: [
       { minQty: 1, unitPrice: 54.98 },
@@ -110,6 +113,9 @@ test('calculateCartPricing correctly applies bulk pricing to cart subtotals', ()
     id: 'prod-ic-7805',
     name: 'UA78M05IDCYR',
     price: 54.98,
+    pricingModel: 'gst-exclusive-v1',
+    priceIncludesTax: false,
+    taxRate: 18,
     enableBulkPricing: true,
     pricingTiers: [
       { minQty: 1, unitPrice: 54.98 },

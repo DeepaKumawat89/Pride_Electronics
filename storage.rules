@@ -15,8 +15,11 @@ service firebase.storage {
     match /products/{productId}/{fileName} {
       allow read: if true;
       allow create, update: if isAdmin() &&
+        productId.matches('^[A-Za-z0-9_-]{1,128}$') &&
         request.resource.size < 10 * 1024 * 1024 &&
-        request.resource.contentType.matches('image/.*');
+        request.resource.contentType == 'image/webp' &&
+        fileName.matches('^[A-Za-z0-9_-]{1,200}[.]webp$') &&
+        request.resource.metadata.adminUid == request.auth.uid;
       allow delete: if isAdmin();
     }
 

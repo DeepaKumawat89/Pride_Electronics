@@ -1,6 +1,5 @@
 import { productForVariant, variantCartKey } from '../../utils/productVariants.js'
 import { getApplicablePricingTier } from '../../utils/productPricing.js'
-import { parsePrice } from './currency.js'
 
 const validId = (value) => /^[a-zA-Z0-9_-]{1,100}$/.test(String(value || ''))
 
@@ -82,7 +81,9 @@ export const checkoutItemRequest = ({ product, quantity }) => {
     qty,
     price: tierInfo.unitPrice,
     unitPrice: tierInfo.unitPrice,
-    basePrice: parsePrice(product.price),
+    basePrice: tierInfo.baseUnitPrice,
+    gstAmount: tierInfo.unitGst,
+    taxRate: tierInfo.taxRate,
     productName: String(product.name || ''),
     image: String(product.image || ''),
     variant: String(product.selectedVariantName || product.variant || ''),

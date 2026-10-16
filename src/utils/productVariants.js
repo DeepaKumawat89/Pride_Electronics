@@ -1,3 +1,5 @@
+import { usesGstExclusivePricing } from './productPricing.js'
+
 const cleanText = (value) => String(value ?? '').trim()
 const money = (value) => {
   const parsed = Number(String(value ?? '').replace(/[^\d.-]/g, ''))
@@ -63,20 +65,17 @@ export function productForVariant(product, variantId) {
   const variant = variants.find((item) => String(item.id) === String(variantId))
   if (!variant) return null
 
-  const listPrice = money(variant.price)
-  const discountPrice = money(variant.discountPrice)
-  const sellingPrice = discountPrice > 0 && discountPrice <= listPrice
-    ? discountPrice
-    : listPrice
+  const variantPrice = money(variant.price)
+  const legacyDiscountPrice = money(variant.discountPrice)
+  const sellingPrice = !usesGstExclusivePricing(product) &&
+      legacyDiscountPrice > 0 && legacyDiscountPrice <= variantPrice
+    ? legacyDiscountPrice
+    : variantPrice
   const images = variant.images.length
     ? variant.images
     : Array.isArray(product.images) && product.images.length
       ? product.images
       : [product.image].filter(Boolean)
-  const discount = listPrice > sellingPrice
-    ? `${Math.round(((listPrice - sellingPrice) / listPrice) * 100)}% off`
-    : ''
-
   return {
     ...product,
     selectedVariantId: variant.id,
@@ -86,8 +85,6 @@ export function productForVariant(product, variantId) {
     sku: variant.sku || product.sku,
     modelNumber: variant.modelNumber || product.modelNumber,
     price: sellingPrice,
-    originalPrice: listPrice || sellingPrice,
-    discount,
     stock: getVariantAvailableStock(variant),
     reservedStock: variant.reservedStock,
     image: images[0] || product.image || '',

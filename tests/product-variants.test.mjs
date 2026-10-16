@@ -18,6 +18,9 @@ const product = {
   name: 'Proximity Sensor',
   sku: 'SENSOR',
   price: 999,
+  pricingModel: 'gst-exclusive-v1',
+  priceIncludesTax: false,
+  taxRate: 18,
   stock: 8,
   reservedStock: 1,
   images: ['base.webp'],
@@ -31,7 +34,6 @@ const product = {
       sku: 'SENSOR-M12',
       modelNumber: 'PRX-M12',
       price: 700,
-      discountPrice: 650,
       stock: 5,
       reservedStock: 1,
       images: ['m12.webp'],
@@ -54,8 +56,7 @@ const product = {
 test('selected variant produces an effective product without changing the base product', () => {
   const selected = productForVariant(product, 'm12')
   assert.equal(selected.selectedVariantId, 'm12')
-  assert.equal(selected.price, 650)
-  assert.equal(selected.originalPrice, 700)
+  assert.equal(selected.price, 700)
   assert.equal(selected.stock, 4)
   assert.equal(selected.image, 'm12.webp')
   assert.equal(selected.modelNumber, 'PRX-M12')

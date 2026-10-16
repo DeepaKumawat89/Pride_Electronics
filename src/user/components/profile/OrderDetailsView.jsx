@@ -197,6 +197,11 @@ export default function OrderDetailsView({
   const [invoiceDownloading, setInvoiceDownloading] = useState(false)
   const [invoiceMessage, setInvoiceMessage] = useState({ tone: '', text: '' })
   const financials = getFinancials(order, invoiceSettings.tax)
+  const pricesExcludeTax = order.pricingModel === 'gst-exclusive-v1' || (
+    Number(order.invoice?.schemaVersion || 0) >= 4 &&
+    order.invoice?.tax?.pricesIncludeTax === false
+  )
+  const pricesIncludeTax = financials.gstBreakdown?.pricesIncludeTax ?? !pricesExcludeTax
   const delivery = getAddressParts(address)
   const progress = getProgress(order)
   const delivered = order.status === 'Delivered'
@@ -322,7 +327,7 @@ export default function OrderDetailsView({
             {(order.items || []).map((item, index) => {
               const quantity = Number(item.qty || 1)
               const unitPrice = parsePrice(item.price)
-              const total = Math.max(0, unitPrice * quantity - parsePrice(item.discount || 0))
+              const total = Math.max(0, unitPrice * quantity)
               return (
                 <div key={`${item.productName}-${index}`} className="grid gap-4 py-5 first:pt-1 sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:items-center">
                   <img src={item.image} alt={item.productName} className="size-19 rounded-xl object-cover" />
@@ -333,7 +338,7 @@ export default function OrderDetailsView({
                     )}
                     <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[9px] text-slate-500">
                       <span>Quantity: <strong className="text-slate-700">{quantity}</strong></span>
-                      <span>Unit price: <strong className="text-slate-700">{formatCurrency(unitPrice)}</strong></span>
+                      <span>Unit price: <strong className="text-slate-700">{formatCurrency(unitPrice)}{pricesExcludeTax ? ' (Excl. GST)' : ''}</strong></span>
                       {(item.appliedTier || item.tierLabel) && (
                         <span className="inline-flex rounded bg-[#e4f1e7] px-2 py-0.5 text-[8px] font-extrabold text-[#366643]">
                           Bulk Tier: {item.tierLabel || `${item.appliedTier?.minQty}+ units`} (@ {formatCurrency(item.appliedTier?.unitPrice || unitPrice)})
@@ -342,7 +347,7 @@ export default function OrderDetailsView({
                     </div>
                   </div>
                   <div className="sm:text-right">
-                    <span className="block text-[8px] font-bold uppercase tracking-wider text-slate-400">Total price</span>
+                    <span className="block text-[8px] font-bold uppercase tracking-wider text-slate-400">Total price{pricesExcludeTax ? ' (Excl. GST)' : ''}</span>
                     <strong className="mt-1 block text-sm text-slate-950">{formatCurrency(total)}</strong>
                   </div>
                 </div>
@@ -380,8 +385,8 @@ export default function OrderDetailsView({
           <div className="ml-auto max-w-md">
             <SectionTitle icon={ReceiptText}>Order Summary</SectionTitle>
             <div className="mt-3">
-              <SummaryRow label="Item total" value={formatCurrency(financials.itemTotal)} />
-              <SummaryRow label="Discount" value={`− ${formatCurrency(financials.discount)}`} muted />
+              <SummaryRow label={`Item total${pricesExcludeTax ? ' (Excl. GST)' : ''}`} value={formatCurrency(financials.itemTotal)} />
+              <SummaryRow label="Coupon discount" value={`− ${formatCurrency(financials.discount)}`} muted />
               <SummaryRow label="Delivery charges" value={financials.delivery ? formatCurrency(financials.delivery) : 'FREE'} muted={!financials.delivery} />
               {financials.gstBreakdown?.supplyType === 'intra-state' ? (
                 <>
@@ -391,7 +396,7 @@ export default function OrderDetailsView({
               ) : financials.gstBreakdown?.supplyType === 'inter-state' ? (
                 <SummaryRow label="IGST" value={formatCurrency(financials.gstBreakdown.igst)} />
               ) : (
-                <SummaryRow label={`GST / Taxes (${invoiceSettings.tax.pricesIncludeTax ? 'included' : 'added'})`} value={formatCurrency(financials.tax)} />
+                <SummaryRow label={`GST / Taxes (${pricesIncludeTax ? 'included' : 'added'})`} value={formatCurrency(financials.tax)} />
               )}
               <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-4">
                 <strong className="text-sm text-slate-900">Grand Total</strong>

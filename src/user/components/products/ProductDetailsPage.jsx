@@ -17,14 +17,13 @@ import {
   X,
   Zap,
 } from 'lucide-react'
-import { formatCurrency, formatDiscount, hasValidPrice, parsePrice } from '../../utils/currency'
+import { formatCurrency, hasValidPrice } from '../../utils/currency'
 import {
   getDeliveryEstimate,
   getProductDetailInformation,
 } from '../../utils/productDetails'
 import ProductCard from './ProductCard'
 import ProductReviews from './ProductReviews'
-import { initialInvoiceSettings } from '../../../data/invoice'
 import { getDisplaySpecifications } from '../../../utils/productSpecifications'
 import {
   getProductVariants,
@@ -32,6 +31,7 @@ import {
 } from '../../../utils/productVariants'
 import {
   getApplicablePricingTier,
+  getProductBasePrice,
   normalizePricingTiers,
 } from '../../../utils/productPricing'
 
@@ -102,7 +102,7 @@ function TechnicalSpecificationsSection({ specifications }) {
   )
 }
 
-export default function ProductDetailsPage({ product, relatedProducts = [], deliveryAddress, likedIds = [], reviews, onBack, onLike, onAdd, onBuyNow, onViewProduct, onViewAllReviews, taxSettings = initialInvoiceSettings.tax }) {
+export default function ProductDetailsPage({ product, relatedProducts = [], deliveryAddress, likedIds = [], reviews, onBack, onLike, onAdd, onBuyNow, onViewProduct, onViewAllReviews }) {
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [])
@@ -147,6 +147,10 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
   const priceAvailable = hasValidPrice(applicableUnitPrice)
   const hasBulkPricing = Boolean(displayProduct.enableBulkPricing) && Array.isArray(displayProduct.pricingTiers) && displayProduct.pricingTiers.length > 0
   const pricingTiers = normalizePricingTiers(displayProduct.pricingTiers)
+    .map((tier) => ({
+      ...tier,
+      unitPrice: getProductBasePrice(displayProduct, tier.unitPrice),
+    }))
 
   const liked = likedIds.includes(product.id)
   const detailInformation = getProductDetailInformation(displayProduct)
@@ -263,7 +267,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                       return (
                         <button key={variant.id} type="button" disabled={!available} onClick={() => { setSelectedVariantId(variant.id); setActiveImageIndex(0); setQuantity(1) }} className={`rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${selected ? 'border-[#397a4a] bg-[#eef6ef] shadow-sm' : 'border-slate-200 bg-white hover:border-[#9bcaa6]'}`}>
                           <strong className="block text-[11px] text-slate-900">{variant.name}</strong>
-                          <span className="mt-1 block text-[9px] font-bold text-[#397a4a]">{formatCurrency(parsePrice(variantProduct?.price))} · {available} available</span>
+                          <span className="mt-1 block text-[9px] font-bold text-[#397a4a]">{formatCurrency(getProductBasePrice(variantProduct || product))} (Excl. GST) · {available} available</span>
                         </button>
                       )
                     })}
@@ -286,17 +290,9 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
 
               <div className="relative mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-y border-slate-100 py-3.5">
                 <strong className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">
-                  {priceAvailable ? `${formatCurrency(applicableUnitPrice)} / piece` : 'Price unavailable'}
+                  {priceAvailable ? formatCurrency(applicableUnitPrice) : 'Price unavailable'}
                 </strong>
-                <span className="text-sm font-semibold text-slate-400 line-through">
-                  {formatCurrency(parsePrice(displayProduct.originalPrice))}
-                </span>
-                {displayProduct.discount && (
-                  <span className="rounded-full bg-[#e4f1e7] px-2.5 py-1 text-[10px] font-extrabold text-[#366643]">
-                    {formatDiscount(displayProduct.discount)}
-                  </span>
-                )}
-
+                {priceAvailable && <span className="text-[10px] font-bold text-slate-400">(Excl. GST)</span>}
                 {hasBulkPricing && (
                   <button
                     type="button"
@@ -309,7 +305,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
 
                 {quantity > 1 && priceAvailable && (
                   <p className="w-full text-xs font-extrabold text-[#397a4a]">
-                    Total: {formatCurrency(applicableUnitPrice * quantity)}{' '}
+                    Total: {formatCurrency(applicableUnitPrice * quantity)} (Excl. GST){' '}
                     <span className="font-semibold text-slate-500">
                       ({formatCurrency(applicableUnitPrice)} × {quantity})
                     </span>
@@ -320,10 +316,6 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                     )}
                   </p>
                 )}
-
-                <p className="w-full text-[10px] font-bold text-slate-400">
-                  {taxSettings.pricesIncludeTax ? 'Inclusive of all taxes' : 'Taxes calculated at checkout'}
-                </p>
 
                 {showBulkPopover && hasBulkPricing && (
                   <div
@@ -354,7 +346,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                         <thead className="bg-[#f3f7f2] text-[9px] font-extrabold uppercase text-slate-500">
                           <tr>
                             <th className="px-3 py-2">Quantity</th>
-                            <th className="px-3 py-2 text-right">Price / Piece</th>
+                            <th className="px-3 py-2 text-right">Selling Price (Excl. GST)</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">

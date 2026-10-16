@@ -15,7 +15,7 @@ export const initialInvoiceSettings = {
     state: 'Maharashtra',
     stateCode: '27',
     defaultRate: 18,
-    pricesIncludeTax: true,
+    pricesIncludeTax: false,
   },
   numbering: {
     prefix: 'PE',

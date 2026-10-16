@@ -1,5 +1,51 @@
 import { parsePrice } from '../user/utils/currency.js'
 
+export const GST_EXCLUSIVE_PRICING_MODEL = 'gst-exclusive-v1'
+
+export const roundMoney = (value) =>
+  Math.round((Number(value) + Number.EPSILON) * 100) / 100
+
+export const getProductTaxRate = (product = {}, fallbackRate = 18) => {
+  const value = Number(product.taxRate ?? fallbackRate)
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0
+}
+
+export const usesGstExclusivePricing = (product = {}) =>
+  product.pricingModel === GST_EXCLUSIVE_PRICING_MODEL ||
+  product.priceIncludesTax === false
+
+export function getPriceBreakdown(product = {}, storedPrice = product.price, fallbackRate = 18) {
+  const price = parsePrice(storedPrice)
+  const taxRate = getProductTaxRate(product, fallbackRate)
+
+  if (usesGstExclusivePricing(product)) {
+    const basePrice = roundMoney(price)
+    const gstAmount = roundMoney(basePrice * taxRate / 100)
+    return {
+      basePrice,
+      gstAmount,
+      finalPrice: roundMoney(basePrice + gstAmount),
+      taxRate,
+    }
+  }
+
+  // Legacy products stored the customer-facing price as tax-inclusive.
+  // Preserve that payable price until an admin explicitly edits the product.
+  const finalPrice = roundMoney(price)
+  const basePrice = taxRate > 0
+    ? roundMoney(finalPrice * 100 / (100 + taxRate))
+    : finalPrice
+  return {
+    basePrice,
+    gstAmount: roundMoney(finalPrice - basePrice),
+    finalPrice,
+    taxRate,
+  }
+}
+
+export const getProductBasePrice = (product = {}, storedPrice = product.price, fallbackRate = 18) =>
+  getPriceBreakdown(product, storedPrice, fallbackRate).basePrice
+
 /**
  * Normalizes pricing tiers array.
  * Each tier object: { minQty: number, unitPrice: number }
@@ -36,14 +82,18 @@ export function getDefaultSamplePricingTiers(basePrice = 0) {
  */
 export function getApplicablePricingTier(product = {}, quantity = 1) {
   const qty = Math.max(1, Math.floor(Number(quantity) || 1))
-  const basePrice = parsePrice(product.price)
+  const storedBasePrice = parsePrice(product.price)
   const isBulkEnabled = Boolean(product.enableBulkPricing)
   const tiers = normalizePricingTiers(product.pricingTiers)
 
   if (!isBulkEnabled || tiers.length === 0) {
+    const price = getPriceBreakdown(product, storedBasePrice)
     return {
       minQty: 1,
-      unitPrice: basePrice,
+      unitPrice: price.basePrice,
+      baseUnitPrice: price.basePrice,
+      unitGst: price.gstAmount,
+      taxRate: price.taxRate,
       isBulkTier: false,
       tierIndex: -1,
       tierLabel: null,
@@ -64,19 +114,31 @@ export function getApplicablePricingTier(product = {}, quantity = 1) {
   }
 
   if (matchingTier) {
+    const price = getPriceBreakdown(product, matchingTier.unitPrice)
     return {
       minQty: matchingTier.minQty,
-      unitPrice: matchingTier.unitPrice,
+      unitPrice: price.basePrice,
+      baseUnitPrice: price.basePrice,
+      unitGst: price.gstAmount,
+      taxRate: price.taxRate,
       isBulkTier: matchingTier.minQty > 1,
       tierIndex: matchingIndex,
       tierLabel: `${matchingTier.minQty.toLocaleString('en-IN')}+ units`,
-      appliedTier: { minQty: matchingTier.minQty, unitPrice: matchingTier.unitPrice },
+      appliedTier: {
+        minQty: matchingTier.minQty,
+        unitPrice: price.basePrice,
+        baseUnitPrice: price.basePrice,
+      },
     }
   }
 
+  const price = getPriceBreakdown(product, storedBasePrice)
   return {
     minQty: 1,
-    unitPrice: basePrice,
+    unitPrice: price.basePrice,
+    baseUnitPrice: price.basePrice,
+    unitGst: price.gstAmount,
+    taxRate: price.taxRate,
     isBulkTier: false,
     tierIndex: -1,
     tierLabel: null,

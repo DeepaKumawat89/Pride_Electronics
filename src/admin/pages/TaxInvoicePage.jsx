@@ -24,7 +24,10 @@ export default function TaxInvoicePage({ settings, onUpdate }) {
   const [saved, setSaved] = useState(false)
   const update = (section, patch) => setForm((current) => ({ ...current, [section]: { ...current[section], ...patch } }))
   const save = () => {
-    onUpdate(copySettings(form))
+    onUpdate({
+      ...copySettings(form),
+      tax: { ...form.tax, gstEnabled: true, pricesIncludeTax: false },
+    })
     setSaved(true)
     window.setTimeout(() => setSaved(false), 1800)
   }
@@ -35,7 +38,7 @@ export default function TaxInvoicePage({ settings, onUpdate }) {
 
       <div className="grid gap-5 xl:grid-cols-2">
         <Section icon={ReceiptText} title="Tax configuration" description="GST calculation and registration information.">
-          <div className="flex flex-wrap gap-5"><Toggle label="GST enabled" checked={form.tax.gstEnabled} onChange={(gstEnabled) => update('tax', { gstEnabled })} /><Toggle label="Prices include GST" checked={form.tax.pricesIncludeTax} onChange={(pricesIncludeTax) => update('tax', { pricesIncludeTax })} /></div>
+          <p className="text-[10px] font-bold text-slate-600">Product selling prices exclude GST. The applicable product GST is calculated and added automatically.</p>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <Field label="GSTIN"><input className={inputClass} value={form.tax.gstin} onChange={(e) => update('tax', { gstin: e.target.value.toUpperCase() })} /></Field>
             <Field label="Default GST rate (%)"><input type="number" min="0" max="100" step="0.01" className={inputClass} value={form.tax.defaultRate} onChange={(e) => update('tax', { defaultRate: Number(e.target.value) })} /></Field>

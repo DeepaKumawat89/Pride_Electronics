@@ -285,17 +285,72 @@ test('admin product creates require complete fields and valid INR pricing', asyn
     category: 'Electronics',
     subcategoryId: 'SUBCATEGORY_1',
     subcategory: 'Accessories',
-    originalPrice: 1000.5,
     price: 900.45,
-    discount: 10,
+    pricingModel: 'gst-exclusive-v1',
+    priceIncludesTax: false,
+    taxRate: 18,
     stock: 5,
     modelNumber: 'MODEL-1',
     hsnCode: '85371000',
     specs: ['Power: 10 W'],
+    image: 'https://example.com/product.webp',
+    images: ['https://example.com/product.webp'],
+    imageStoragePaths: [''],
   }
 
   await assertSucceeds(
     setDoc(doc(database, 'products', 'VALID_PRODUCT'), validProduct),
+  )
+  await assertFails(
+    setDoc(doc(database, 'products', 'LEGACY_PRICE_FIELDS'), {
+      ...validProduct,
+      originalPrice: 1000,
+      discount: 10,
+    }),
+  )
+  await assertFails(
+    setDoc(doc(database, 'products', 'TAX_INCLUDED_PRICE'), {
+      ...validProduct,
+      priceIncludesTax: true,
+    }),
+  )
+  await assertFails(
+    setDoc(doc(database, 'products', 'NO_IMAGES'), {
+      ...validProduct,
+      image: '',
+      images: [],
+      imageStoragePaths: [],
+    }),
+  )
+  await assertFails(
+    setDoc(doc(database, 'products', 'TOO_MANY_IMAGES'), {
+      ...validProduct,
+      images: [
+        'https://example.com/1.webp',
+        'https://example.com/2.webp',
+        'https://example.com/3.webp',
+        'https://example.com/4.webp',
+      ],
+      image: 'https://example.com/1.webp',
+      imageStoragePaths: ['', '', '', ''],
+    }),
+  )
+  await assertFails(
+    setDoc(doc(database, 'products', 'MISALIGNED_IMAGES'), {
+      ...validProduct,
+      images: [
+        'https://example.com/1.webp',
+        'https://example.com/2.webp',
+      ],
+      image: 'https://example.com/1.webp',
+      imageStoragePaths: [''],
+    }),
+  )
+  await assertFails(
+    setDoc(doc(database, 'products', 'WRONG_IMAGE_PATH'), {
+      ...validProduct,
+      imageStoragePaths: ['products/ANOTHER_PRODUCT/photo.webp'],
+    }),
   )
   await assertFails(
     setDoc(doc(database, 'products', 'MISSING_SUBCATEGORY'), {
@@ -310,7 +365,7 @@ test('admin product creates require complete fields and valid INR pricing', asyn
       hsnCode: '85371A00',
     }),
   )
-  await assertFails(
+  await assertSucceeds(
     setDoc(doc(database, 'products', 'MISSING_HSN'),
       Object.fromEntries(
         Object.entries(validProduct).filter(([key]) => key !== 'hsnCode'),
@@ -352,7 +407,7 @@ test('authorized admins can add and update a valid HSN code on legacy products',
   await assertSucceeds(
     setDoc(legacyProduct, { hsnCode: '85423900', updatedAt: '2026-10-15T00:01:00.000Z' }, { merge: true }),
   )
-  await assertFails(
+  await assertSucceeds(
     setDoc(legacyProduct, { hsnCode: '', updatedAt: '2026-10-15T00:02:00.000Z' }, { merge: true }),
   )
 })
@@ -383,10 +438,16 @@ test('authorized admins can normalize legacy pricing while adding an HSN code', 
     setDoc(
       doc(database, 'products', 'LEGACY_PRICING_PRODUCT'),
       {
-        originalPrice: 50,
         price: 50,
+        pricingModel: 'gst-exclusive-v1',
+        priceIncludesTax: false,
+        taxRate: 18,
+        originalPrice: deleteField(),
         discount: deleteField(),
         hsnCode: '85371000',
+        image: 'https://example.com/product.webp',
+        images: ['https://example.com/product.webp'],
+        imageStoragePaths: [''],
         updatedAt: '2026-10-15T00:00:00.000Z',
       },
       { merge: true },

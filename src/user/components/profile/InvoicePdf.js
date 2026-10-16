@@ -110,7 +110,7 @@ export async function createInvoicePdfDocument(
   const serverInvoice = order.invoice
   if (
     serverInvoice?.generatedBy !== 'server' ||
-    ![1, 2, 3].includes(serverInvoice?.schemaVersion)
+    ![1, 2, 3, 4].includes(serverInvoice?.schemaVersion)
   ) {
     throw new Error('A verified server invoice is not available for this order.')
   }
@@ -119,6 +119,7 @@ export async function createInvoicePdfDocument(
     gstEnabled: Boolean(serverInvoice.seller?.gstin),
     gstin: serverInvoice.seller?.gstin || '',
   }
+  const pricesIncludeTax = serverInvoice.tax?.pricesIncludeTax === true
   const data = {
     items: (serverInvoice.lineItems || []).map((item) => ({
       ...item,
@@ -301,8 +302,8 @@ export async function createInvoicePdfDocument(
     { label: 'SKU', width: 22, align: 'left' },
     { label: 'HSN Code', width: 18, align: 'left' },
     { label: 'Qty', width: 9, align: 'right' },
-    { label: 'Unit Price', width: 21, align: 'right' },
-    { label: 'Discount', width: 18, align: 'right' },
+    { label: `Unit Price ${pricesIncludeTax ? 'Incl.' : 'Excl.'} GST`, width: 21, align: 'right' },
+    { label: 'Coupon Share', width: 18, align: 'right' },
     { label: 'Tax', width: 21, align: 'right' },
     { label: 'Amount', width: 26, align: 'right' },
   ]
@@ -388,8 +389,8 @@ export async function createInvoicePdfDocument(
     pdf.text('AMOUNT SUMMARY', summaryX, y)
     y += 4
     const rows = [
-      ['Subtotal', formatMoney(data.subtotal)],
-      ['Discount', `- ${formatMoney(data.discount)}`],
+      [`Subtotal (${pricesIncludeTax ? 'Incl.' : 'Excl.'} GST)`, formatMoney(data.subtotal)],
+      ['Coupon Discount', `- ${formatMoney(data.discount)}`],
       ['Delivery Charges', data.delivery ? formatMoney(data.delivery) : 'FREE'],
       [
         'Place of Supply',

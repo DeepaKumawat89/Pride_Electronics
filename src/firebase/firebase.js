@@ -35,6 +35,10 @@ if (typeof window !== 'undefined' && appCheckSiteKey) {
   if (viteEnvironment.DEV && debugToken) {
     self.FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken
   }
+  initializeAppCheck(app, {
+    provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+    isTokenAutoRefreshEnabled: true,
+  })
   initializeAppCheck(userApp, {
     provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
     isTokenAutoRefreshEnabled: true,

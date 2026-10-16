@@ -1,5 +1,4 @@
-import { parsePrice } from './currency.js'
-import { calculateProductUnitPrice } from '../../utils/productPricing.js'
+import { getApplicablePricingTier } from '../../utils/productPricing.js'
 
 export const FREE_SHIPPING_THRESHOLD = 999
 export const STANDARD_SHIPPING_CHARGE = 99
@@ -16,10 +15,17 @@ export const paymentAmountMatchesCheckout = (
   orderAmount,
   quoteTotalPaise,
 ) => {
-  const serverAmountPaise = Number(quoteTotalPaise ?? orderAmount)
+  const checkoutAmountPaise = toRazorpayAmount(checkoutTotal)
+  const gatewayAmountPaise = Number(orderAmount)
+  const quotedAmountPaise = quoteTotalPaise == null
+    ? gatewayAmountPaise
+    : Number(quoteTotalPaise)
   return (
-    Number.isInteger(serverAmountPaise) &&
-    serverAmountPaise === toRazorpayAmount(checkoutTotal)
+    Number.isInteger(checkoutAmountPaise) &&
+    Number.isInteger(gatewayAmountPaise) &&
+    Number.isInteger(quotedAmountPaise) &&
+    checkoutAmountPaise === quotedAmountPaise &&
+    quotedAmountPaise === gatewayAmountPaise
   )
 }
 
@@ -97,19 +103,10 @@ export function calculateCartPricing(
   coupons = [],
   userKey = '',
   shippingSettings = {},
-  taxSettings = {},
 ) {
   const sellingSubtotal = roundMoney(items.reduce(
     (sum, { product, quantity }) =>
-      sum + calculateProductUnitPrice(product, quantity) * Number(quantity || 0),
-    0,
-  ))
-  const mrpSubtotal = roundMoney(items.reduce(
-    (sum, { product, quantity }) => {
-      const sellingPrice = calculateProductUnitPrice(product, quantity)
-      const listPrice = parsePrice(product.originalPrice || product.price)
-      return sum + Math.max(sellingPrice, listPrice) * Number(quantity || 0)
-    },
+      sum + getApplicablePricingTier(product, quantity).baseUnitPrice * Number(quantity || 0),
     0,
   ))
   const selectedCoupon = coupons.find(
@@ -119,12 +116,11 @@ export function calculateCartPricing(
     ? roundMoney(items.reduce(
         (sum, { product, quantity }) =>
           appliesToProduct(selectedCoupon, product)
-            ? sum + calculateProductUnitPrice(product, quantity) * Number(quantity || 0)
+            ? sum + getApplicablePricingTier(product, quantity).baseUnitPrice * Number(quantity || 0)
             : sum,
         0,
       ))
     : sellingSubtotal
-  const productDiscount = roundMoney(Math.max(0, mrpSubtotal - sellingSubtotal))
   const validatedCoupon = validateCartCoupon(couponCode, sellingSubtotal, now, coupons, {
     eligibleSubtotal,
     userKey,
@@ -142,36 +138,28 @@ export function calculateCartPricing(
       : Number(shippingSettings.standardCharge ?? STANDARD_SHIPPING_CHARGE)
   const shipping = roundMoney(coupon.freeShipping ? 0 : standardShipping)
   const taxableAmount = Math.max(0, sellingSubtotal - coupon.discount)
-  const taxRate = taxSettings.gstEnabled === false
-    ? 0
-    : Number(taxSettings.defaultRate || 0)
-  const tax = taxSettings.gstEnabled === false
-    ? 0
-    : roundMoney(
+  const tax = roundMoney(
         items.reduce((sum, { product, quantity }) => {
-          const lineValue = calculateProductUnitPrice(product, quantity) * Number(quantity || 0)
+          const tier = getApplicablePricingTier(product, quantity)
+          const lineValue = tier.baseUnitPrice * Number(quantity || 0)
           const couponShare = sellingSubtotal
             ? (coupon.discount * lineValue) / sellingSubtotal
             : 0
           const lineTaxableValue = Math.max(0, lineValue - couponShare)
-          const lineTaxRate = Number(product.taxRate ?? taxRate)
-          return sum + (taxSettings.pricesIncludeTax
-            ? (lineTaxableValue * lineTaxRate) / (100 + lineTaxRate || 100)
-            : (lineTaxableValue * lineTaxRate) / 100)
+          if (!coupon.discount) return sum + tier.unitGst * Number(quantity || 0)
+          const lineTaxRate = tier.taxRate
+          return sum + (lineTaxableValue * lineTaxRate) / 100
         }, 0),
       )
-  const total = roundMoney(Math.max(
-    0,
-    taxableAmount + shipping + (taxSettings.pricesIncludeTax ? 0 : tax),
-  ))
+  const preTaxTotal = roundMoney(Math.max(0, taxableAmount + shipping))
+  const total = roundMoney(Math.max(0, taxableAmount + shipping + tax))
 
   return {
-    mrpSubtotal,
     sellingSubtotal,
-    productDiscount,
     couponDiscount: coupon.discount,
     shipping,
     tax,
+    preTaxTotal,
     total,
     coupon,
   }

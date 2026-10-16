@@ -67,3 +67,24 @@ After changing claims, sign out and sign in again so Firebase issues a new ID
 token. To reset the password, enter the administrator email on `/admin`, choose
 **Forgot password?**, and complete the Firebase email flow. A Firebase console
 password reset is also safe. Never send or record the password in plaintext.
+
+## Product image authorization
+
+Admin product uploads use the same default Firebase app as admin Authentication,
+Firestore, Storage, and App Check. Before testing uploads:
+
+1. Set `VITE_FIREBASE_APP_CHECK_SITE_KEY` to the reCAPTCHA Enterprise site key
+   registered for the production web app and its domains.
+2. Deploy the claim-based Firestore and Storage rules to `ecommerce-78081`:
+
+   ```powershell
+   firebase use ecommerce-78081
+   firebase deploy --only firestore:rules,storage
+   ```
+
+3. Sign out of `/admin` and sign in again so the browser receives a fresh ID
+   token containing `admin: true`.
+
+Product writes accept one to three HTTPS image URLs with positionally aligned
+Storage paths. New uploads are WebP objects under `products/{productId}/` and
+carry the authenticated administrator UID in custom metadata.

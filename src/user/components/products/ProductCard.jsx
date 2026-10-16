@@ -1,5 +1,6 @@
 import { Heart, ShoppingBag, Star, Zap } from 'lucide-react'
-import { formatCurrency, formatDiscount, hasValidPrice, parsePrice } from '../../utils/currency'
+import { formatCurrency, hasValidPrice } from '../../utils/currency'
+import { getProductBasePrice } from '../../../utils/productPricing'
 
 export default function ProductCard({
   product,
@@ -9,7 +10,8 @@ export default function ProductCard({
   onBuyNow,
   onView,
 }) {
-  const priceAvailable = hasValidPrice(product.price)
+  const sellingPrice = getProductBasePrice(product)
+  const priceAvailable = hasValidPrice(sellingPrice)
   const purchasable = Number(product.stock) > 0 && priceAvailable
   const availability =
     product.stock <= 0
@@ -44,9 +46,8 @@ export default function ProductCard({
         </div>
         <button type="button" onClick={() => onView(product)} className="mt-2 min-h-12 text-left text-sm font-extrabold leading-6 text-slate-900 transition hover:text-[#ff5c35]">{product.name}</button>
         <div className="mt-3 flex items-end justify-between gap-3">
-          <div><strong className="text-base font-extrabold text-slate-950">{priceAvailable ? formatCurrency(parsePrice(product.price)) : 'Price unavailable'}</strong>{priceAvailable && hasValidPrice(product.originalPrice) && <span className="ml-2 text-xs font-medium text-slate-400 line-through">{formatCurrency(parsePrice(product.originalPrice))}</span>}</div>
+          <div><strong className="text-base font-extrabold text-slate-950">{priceAvailable ? formatCurrency(sellingPrice) : 'Price unavailable'}</strong>{priceAvailable && <span className="ml-1 text-[9px] font-semibold text-slate-400">(Excl. GST)</span>}</div>
           <span className="shrink-0 text-right">
-            <span className="block rounded-full bg-[#e4f1e7] px-2 py-1 text-[9px] font-extrabold text-[#366643]">{formatDiscount(product.discount)}</span>
             <span className={`mt-1 block text-[8px] font-extrabold ${product.stock <= 0 ? 'text-red-500' : product.stock <= 10 ? 'text-amber-600' : 'text-emerald-700'}`}>{availability}</span>
           </span>
         </div>

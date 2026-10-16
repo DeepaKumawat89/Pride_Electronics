@@ -31,8 +31,8 @@ import { createPortal } from 'react-dom'
 import SelectMenu from '../../../components/ui/SelectMenu'
 import { useAnchoredPopover } from '../../../hooks/useAnchoredPopover'
 import { getInitials } from '../../../utils/text'
-import { formatCurrency, hasValidPrice, parsePrice } from '../../utils/currency'
-import { getApplicablePricingTier } from '../../../utils/productPricing'
+import { formatCurrency, hasValidPrice } from '../../utils/currency'
+import { getApplicablePricingTier, getProductBasePrice } from '../../../utils/productPricing'
 import { calculateCartPricing } from '../../utils/cart'
 import {
   getAddressValidationError,
@@ -526,7 +526,6 @@ export default function AccountPanel({
                     onDismissUnavailable={onDismissUnavailableCartItems}
                     onCheckout={onCheckout}
                     shippingSettings={shippingSettings}
-                    taxSettings={invoiceSettings.tax}
                   />
                 )}
                 {section === 'address' && (
@@ -1057,13 +1056,8 @@ function WishlistSection({ products, query, onRemove, onView, onAdd }) {
               </div>
               <div className="mt-3 flex items-baseline gap-2">
                 <strong className="text-base text-slate-950">
-                  {hasValidPrice(product.price) ? formatCurrency(parsePrice(product.price)) : 'Price unavailable'}
+                  {hasValidPrice(getProductBasePrice(product)) ? `${formatCurrency(getProductBasePrice(product))} (Excl. GST)` : 'Price unavailable'}
                 </strong>
-                {product.originalPrice && (
-                  <span className="text-[10px] text-slate-400 line-through">
-                    {formatCurrency(parsePrice(product.originalPrice))}
-                  </span>
-                )}
               </div>
               <div className="mt-auto flex gap-2 border-t border-slate-100 pt-4">
                 <button
@@ -1231,6 +1225,10 @@ function OrdersSection({
 
 function OrderCard({ order, onSelect }) {
   const firstItem = order.items?.[0]
+  const pricesExcludeTax = order.pricingModel === 'gst-exclusive-v1' || (
+    Number(order.invoice?.schemaVersion || 0) >= 4 &&
+    order.invoice?.tax?.pricesIncludeTax === false
+  )
   const delivered = order.status === 'Delivered'
   const cancelled = order.status === 'Cancelled'
 
@@ -1291,7 +1289,7 @@ function OrderCard({ order, onSelect }) {
             </span>
             <span>
               Price:{' '}
-              <strong className="text-slate-600">{firstItem?.price}</strong>
+              <strong className="text-slate-600">{formatCurrency(Number(firstItem?.price) || 0)}{pricesExcludeTax ? ' (Excl. GST)' : ''}</strong>
             </span>
           </div>
           <div
@@ -1373,7 +1371,6 @@ function CartSection({
   onDismissUnavailable,
   onCheckout,
   shippingSettings,
-  taxSettings,
 }) {
   const [coupon, setCoupon] = useState('')
   const [appliedCoupon, setAppliedCoupon] = useState('')
@@ -1387,9 +1384,8 @@ function CartSection({
         coupons,
         userKey,
         shippingSettings,
-        taxSettings,
       ),
-    [appliedCoupon, coupons, items, shippingSettings, taxSettings, userKey],
+    [appliedCoupon, coupons, items, shippingSettings, userKey],
   )
   const hasUnavailableItems = items.some(
     ({ product, quantity }) =>
@@ -1473,7 +1469,7 @@ function CartSection({
                     return (
                       <>
                         <p className="mt-2 flex flex-wrap items-center gap-2 text-sm font-extrabold text-[#ff5c35]">
-                          {formatCurrency(unitPrice)} <span className="text-[10px] font-semibold text-slate-400">/ piece</span>
+                          {formatCurrency(unitPrice)} <span className="text-[10px] font-semibold text-slate-400">(Excl. GST)</span>
                           {applicableTier.isBulkTier && (
                             <span className="rounded-full bg-[#e4f1e7] px-2 py-0.5 text-[8px] font-extrabold text-[#366643]">
                               Bulk Tier ({applicableTier.tierLabel})
@@ -1522,7 +1518,7 @@ function CartSection({
               </div>
               <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
                 <span className="text-[10px] text-slate-400">
-                  Item total ({formatCurrency(getApplicablePricingTier(product, quantity).unitPrice)} × {quantity})
+                  Item total ({formatCurrency(getApplicablePricingTier(product, quantity).unitPrice)} × {quantity}, Excl. GST)
                 </span>
                 <strong className="text-sm">
                   {formatCurrency(getApplicablePricingTier(product, quantity).unitPrice * quantity)}
@@ -1562,12 +1558,7 @@ function CartSection({
           )}
         </div>
         <div className="mt-5 space-y-3 text-xs text-[#5d705e]">
-          <CartSummaryRow label="Subtotal" value={formatCurrency(pricing.mrpSubtotal)} />
-          <CartSummaryRow
-            label="Discount"
-            value={`−${formatCurrency(pricing.productDiscount)}`}
-            accent={pricing.productDiscount > 0}
-          />
+          <CartSummaryRow label="Subtotal (excluding GST)" value={formatCurrency(pricing.sellingSubtotal)} />
           <CartSummaryRow
             label="Coupon discount"
             value={`−${formatCurrency(pricing.couponDiscount)}`}
@@ -1578,13 +1569,12 @@ function CartSection({
             value={pricing.shipping ? formatCurrency(pricing.shipping) : 'Free'}
             accent={!pricing.shipping}
           />
-          <CartSummaryRow label="GST / Tax" value={`${formatCurrency(pricing.tax)} ${taxSettings.pricesIncludeTax ? 'included' : 'added'}`} />
         </div>
         <div className="my-5 h-px bg-[#253329]/10" />
         <div className="flex items-end justify-between">
-          <span className="text-sm font-bold text-[#253329]">Final total</span>
+          <span className="text-sm font-bold text-[#253329]">Cart total (Excl. GST)</span>
           <strong className="text-xl text-[#253329]">
-            {formatCurrency(pricing.total)}
+            {formatCurrency(pricing.preTaxTotal)}
           </strong>
         </div>
         <button
@@ -1629,7 +1619,7 @@ function SavedForLaterSection({ items, onMoveToCart, onRemove }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[11px] font-extrabold text-slate-800">{product.name}</p>
                 {product.selectedVariantName && <p className="mt-1 truncate text-[8px] font-bold text-[#397a4a]">{product.selectedVariantName}</p>}
-                <p className="mt-1 text-[10px] font-bold text-[#ff5c35]">{formatCurrency(parsePrice(product.price))}</p>
+                <p className="mt-1 text-[10px] font-bold text-[#ff5c35]">{formatCurrency(getProductBasePrice(product))} (Excl. GST)</p>
                 <p className={`mt-1 text-[8px] font-extrabold ${available ? 'text-emerald-700' : 'text-red-600'}`}>{available ? 'In stock' : 'Out of stock'}</p>
                 <div className="mt-2 flex items-center gap-3">
                   <button type="button" disabled={!available} onClick={() => onMoveToCart(key)} className="text-[8px] font-extrabold text-[#397a4a] disabled:cursor-not-allowed disabled:text-slate-300">Move to cart</button>

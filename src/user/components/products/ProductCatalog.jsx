@@ -14,7 +14,6 @@ import {
   availabilityFilterOptions,
   catalogCategories,
   defaultCatalogFilters,
-  discountFilterOptions,
   filterCatalogProducts,
   getCatalogFilterOptions,
   priceFilterOptions,
@@ -29,7 +28,6 @@ const sortOptions = [
   { value: 'newest', label: 'Newest' },
   { value: 'rating', label: 'Best rated' },
   { value: 'popular', label: 'Most popular' },
-  { value: 'discount', label: 'Highest discount' },
 ]
 
 export default function ProductCatalog({
@@ -458,12 +456,6 @@ function CatalogFilters({
                 value={filters.availability}
                 options={availabilityFilterOptions}
                 onChange={(value) => onFilterChange('availability', value)}
-              />
-              <FilterChoiceGroup
-                label="Discount"
-                value={filters.discount}
-                options={discountFilterOptions}
-                onChange={(value) => onFilterChange('discount', value)}
               />
               <FilterChoiceGroup
                 label="Specifications"

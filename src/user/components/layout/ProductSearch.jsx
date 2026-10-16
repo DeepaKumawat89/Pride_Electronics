@@ -5,6 +5,8 @@ import {
   matchesProductQuery,
   normalizeSearchQuery,
 } from '../../utils/productSearch'
+import { getProductBasePrice } from '../../../utils/productPricing'
+import { formatCurrency } from '../../utils/currency'
 
 export default function ProductSearch({
   products,
@@ -156,7 +158,7 @@ export default function ProductSearch({
                       </span>
                     </span>
                     <span className="shrink-0 text-[10px] font-extrabold text-slate-900">
-                      {product.price}
+                      {formatCurrency(getProductBasePrice(product))} (Excl. GST)
                     </span>
                     <ArrowUpRight
                       size={14}

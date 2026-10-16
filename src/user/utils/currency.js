@@ -11,10 +11,3 @@ export function formatCurrency(value) {
     maximumFractionDigits: 2,
   }).format(value)
 }
-
-export function formatDiscount(value) {
-  if (value === '' || value === null || value === undefined) return ''
-  if (typeof value === 'number') return `${value}% off`
-  const text = String(value).trim()
-  return /^\d+(?:\.\d+)?$/.test(text) ? `${text}% off` : text
-}

@@ -19,7 +19,7 @@ const DEFAULT_INVOICE_SETTINGS = {
     state: 'Maharashtra',
     stateCode: '27',
     defaultRate: 18,
-    pricesIncludeTax: true,
+    pricesIncludeTax: false,
   },
   numbering: {
     prefix: 'PE',
@@ -52,7 +52,12 @@ const invoiceNumberFor = (numbering = {}, dateValue = new Date()) => {
 
 const normalizeInvoiceSettings = (settings = {}) => ({
   business: { ...DEFAULT_INVOICE_SETTINGS.business, ...(settings.business || {}) },
-  tax: { ...DEFAULT_INVOICE_SETTINGS.tax, ...(settings.tax || {}) },
+  tax: {
+    ...DEFAULT_INVOICE_SETTINGS.tax,
+    ...(settings.tax || {}),
+    gstEnabled: true,
+    pricesIncludeTax: false,
+  },
   numbering: { ...DEFAULT_INVOICE_SETTINGS.numbering, ...(settings.numbering || {}) },
 })
 
@@ -135,6 +140,9 @@ function createInvoiceSnapshot({
   payment = {},
 }) {
   const settings = normalizeInvoiceSettings(invoiceSettings)
+  const pricesIncludeTax = quote.pricingModel === 'gst-exclusive-v1'
+    ? false
+    : settings.tax.pricesIncludeTax === true
   const gstEnabled = settings.tax.gstEnabled !== false
   const sellerGstin = normalizeGstin(settings.tax.gstin)
   const sellerStateCode = text(settings.tax.stateCode || sellerGstin.slice(0, 2), 2)
@@ -147,7 +155,7 @@ function createInvoiceSnapshot({
     quote.items || [],
     quote.couponDiscount,
     gstEnabled ? quote.tax : 0,
-    settings.tax.pricesIncludeTax === true,
+    pricesIncludeTax,
   ).map((item) => {
     const cgst = intraState ? roundMoney(item.lineTax / 2) : 0
     const sgst = intraState ? roundMoney(item.lineTax - cgst) : 0
@@ -155,7 +163,7 @@ function createInvoiceSnapshot({
     return { ...item, cgst, sgst, igst }
   })
   const tax = {
-    pricesIncludeTax: settings.tax.pricesIncludeTax === true,
+    pricesIncludeTax,
     defaultRate: Math.max(0, Math.min(100, Number(settings.tax.defaultRate || 0))),
     taxableValue: roundMoney(lineItems.reduce((sum, item) => sum + item.taxableValue, 0)),
     cgst: roundMoney(lineItems.reduce((sum, item) => sum + item.cgst, 0)),
@@ -168,7 +176,7 @@ function createInvoiceSnapshot({
   }
   const number = invoiceNumberFor(settings.numbering, invoiceDate)
   const snapshot = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     generatedBy: 'server',
     invoiceNumber: number,
     invoiceDate: new Date(invoiceDate).toISOString(),
@@ -200,7 +208,6 @@ function createInvoiceSnapshot({
     lineItems,
     amounts: {
       subtotal: roundMoney(quote.sellingSubtotal),
-      productDiscount: roundMoney(quote.productDiscount),
       couponDiscount: roundMoney(quote.couponDiscount),
       shipping: roundMoney(quote.shipping),
       taxableValue: tax.taxableValue,

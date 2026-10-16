@@ -19,6 +19,7 @@ import { parsePrice } from '../../user/utils/currency'
 import {
   MAX_PRODUCT_IMAGES,
   MAX_PRODUCT_IMAGE_SIZE,
+  MIN_PRODUCT_IMAGES,
   PRODUCT_IMAGE_TYPES,
 } from '../../firebase/productImages'
 import {
@@ -27,15 +28,15 @@ import {
   subcategoriesForCategory,
 } from '../../utils/catalogTaxonomy'
 import {
+  GST_EXCLUSIVE_PRICING_MODEL,
   getDefaultSamplePricingTiers,
+  getProductBasePrice,
   normalizePricingTiers,
   validatePricingTiers,
 } from '../../utils/productPricing'
 import {
-  calculateDiscountedPrice,
   isValidDecimalInput,
   isValidHsnCode,
-  normalizeDiscount,
   roundToTwoDecimals,
 } from '../../utils/productValidation'
 
@@ -48,10 +49,8 @@ const blankProduct = {
   subcategoryId: '',
   subcategory: '',
   price: '',
-  originalPrice: '',
   badge: '',
   hsnCode: '',
-  discount: '',
   stock: '',
   taxRate: 18,
   lowStockThreshold: '',
@@ -87,10 +86,43 @@ const imageLabel = (path, url, index) => {
 
 const LEGACY_SUBCATEGORY_VALUE = '__legacy_subcategory__'
 
+const convertProductToGstExclusive = (product = {}) => {
+  const alreadyExclusive = product.pricingModel === GST_EXCLUSIVE_PRICING_MODEL ||
+    product.priceIncludesTax === false
+  const convertedProduct = {
+    ...product,
+    price: alreadyExclusive ? parsePrice(product.price) : getProductBasePrice(product),
+    pricingTiers: (product.pricingTiers || []).map((tier) => ({
+      ...tier,
+      unitPrice: alreadyExclusive
+        ? parsePrice(tier.unitPrice)
+        : getProductBasePrice(product, tier.unitPrice),
+    })),
+    variants: (product.variants || []).map((variant) => {
+      const sellingPrice = !alreadyExclusive && parsePrice(variant.discountPrice) > 0
+        ? variant.discountPrice
+        : variant.price
+      const converted = {
+        ...variant,
+        price: alreadyExclusive
+          ? parsePrice(sellingPrice)
+          : getProductBasePrice(product, sellingPrice),
+      }
+      delete converted.discountPrice
+      return converted
+    }),
+    pricingModel: GST_EXCLUSIVE_PRICING_MODEL,
+    priceIncludesTax: false,
+  }
+  delete convertedProduct.originalPrice
+  delete convertedProduct.discount
+  return convertedProduct
+}
+
 const createDuplicateProduct = (product) => {
   const duplicateId = Date.now()
   return {
-    ...product,
+    ...convertProductToGstExclusive(product),
     id: duplicateId,
     name: `${product.name} Copy`,
     sku: product.sku
@@ -184,7 +216,18 @@ export default function ProductsPage({
 
   const selectImages = (event) => {
     const files = Array.from(event.target.files || [])
-    const nextImages = [...selectedImages, ...files]
+    const selectedKeys = new Set(
+      selectedImages.map((file) =>
+        [file.name, file.size, file.type, file.lastModified].join(':'),
+      ),
+    )
+    const uniqueFiles = files.filter((file) => {
+      const key = [file.name, file.size, file.type, file.lastModified].join(':')
+      if (selectedKeys.has(key)) return false
+      selectedKeys.add(key)
+      return true
+    })
+    const nextImages = [...selectedImages, ...uniqueFiles]
     if (existingImages.length + nextImages.length > MAX_PRODUCT_IMAGES) {
       event.target.value = ''
       setFormErrors((current) => ({
@@ -228,6 +271,7 @@ export default function ProductsPage({
       managedCategories,
       managedSubcategories,
     )
+    const exclusiveProduct = convertProductToGstExclusive(normalizedProduct)
     clearImageSelection()
     setEditingProduct(product)
     const productImages = Array.isArray(product.images) && product.images.length
@@ -243,13 +287,14 @@ export default function ProductsPage({
     })))
     setForm({
       ...blankProduct,
-      ...normalizedProduct,
-      price: parsePrice(normalizedProduct.price) || '',
-      originalPrice: parsePrice(normalizedProduct.originalPrice) || '',
-      discount: normalizeDiscount(normalizedProduct.discount),
+      ...exclusiveProduct,
+      price: exclusiveProduct.price || '',
       enableBulkPricing: Boolean(product.enableBulkPricing),
       pricingTiers: Array.isArray(product.pricingTiers)
-        ? product.pricingTiers.map((tier) => ({ minQty: tier.minQty, unitPrice: tier.unitPrice }))
+        ? exclusiveProduct.pricingTiers.map((tier) => ({
+            minQty: tier.minQty,
+            unitPrice: tier.unitPrice,
+          }))
         : [],
       subcategoryId:
         normalizedProduct.subcategoryId ||
@@ -270,13 +315,10 @@ export default function ProductsPage({
   }
   const validateForm = () => {
     const errors = {}
-    const sellingPrice = Number(form.price)
-    const mrp = Number(form.originalPrice)
-    const discount = Number(form.discount)
     if (form.name.trim().length < 3)
       errors.name = 'Enter at least 3 characters.'
     if (!form.brand.trim()) errors.brand = 'Brand is required.'
-    if (!isValidHsnCode(form.hsnCode))
+    if (form.hsnCode.trim() && !isValidHsnCode(form.hsnCode))
       errors.hsnCode = 'Enter exactly 8 numeric digits.'
     if (!selectedCategory) errors.category = 'Select a valid category.'
     if (!form.subcategoryId) {
@@ -289,23 +331,8 @@ export default function ProductsPage({
     }
     if (form.description.trim().length < 20)
       errors.description = 'Enter at least 20 characters.'
-    if (!isValidDecimalInput(form.price))
-      errors.price = 'Enter an INR amount with no more than 2 decimal places.'
-    if (!isValidDecimalInput(form.originalPrice, { allowZero: false }))
-      errors.originalPrice = 'Enter a positive INR amount with no more than 2 decimal places.'
-    if (!errors.price && !errors.originalPrice && sellingPrice > mrp)
-      errors.price = 'Selling price cannot exceed MRP.'
-    if (form.discount !== '') {
-      if (!isValidDecimalInput(form.discount) || discount > 100) {
-        errors.discount = 'Discount must be between 0 and 100 with no more than 2 decimal places.'
-      } else if (
-        !errors.price &&
-        !errors.originalPrice &&
-        sellingPrice !== calculateDiscountedPrice(mrp, discount)
-      ) {
-        errors.price = 'Selling price must match the calculated discounted price.'
-      }
-    }
+    if (!isValidDecimalInput(form.price, { allowZero: false }))
+      errors.price = 'Enter a positive INR amount with no more than 2 decimal places.'
     if (!Number.isInteger(Number(form.stock)) || Number(form.stock) < 0)
       errors.stock = 'Stock must be a non-negative whole number.'
     if (!form.modelNumber.trim()) errors.modelNumber = 'Model number is required.'
@@ -317,9 +344,9 @@ export default function ProductsPage({
     )
       errors.lowStockThreshold =
         'Threshold must be a non-negative whole number.'
-    if (Number(form.taxRate) < 0 || Number(form.taxRate) > 100)
-      errors.taxRate = 'Tax must be between 0 and 100.'
-    if (!selectedImages.length && !existingImages.length)
+    if (!isValidDecimalInput(form.taxRate) || Number(form.taxRate) > 100)
+      errors.taxRate = 'Tax must be between 0 and 100 with no more than 2 decimal places.'
+    if (selectedImages.length + existingImages.length < MIN_PRODUCT_IMAGES)
       errors.images = 'Select at least one product image.'
     if (selectedImages.length + existingImages.length > MAX_PRODUCT_IMAGES)
       errors.images = `Select between 1 and ${MAX_PRODUCT_IMAGES} images per product.`
@@ -367,7 +394,8 @@ export default function ProductsPage({
           ? form.subcategory
           : ''),
       price: roundToTwoDecimals(form.price),
-      originalPrice: roundToTwoDecimals(form.originalPrice),
+      pricingModel: GST_EXCLUSIVE_PRICING_MODEL,
+      priceIncludesTax: false,
       stock: Number(form.stock),
       lowStockThreshold: Number(form.lowStockThreshold),
       enableBulkPricing: Boolean(form.enableBulkPricing),
@@ -379,17 +407,17 @@ export default function ProductsPage({
       reviewsCount: editingProduct?.reviewsCount ?? 0,
       sku: form.sku.trim() || undefined,
       hsnCode: form.hsnCode.trim(),
-      discount:
-        form.discount === '' ? undefined : roundToTwoDecimals(form.discount),
       specs: parseList(form.specs),
       imageFiles: selectedImages,
       image: existingImages[0]?.url || '',
       images: existingImages.map((item) => item.url),
-      imageStoragePaths: existingImages.map((item) => item.path).filter(Boolean),
+      imageStoragePaths: existingImages.map((item) => item.path || ''),
       videos: [],
       featured: editingProduct?.featured ?? true,
       enabled: form.enabled !== false,
     }
+    delete nextProduct.originalPrice
+    delete nextProduct.discount
     setSaving(true)
     try {
       if (editingProduct) {
@@ -448,25 +476,6 @@ export default function ProductsPage({
     onChange: (event) =>
       setForm((current) => ({ ...current, [key]: event.target.value })),
   })
-  const updatePricingField = (key, value) => {
-    setForm((current) => {
-      const next = { ...current, [key]: value }
-      const mrpValue = key === 'originalPrice' ? value : current.originalPrice
-      const discountValue = key === 'discount' ? value : current.discount
-      if (
-        discountValue !== '' &&
-        isValidDecimalInput(mrpValue, { allowZero: false }) &&
-        isValidDecimalInput(discountValue) &&
-        Number(discountValue) <= 100
-      ) {
-        next.price = calculateDiscountedPrice(mrpValue, discountValue).toFixed(2)
-      } else if (key === 'originalPrice' && discountValue !== '') {
-        next.price = ''
-      }
-      return next
-    })
-  }
-
   return (
     <div className="space-y-6">
       {productFormOpen && (
@@ -648,15 +657,14 @@ export default function ProductsPage({
             <FormField label="Badge">
               <input {...field('badge')} className={inputClass} />
             </FormField>
-            <FormField label="HSN Code" required error={formErrors.hsnCode}>
+            <FormField label="HSN Code" error={formErrors.hsnCode}>
               <input
-                required
                 type="text"
                 inputMode="numeric"
                 autoComplete="off"
                 maxLength={8}
                 pattern="[0-9]{8}"
-                title="Enter exactly 8 numeric digits"
+                title="Enter exactly 8 numeric digits or leave blank"
                 value={form.hsnCode ?? ''}
                 onChange={(event) => {
                   const hsnCode = event.target.value.replace(/[^0-9]/g, '').slice(0, 8)
@@ -723,7 +731,7 @@ export default function ProductsPage({
             </FormField>
 
             <FormSectionTitle title="Pricing & Inventory" />
-            <FormField label="MRP" required error={formErrors.originalPrice}>
+            <FormField label="Selling price (excluding GST)" required error={formErrors.price}>
               <AffixedInput prefix="₹">
                 <input
                   required
@@ -731,42 +739,13 @@ export default function ProductsPage({
                   inputMode="decimal"
                   min="0.01"
                   step="0.01"
-                  value={form.originalPrice}
-                  onChange={(event) => updatePricingField('originalPrice', event.target.value)}
-                  className={affixedInputClass}
-                />
-              </AffixedInput>
-            </FormField>
-            <FormField label="Selling price" required error={formErrors.price}>
-              <AffixedInput prefix="₹">
-                <input
-                  required
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="0.01"
                   value={form.price}
                   onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))}
-                  readOnly={form.discount !== ''}
-                  className={`${affixedInputClass} ${form.discount !== '' ? 'cursor-not-allowed bg-slate-50 text-slate-500' : ''}`}
-                />
-              </AffixedInput>
-            </FormField>
-            <FormField label="Discount" error={formErrors.discount}>
-              <AffixedInput suffix="%">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={form.discount}
-                  onChange={(event) => updatePricingField('discount', event.target.value)}
                   className={affixedInputClass}
                 />
               </AffixedInput>
             </FormField>
-            <FormField label="Tax / GST (%)" required>
+            <FormField label="Tax / GST (%)" required error={formErrors.taxRate}>
               <input required type="number" min="0" max="100" step="0.01" {...field('taxRate')} className={inputClass} />
             </FormField>
 
@@ -845,7 +824,7 @@ export default function ProductsPage({
                       <thead>
                         <tr className="border-b border-slate-200 bg-slate-100/70 text-[9px] font-extrabold uppercase text-slate-500">
                           <th className="px-3 py-2">Minimum Qty</th>
-                          <th className="px-3 py-2">Unit Selling Price (₹)</th>
+                          <th className="px-3 py-2">Unit Selling Price excl. GST (₹)</th>
                           <th className="px-3 py-2 text-right">Actions</th>
                         </tr>
                       </thead>
@@ -1171,11 +1150,9 @@ function ProductRow({ product, onEdit, onDuplicate, onToggle, onDelete }) {
       </td>
       <td className="px-5 py-4">
         <strong className="block text-xs text-slate-900">
-          {product.price}
+          {getProductBasePrice(product)}
         </strong>
-        <span className="text-[8px] text-slate-400 line-through">
-          {product.originalPrice}
-        </span>
+        <span className="text-[8px] text-slate-400">Excl. {Number(product.taxRate || 0)}% GST</span>
       </td>
       <td className="px-5 py-4">
         <p className="text-[9px] font-extrabold text-slate-700">
@@ -1248,7 +1225,7 @@ function ProductGridCard({ product, onEdit, onDuplicate, onToggle, onDelete }) {
           {product.name}
         </h3>
         <div className="mt-3 flex items-center justify-between">
-          <strong className="text-sm text-slate-950">{product.price}</strong>
+          <strong className="text-sm text-slate-950">{getProductBasePrice(product)}</strong>
           {product.reviewsCount > 0 ? (
             <span className="flex items-center gap-1 text-[9px] font-bold">
               <Star size={11} className="fill-amber-400 text-amber-400" />
