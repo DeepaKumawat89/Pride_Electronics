@@ -12,40 +12,30 @@ service firebase.storage {
         request.auth.token.admin == true;
     }
 
-    function hasAdminPermission(permission) {
-      return isAdmin() && (
-        (request.auth.token.keys().hasAny(['role']) &&
-          request.auth.token.role == 'Store Administrator') ||
-        (request.auth.token.keys().hasAny(['permissions']) &&
-          request.auth.token.permissions is list &&
-          request.auth.token.permissions.hasAny(['*', permission]))
-      );
-    }
-
     match /products/{productId}/{fileName} {
       allow read: if true;
-      allow create, update: if hasAdminPermission('products') &&
+      allow create, update: if isAdmin() &&
         request.resource.size < 10 * 1024 * 1024 &&
         request.resource.contentType.matches('image/.*');
-      allow delete: if hasAdminPermission('products');
+      allow delete: if isAdmin();
     }
 
     match /returns/{userId}/{orderId}/{fileName} {
-      allow read: if hasAdminPermission('returns') || (signedIn() && request.auth.uid == userId);
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
       allow create, update: if signedIn() &&
         request.auth.uid == userId &&
         request.resource.size < 8 * 1024 * 1024 &&
         request.resource.contentType.matches('image/.*');
-      allow delete: if hasAdminPermission('returns') || (signedIn() && request.auth.uid == userId);
+      allow delete: if isAdmin() || (signedIn() && request.auth.uid == userId);
     }
 
     match /users/{userId}/profile/{fileName} {
-      allow read: if hasAdminPermission('users') || (signedIn() && request.auth.uid == userId);
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
       allow create, update: if signedIn() &&
         request.auth.uid == userId &&
         request.resource.size < 8 * 1024 * 1024 &&
         request.resource.contentType.matches('image/.*');
-      allow delete: if hasAdminPermission('users') || (signedIn() && request.auth.uid == userId);
+      allow delete: if isAdmin() || (signedIn() && request.auth.uid == userId);
     }
   }
 }

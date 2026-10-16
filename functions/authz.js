@@ -7,19 +7,14 @@ const requireUser = (request) => {
   return request.auth.uid
 }
 
-const hasAdminPermission = (token = {}, permission) => {
-  if (token.admin !== true) return false
-  if (token.role === 'Store Administrator') return true
-  const permissions = Array.isArray(token.permissions) ? token.permissions : []
-  return permissions.includes('*') || permissions.includes(permission)
-}
+const isAdmin = (token = {}) => token.admin === true
 
-const requireAdmin = (request, permission) => {
+const requireAdmin = (request) => {
   const uid = requireUser(request)
-  if (!hasAdminPermission(request.auth.token, permission)) {
+  if (!isAdmin(request.auth.token)) {
     throw new HttpsError('permission-denied', 'Administrator access is required.')
   }
   return uid
 }
 
-module.exports = { hasAdminPermission, requireAdmin, requireUser }
+module.exports = { isAdmin, requireAdmin, requireUser }

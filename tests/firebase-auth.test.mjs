@@ -52,14 +52,13 @@ test('an administrator can sign in and receives the server-assigned admin claim'
 
   await adminAuth.setCustomUserClaims(credential.user.uid, {
     admin: true,
-    role: 'Store Administrator',
   })
   await signOut(auth)
 
   const adminCredential = await signInWithEmailAndPassword(auth, email, password)
   const token = await adminCredential.user.getIdTokenResult(true)
   assert.equal(token.claims.admin, true)
-  assert.equal(token.claims.role, 'Store Administrator')
+  assert.equal(token.claims.role, undefined)
   await signOut(auth)
   assert.equal(auth.currentUser, null)
 })

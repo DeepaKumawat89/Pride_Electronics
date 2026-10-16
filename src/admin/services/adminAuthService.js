@@ -1,7 +1,7 @@
 import {
   browserSessionPersistence,
   EmailAuthProvider,
-  onAuthStateChanged,
+  onIdTokenChanged,
   reauthenticateWithCredential,
   sendPasswordResetEmail,
   setPersistence,
@@ -11,8 +11,7 @@ import {
   updatePassword,
   updateProfile,
 } from 'firebase/auth'
-import { doc, getDoc, setDoc } from 'firebase/firestore'
-import { auth, db } from '../../firebase/firebase'
+import { auth } from '../../firebase/firebase'
 import {
   createUserFacingAuthError,
   toUserFacingAuthError,
@@ -26,27 +25,20 @@ const bestEffortAdminSignOut = async () => {
   }
 }
 
-const createAdminSession = async (user) => {
-  const token = await user.getIdTokenResult(true)
+const createAdminSession = async (user, forceRefresh = false) => {
+  const token = await user.getIdTokenResult(forceRefresh)
   if (token.claims.admin !== true) {
     await bestEffortAdminSignOut()
     throw createUserFacingAuthError(
       'This Firebase account is not authorized for admin access.',
     )
   }
-  const profileDocument = await getDoc(doc(db, 'admins', user.uid))
-  const profile = profileDocument.data() || {}
-  const claimPermissions = Array.isArray(token.claims.permissions)
-    ? token.claims.permissions.filter((permission) => typeof permission === 'string')
-    : token.claims.role === 'Store Administrator'
-      ? ['*']
-      : []
   return {
     uid: user.uid,
-    name: user.displayName || profile.name || 'Pride Admin',
+    name: user.displayName || 'Pride Admin',
     email: user.email || '',
-    role: profile.role || token.claims.role || 'Store Administrator',
-    permissions: claimPermissions,
+    role: 'Store Administrator',
+    permissions: ['*'],
   }
 }
 
@@ -94,14 +86,14 @@ export async function signInAdmin(email, password) {
       email.trim(),
       password,
     )
-    return await createAdminSession(credential.user)
+    return await createAdminSession(credential.user, true)
   } catch (error) {
     throw getAuthErrorMessage(error)
   }
 }
 
 export function observeAdminSession(onChange) {
-  return onAuthStateChanged(auth, async (user) => {
+  return onIdTokenChanged(auth, async (user) => {
     if (!user) {
       onChange(null)
       return
@@ -129,16 +121,7 @@ export async function updateAdminProfile(profile) {
     if (profile.email.toLowerCase() !== String(user.email).toLowerCase()) {
       await updateEmail(user, profile.email.trim().toLowerCase())
     }
-    await setDoc(
-      doc(db, 'admins', user.uid),
-      {
-        name: profile.name.trim(),
-        email: profile.email.trim().toLowerCase(),
-        updatedAt: new Date().toISOString(),
-      },
-      { merge: true },
-    )
-    return await createAdminSession(user)
+    return await createAdminSession(user, true)
   } catch (error) {
     throw getAuthErrorMessage(error)
   }

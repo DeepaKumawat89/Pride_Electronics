@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { onAuthStateChanged } from 'firebase/auth'
+import { onIdTokenChanged } from 'firebase/auth'
 import UserApp from './user/UserApp'
 import AdminApp from './admin/AdminApp'
 import { initialMarketingSettings } from './data/marketing'
@@ -279,7 +279,7 @@ function App() {
       setReturnsList([])
       setAdminReviews([])
     }
-    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+    const unsubscribeAuth = onIdTokenChanged(auth, async (user) => {
       const revision = ++authRevision
       stopRestrictedListeners()
       if (!user) {

@@ -17,7 +17,7 @@ The storefront now reads products, categories, coupons, published reviews, and
 store settings from Firestore in real time. Authenticated customers read only
 their own profile, cart, wishlist, addresses, masked payment methods, orders,
 and returns. The admin portal reads and manages the complete operational data
-set after Firebase verifies an admin custom claim or `admins/{uid}` record.
+set only after Firebase verifies the server-assigned `admin: true` custom claim.
 
 Deploy the backend rules and callable functions after selecting the configured
 Firebase project:
@@ -26,17 +26,18 @@ Firebase project:
 firebase deploy --only firestore,storage,functions
 ```
 
-Before the first admin login, create that email/password account in Firebase
-Authentication and grant it admin access with Application Default Credentials
-or a service-account credential available to the Admin SDK:
+Before the first admin login, create `admin@prideelectronics.in` as an
+Email/Password user in Firebase Authentication. Then grant that account sole
+admin access with Application Default Credentials or a service-account
+credential available to the Admin SDK:
 
 ```bash
 cd functions
-npm run set-admin -- admin@example.com "Store Administrator"
+npm run set-admin
 ```
 
 Runtime collections are `products`, `categories`, `coupons`, `reviews`,
-`orders`, `returns`, `refunds`, `inventoryHistory`, `users`, and `admins`.
+`orders`, `returns`, `refunds`, `inventoryHistory`, and `users`.
 Backend-only checkout state is stored in `stockReservations`, `paymentIntents`,
 and `couponUsages`. The legacy `_authPhoneIndex` remains backend-only for
 profile phone-number updates; login uses Firebase email/password or Google

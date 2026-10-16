@@ -5,7 +5,7 @@ const { FieldValue, Timestamp, getFirestore } = require('firebase-admin/firestor
 const { defineSecret } = require('firebase-functions/params')
 const { HttpsError, onCall, onRequest } = require('firebase-functions/v2/https')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
-const { hasAdminPermission, requireAdmin, requireUser } = require('./authz')
+const { isAdmin, requireAdmin, requireUser } = require('./authz')
 const {
   calculateOrderQuote,
   itemSignature,
@@ -1922,7 +1922,7 @@ exports.getMyCouponUsage = onCall(callableOptions, getMyCouponUsageHandler)
 
 async function getOrderInvoiceHandler(request) {
   const canManageInvoices =
-    hasAdminPermission(request.auth?.token, 'tax-invoice')
+    isAdmin(request.auth?.token)
   const uid = canManageInvoices
     ? requireUser(request)
     : await requireActiveCustomer(request)
@@ -2228,7 +2228,7 @@ exports.submitOrderFeedback = onCall(
 )
 
 async function updateCustomerStatusHandler(request) {
-  await requireAdmin(request, 'users')
+  await requireAdmin(request)
   const userId = String(request.data?.userId || '').trim()
   const status = String(request.data?.status || '').trim()
   if (!userId || !['Active', 'Disabled'].includes(status)) {

@@ -243,7 +243,7 @@ test('a normal user cannot read admin data or perform direct admin writes', asyn
 
 test('an admin custom claim authorizes privileged Firestore operations', async () => {
   const database = testEnvironment
-    .authenticatedContext('UID_ADMIN', { admin: true, role: 'Store Administrator' })
+    .authenticatedContext('UID_ADMIN', { admin: true })
     .firestore()
 
   await assertSucceeds(getDoc(doc(database, 'users', 'UID_B')))
@@ -259,16 +259,15 @@ test('an admin custom claim authorizes privileged Firestore operations', async (
   )
 })
 
-test('scoped admin claims cannot bypass their assigned permissions', async () => {
+test('role and permission claims without admin true grant no admin access', async () => {
   const database = testEnvironment
-    .authenticatedContext('UID_ORDER_MANAGER', {
-      admin: true,
-      role: 'Order Manager',
-      permissions: ['orders', 'users'],
+    .authenticatedContext('UID_UNTRUSTED_ROLE', {
+      role: 'Store Administrator',
+      permissions: ['*'],
     })
     .firestore()
 
-  await assertSucceeds(getDoc(doc(database, 'users', 'UID_B')))
+  await assertFails(getDoc(doc(database, 'users', 'UID_B')))
   await assertFails(
     updateDoc(doc(database, 'products', 'PRODUCT_1'), { stock: 3 }),
   )
@@ -276,7 +275,7 @@ test('scoped admin claims cannot bypass their assigned permissions', async () =>
 
 test('admin product creates require complete fields and valid INR pricing', async () => {
   const database = testEnvironment
-    .authenticatedContext('UID_ADMIN', { admin: true, role: 'Store Administrator' })
+    .authenticatedContext('UID_ADMIN', { admin: true })
     .firestore()
   const validProduct = {
     name: 'Validated product',
@@ -340,7 +339,7 @@ test('admin product creates require complete fields and valid INR pricing', asyn
 
 test('authorized admins can add and update a valid HSN code on legacy products', async () => {
   const database = testEnvironment
-    .authenticatedContext('UID_ADMIN', { admin: true, role: 'Store Administrator' })
+    .authenticatedContext('UID_ADMIN', { admin: true })
     .firestore()
   const legacyProduct = doc(database, 'products', 'PRODUCT_1')
 
@@ -377,7 +376,7 @@ test('authorized admins can normalize legacy pricing while adding an HSN code', 
     })
   })
   const database = testEnvironment
-    .authenticatedContext('UID_ADMIN', { admin: true, role: 'Store Administrator' })
+    .authenticatedContext('UID_ADMIN', { admin: true })
     .firestore()
 
   await assertSucceeds(

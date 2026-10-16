@@ -12,16 +12,6 @@ service cloud.firestore {
         request.auth.token.admin == true;
     }
 
-    function hasAdminPermission(permission) {
-      return isAdmin() && (
-        (request.auth.token.keys().hasAny(['role']) &&
-          request.auth.token.role == 'Store Administrator') ||
-        (request.auth.token.keys().hasAny(['permissions']) &&
-          request.auth.token.permissions is list &&
-          request.auth.token.permissions.hasAny(['*', permission]))
-      );
-    }
-
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
@@ -180,80 +170,75 @@ service cloud.firestore {
 
     match /products/{productId} {
       allow read: if true;
-      allow create: if hasAdminPermission('products') && isValidProduct(request.resource.data);
-      allow update: if hasAdminPermission('products') &&
+      allow create: if isAdmin() && isValidProduct(request.resource.data);
+      allow update: if isAdmin() &&
         (isValidProduct(request.resource.data) || isLegacyProductOperationalUpdate());
-      allow delete: if hasAdminPermission('products');
+      allow delete: if isAdmin();
     }
 
     match /categories/{categoryId} {
       allow read: if true;
-      allow write: if hasAdminPermission('categories');
+      allow write: if isAdmin();
     }
 
     match /subcategories/{subcategoryId} {
       allow read: if true;
-      allow write: if hasAdminPermission('categories');
+      allow write: if isAdmin();
     }
 
     match /coupons/{couponId} {
       allow read: if true;
-      allow write: if hasAdminPermission('coupons');
+      allow write: if isAdmin();
     }
 
     match /settings/{settingId} {
-      allow read: if hasAdminPermission('settings') || settingId in [
+      allow read: if isAdmin() || settingId in [
         'marketing',
         'shipping',
         'invoice',
         'storefront'
       ];
       allow write: if
-        (settingId == 'admin' && hasAdminPermission('settings')) ||
-        (settingId == 'invoice' && hasAdminPermission('tax-invoice')) ||
-        (settingId == 'marketing' && hasAdminPermission('offers')) ||
-        (settingId == 'storefront' && hasAdminPermission('settings'));
+        (settingId == 'admin' && isAdmin()) ||
+        (settingId == 'invoice' && isAdmin()) ||
+        (settingId == 'marketing' && isAdmin()) ||
+        (settingId == 'storefront' && isAdmin());
     }
 
     match /reviews/{reviewId} {
-      allow read: if hasAdminPermission('reviews') || resource.data.status == 'Published' || owns(resource.data);
-      allow write: if hasAdminPermission('reviews');
+      allow read: if isAdmin() || resource.data.status == 'Published' || owns(resource.data);
+      allow write: if isAdmin();
     }
 
     match /orders/{orderId} {
-      allow read: if hasAdminPermission('orders') || owns(resource.data);
-      allow write: if hasAdminPermission('orders');
+      allow read: if isAdmin() || owns(resource.data);
+      allow write: if isAdmin();
     }
 
     match /returns/{returnId} {
-      allow read: if hasAdminPermission('returns') || owns(resource.data);
-      allow write: if hasAdminPermission('returns');
+      allow read: if isAdmin() || owns(resource.data);
+      allow write: if isAdmin();
     }
 
     match /refunds/{refundId} {
-      allow read, write: if hasAdminPermission('payments');
+      allow read, write: if isAdmin();
     }
 
     match /inventoryHistory/{entryId} {
-      allow read, write: if hasAdminPermission('inventory');
+      allow read, write: if isAdmin();
     }
 
     match /users/{userId} {
-      allow read: if hasAdminPermission('users') ||
+      allow read: if isAdmin() ||
         (isOwner(userId) && hasActiveCustomerAccount());
       allow create: if isOwner(userId) &&
         isValidClientProfileCreate(request.resource.data, userId);
       allow update: if backendGstFieldsUnchanged() &&
-        hasAdminPermission('users') && uidUnchanged(userId) &&
+        isAdmin() && uidUnchanged(userId) &&
         uidNotModified() &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) &&
         isValidUser(request.resource.data, userId);
       allow delete: if false;
-    }
-
-    match /admins/{adminId} {
-      allow read: if isOwner(adminId);
-      allow write: if hasAdminPermission('settings');
     }
 
     match /couponUsages/{usageId} {
