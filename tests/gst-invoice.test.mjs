@@ -91,7 +91,7 @@ test('server invoice snapshot keeps seller GST and exact totals for a regular bu
 
   assert.equal(invoice.generatedBy, 'server')
   assert.equal(invoice.invoiceNumber, 'PE/26-27/00042')
-  assert.equal(invoice.schemaVersion, 4)
+  assert.equal(invoice.schemaVersion, 6)
   assert.equal(invoice.lineItems[0].hsnCode, '85371000')
   assert.equal(invoice.seller.gstin, settings.tax.gstin)
   assert.equal(invoice.buyer.gst, null)

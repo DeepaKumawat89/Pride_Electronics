@@ -19,6 +19,8 @@ const DEFAULT_INVOICE_SETTINGS = {
     state: 'Maharashtra',
     stateCode: '27',
     defaultRate: 18,
+    shippingTaxTreatment: 'product-rates',
+    shippingTaxRate: 18,
     pricesIncludeTax: false,
   },
   numbering: {
@@ -50,16 +52,25 @@ const invoiceNumberFor = (numbering = {}, dateValue = new Date()) => {
   ].filter(Boolean).join('/')
 }
 
-const normalizeInvoiceSettings = (settings = {}) => ({
-  business: { ...DEFAULT_INVOICE_SETTINGS.business, ...(settings.business || {}) },
-  tax: {
-    ...DEFAULT_INVOICE_SETTINGS.tax,
-    ...(settings.tax || {}),
-    gstEnabled: true,
-    pricesIncludeTax: false,
-  },
-  numbering: { ...DEFAULT_INVOICE_SETTINGS.numbering, ...(settings.numbering || {}) },
-})
+const normalizeInvoiceSettings = (settings = {}) => {
+  const tax = { ...DEFAULT_INVOICE_SETTINGS.tax, ...(settings.tax || {}) }
+  if (!['fixed', 'product-rates', 'exempt'].includes(tax.shippingTaxTreatment)) {
+    tax.shippingTaxTreatment = 'product-rates'
+  }
+  const shippingTaxRate = Number(tax.shippingTaxRate ?? 18)
+  tax.shippingTaxRate = Number.isFinite(shippingTaxRate)
+    ? Math.max(0, Math.min(100, shippingTaxRate))
+    : 18
+  return {
+    business: { ...DEFAULT_INVOICE_SETTINGS.business, ...(settings.business || {}) },
+    tax: {
+      ...tax,
+      gstEnabled: true,
+      pricesIncludeTax: false,
+    },
+    numbering: { ...DEFAULT_INVOICE_SETTINGS.numbering, ...(settings.numbering || {}) },
+  }
+}
 
 const partyAddress = (value = {}) =>
   text(
@@ -84,7 +95,7 @@ const addressSnapshot = (value = {}) => ({
   formatted: partyAddress(value),
 })
 
-function allocateLineTaxes(items, couponDiscount, totalTax, pricesIncludeTax) {
+function allocateLineTaxes(items, couponDiscount, pricesIncludeTax, legacyProductTax) {
   const sellingSubtotal = roundMoney(
     items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0), 0),
   )
@@ -97,18 +108,45 @@ function allocateLineTaxes(items, couponDiscount, totalTax, pricesIncludeTax) {
     allocatedDiscount = roundMoney(allocatedDiscount + discount)
     const net = roundMoney(Math.max(0, gross - discount))
     const rate = Math.max(0, Math.min(100, Number(item.taxRate || 0)))
-    const taxWeight = Math.max(0,
-      pricesIncludeTax ? net * rate / (100 + rate || 100) : net * rate / 100,
+    const quotedTaxableValue = Number(item.taxableValue)
+    const quotedLineTax = Number(item.lineTax)
+    const hasQuotedTax = Number.isFinite(quotedTaxableValue) && Number.isFinite(quotedLineTax)
+    const calculatedLineTax = roundMoney(
+      pricesIncludeTax
+        ? net * rate / (100 + rate || 100)
+        : net * rate / 100,
     )
-    return { item, gross, discount, net, rate, taxWeight }
+    return {
+      item,
+      gross,
+      discount,
+      net,
+      rate,
+      hasQuotedTax,
+      quotedLineTax,
+      quotedTaxableValue,
+      calculatedLineTax,
+    }
   })
-  const totalTaxWeight = baseLines.reduce((sum, line) => sum + line.taxWeight, 0)
-  let allocatedTax = 0
-  return baseLines.map(({ item, gross, discount, net, rate, taxWeight }, index) => {
-    const lineTax = index === baseLines.length - 1
-      ? roundMoney(Math.max(0, Number(totalTax || 0) - allocatedTax))
-      : roundMoney(totalTaxWeight ? Number(totalTax || 0) * taxWeight / totalTaxWeight : 0)
-    allocatedTax = roundMoney(allocatedTax + lineTax)
+  const usesQuotedLineTaxes = baseLines.every((line) => line.hasQuotedTax)
+  const calculatedTaxTotal = roundMoney(
+    baseLines.reduce((sum, line) => sum + line.calculatedLineTax, 0),
+  )
+  let allocatedLegacyTax = 0
+  return baseLines.map((line, index) => {
+    const { item, gross, discount, net, rate } = line
+    const lineTax = usesQuotedLineTaxes
+      ? roundMoney(line.quotedLineTax)
+      : index === baseLines.length - 1
+        ? roundMoney(Math.max(0, Number(legacyProductTax || 0) - allocatedLegacyTax))
+        : roundMoney(calculatedTaxTotal
+            ? Number(legacyProductTax || 0) * line.calculatedLineTax / calculatedTaxTotal
+            : 0)
+    allocatedLegacyTax = roundMoney(allocatedLegacyTax + lineTax)
+    const taxableValue = usesQuotedLineTaxes
+      ? roundMoney(line.quotedTaxableValue)
+      : roundMoney(pricesIncludeTax ? net - lineTax : net)
+    const quantity = Number(item.qty || 0)
     return {
       productId: text(item.productId, 100),
       variantId: text(item.variantId, 100),
@@ -116,12 +154,19 @@ function allocateLineTaxes(items, couponDiscount, totalTax, pricesIncludeTax) {
       variant: text(item.variant, 200),
       sku: text(item.sku, 100),
       hsnCode: text(item.hsnCode, 8),
-      quantity: Number(item.qty || 0),
+      quantity,
       unitPrice: roundMoney(item.price),
       grossAmount: gross,
       discount,
-      taxableValue: roundMoney(pricesIncludeTax ? net - lineTax : net),
+      unitSellingPrice: quantity > 0
+        ? Number(item.unitSellingPrice ?? taxableValue / quantity)
+        : 0,
+      productTotal: taxableValue,
+      taxableValue,
       gstRate: rate,
+      quotedCgst: Number(item.cgst),
+      quotedSgst: Number(item.sgst),
+      quotedIgst: Number(item.igst),
       lineTax,
       lineTotal: roundMoney(pricesIncludeTax ? net : net + lineTax),
     }
@@ -151,32 +196,119 @@ function createInvoiceSnapshot({
     throw new Error('Select a valid Indian delivery state for GST calculation.')
   }
   const intraState = placeOfSupplyStateCode === sellerStateCode
-  const lineItems = allocateLineTaxes(
+  const supplyType = intraState ? 'intra-state' : 'inter-state'
+  if (quote.supplyType && quote.supplyType !== supplyType) {
+    throw new Error('The checkout tax jurisdiction does not match the delivery address.')
+  }
+  const shippingTax = roundMoney(gstEnabled ? quote.shippingTax || 0 : 0)
+  const productTax = roundMoney(gstEnabled
+    ? quote.productTax ?? Math.max(0, Number(quote.tax || 0) - shippingTax)
+    : 0)
+  const hasLineTaxSnapshots = (quote.items || []).every(
+    (item) =>
+      item.taxableValue != null &&
+      item.lineTax != null &&
+      Number.isFinite(Number(item.taxableValue)) &&
+      Number.isFinite(Number(item.lineTax)),
+  )
+  const allocatedLineItems = allocateLineTaxes(
     quote.items || [],
     quote.couponDiscount,
-    gstEnabled ? quote.tax : 0,
     pricesIncludeTax,
-  ).map((item) => {
-    const cgst = intraState ? roundMoney(item.lineTax / 2) : 0
-    const sgst = intraState ? roundMoney(item.lineTax - cgst) : 0
-    const igst = !intraState ? item.lineTax : 0
+    productTax,
+  )
+  const hasComponentTaxSnapshots = Boolean(quote.supplyType) && allocatedLineItems.every(
+    (item) =>
+      Number.isFinite(item.quotedCgst) &&
+      Number.isFinite(item.quotedSgst) &&
+      Number.isFinite(item.quotedIgst),
+  )
+  const lineItems = allocatedLineItems.map((item) => {
+    const cgst = hasComponentTaxSnapshots
+      ? roundMoney(item.quotedCgst)
+      : intraState ? roundMoney(item.lineTax / 2) : 0
+    const sgst = hasComponentTaxSnapshots
+      ? roundMoney(item.quotedSgst)
+      : intraState ? roundMoney(item.lineTax - cgst) : 0
+    const igst = hasComponentTaxSnapshots
+      ? roundMoney(item.quotedIgst)
+      : !intraState ? item.lineTax : 0
+    delete item.quotedCgst
+    delete item.quotedSgst
+    delete item.quotedIgst
     return { ...item, cgst, sgst, igst }
   })
+  const shippingTaxBreakdown = Array.isArray(quote.shippingTaxBreakdown)
+    ? quote.shippingTaxBreakdown.map((item) => {
+        const hasComponents = [item.cgst, item.sgst, item.igst]
+          .every((value) => Number.isFinite(Number(value)))
+        return {
+          productId: text(item.productId, 100),
+          variantId: text(item.variantId, 100),
+          taxableValue: roundMoney(item.taxableValue),
+          gstRate: Math.max(0, Math.min(100, Number(item.gstRate || 0))),
+          gstAmount: roundMoney(item.gstAmount),
+          ...(hasComponents
+            ? {
+                cgst: roundMoney(item.cgst),
+                sgst: roundMoney(item.sgst),
+                igst: roundMoney(item.igst),
+              }
+            : {}),
+        }
+      })
+    : []
+  const hasShippingComponentSnapshots = Boolean(quote.supplyType) && shippingTaxBreakdown.every(
+    (item) =>
+      Number.isFinite(item.cgst) &&
+      Number.isFinite(item.sgst) &&
+      Number.isFinite(item.igst),
+  )
+  const shippingCgst = hasShippingComponentSnapshots
+    ? roundMoney(shippingTaxBreakdown.reduce((sum, item) => sum + item.cgst, 0))
+    : intraState ? roundMoney(shippingTax / 2) : 0
+  const shippingSgst = hasShippingComponentSnapshots
+    ? roundMoney(shippingTaxBreakdown.reduce((sum, item) => sum + item.sgst, 0))
+    : intraState ? roundMoney(shippingTax - shippingCgst) : 0
+  const shippingIgst = hasShippingComponentSnapshots
+    ? roundMoney(shippingTaxBreakdown.reduce((sum, item) => sum + item.igst, 0))
+    : !intraState ? shippingTax : 0
+  const shippingTaxableValue = roundMoney(
+    shippingTaxBreakdown.length
+      ? shippingTaxBreakdown.reduce((sum, item) => sum + item.taxableValue, 0)
+      : shippingTax > 0
+        ? Number(quote.shipping || 0)
+        : 0,
+  )
   const tax = {
     pricesIncludeTax,
     defaultRate: Math.max(0, Math.min(100, Number(settings.tax.defaultRate || 0))),
-    taxableValue: roundMoney(lineItems.reduce((sum, item) => sum + item.taxableValue, 0)),
-    cgst: roundMoney(lineItems.reduce((sum, item) => sum + item.cgst, 0)),
-    sgst: roundMoney(lineItems.reduce((sum, item) => sum + item.sgst, 0)),
-    igst: roundMoney(lineItems.reduce((sum, item) => sum + item.igst, 0)),
+    taxableValue: roundMoney(
+      lineItems.reduce((sum, item) => sum + item.taxableValue, 0) + shippingTaxableValue,
+    ),
+    cgst: roundMoney(lineItems.reduce((sum, item) => sum + item.cgst, 0) + shippingCgst),
+    sgst: roundMoney(lineItems.reduce((sum, item) => sum + item.sgst, 0) + shippingSgst),
+    igst: roundMoney(lineItems.reduce((sum, item) => sum + item.igst, 0) + shippingIgst),
+    shippingGst: shippingTax,
+    shippingTaxableValue,
+    shippingCgst,
+    shippingSgst,
+    shippingIgst,
+    shippingGstRate: Math.max(0, Math.min(100, Number(quote.shippingTaxRate || 0))),
+    shippingTaxTreatment: ['fixed', 'product-rates', 'exempt'].includes(quote.shippingTaxTreatment)
+      ? quote.shippingTaxTreatment
+      : settings.tax.shippingTaxTreatment,
+    shippingTaxBreakdown,
     totalGst: roundMoney(gstEnabled ? quote.tax : 0),
-    supplyType: intraState ? 'intra-state' : 'inter-state',
+    supplyType,
     placeOfSupplyStateCode,
     reverseCharge: false,
   }
   const number = invoiceNumberFor(settings.numbering, invoiceDate)
   const snapshot = {
-    schemaVersion: 4,
+    schemaVersion: hasComponentTaxSnapshots && hasShippingComponentSnapshots
+      ? 8
+      : hasLineTaxSnapshots ? 7 : 6,
     generatedBy: 'server',
     invoiceNumber: number,
     invoiceDate: new Date(invoiceDate).toISOString(),
@@ -208,8 +340,12 @@ function createInvoiceSnapshot({
     lineItems,
     amounts: {
       subtotal: roundMoney(quote.sellingSubtotal),
+      netSubtotal: roundMoney(
+        lineItems.reduce((sum, item) => sum + Number(item.productTotal || 0), 0),
+      ),
       couponDiscount: roundMoney(quote.couponDiscount),
       shipping: roundMoney(quote.shipping),
+      shippingGst: tax.shippingGst,
       taxableValue: tax.taxableValue,
       totalGst: tax.totalGst,
       total: roundMoney(quote.total),
@@ -239,6 +375,79 @@ function validateInvoiceSnapshot(invoice, { gstRequired = false, gstEnabled = tr
   const lineTaxTotal = roundMoney(
     (invoice?.lineItems || []).reduce((sum, item) => sum + Number(item.lineTax || 0), 0),
   )
+  const lineSubtotal = roundMoney(
+    (invoice?.lineItems || []).reduce(
+      (sum, item) => sum + Number(item.productTotal ?? item.taxableValue ?? 0),
+      0,
+    ),
+  )
+  const shippingTaxTotal = roundMoney(Number(invoice?.tax?.shippingGst || 0))
+  const expectedShippingTax = roundMoney(
+    Number(amounts.shipping || 0) * Number(invoice?.tax?.shippingGstRate || 0) / 100,
+  )
+  const shippingTaxBreakdown = Array.isArray(invoice?.tax?.shippingTaxBreakdown)
+    ? invoice.tax.shippingTaxBreakdown
+    : []
+  const shippingBreakdownTaxTotal = roundMoney(
+    shippingTaxBreakdown.reduce((sum, item) => sum + Number(item.gstAmount || 0), 0),
+  )
+  const shippingBreakdownTaxableTotal = roundMoney(
+    shippingTaxBreakdown.reduce((sum, item) => sum + Number(item.taxableValue || 0), 0),
+  )
+  const invalidShippingTaxLine = shippingTaxBreakdown.some(
+    (item) => {
+      const taxableValue = Number(item.taxableValue || 0)
+      const rate = Number(item.gstRate || 0)
+      if (schemaVersion < 8) {
+        return roundMoney(item.gstAmount) !== roundMoney(taxableValue * rate / 100)
+      }
+      const expectedGst = roundMoney(taxableValue * rate / 100)
+      const expectedCgst = invoice?.tax?.supplyType === 'intra-state'
+        ? roundMoney(expectedGst / 2)
+        : 0
+      const expectedSgst = invoice?.tax?.supplyType === 'intra-state'
+        ? roundMoney(expectedGst - expectedCgst)
+        : 0
+      const expectedIgst = invoice?.tax?.supplyType === 'inter-state'
+        ? expectedGst
+        : 0
+      return (
+        roundMoney(item.cgst) !== expectedCgst ||
+        roundMoney(item.sgst) !== expectedSgst ||
+        roundMoney(item.igst) !== expectedIgst ||
+        roundMoney(item.gstAmount) !== roundMoney(expectedCgst + expectedSgst + expectedIgst)
+      )
+    },
+  )
+  const invalidLineTax = (invoice?.lineItems || []).some((item) => {
+    const taxableValue = roundMoney(item.taxableValue)
+    const lineTax = roundMoney(item.lineTax)
+    const rate = Number(item.gstRate || 0)
+    const expectedGst = roundMoney(taxableValue * rate / 100)
+    const expectedCgst = invoice?.tax?.supplyType === 'intra-state'
+      ? schemaVersion >= 8
+        ? roundMoney(expectedGst / 2)
+        : roundMoney(lineTax / 2)
+      : 0
+    const expectedSgst = invoice?.tax?.supplyType === 'intra-state'
+      ? schemaVersion >= 8
+        ? roundMoney(expectedGst - expectedCgst)
+        : roundMoney(lineTax - expectedCgst)
+      : 0
+    const expectedIgst = invoice?.tax?.supplyType === 'inter-state'
+      ? expectedGst
+      : 0
+    const expectedLineTax = expectedGst
+    const expectedLineTotal = roundMoney(taxableValue + lineTax)
+    return (
+      lineTax !== expectedLineTax ||
+      roundMoney(item.lineTotal) !== expectedLineTotal ||
+      roundMoney(item.cgst) !== expectedCgst ||
+      roundMoney(item.sgst) !== expectedSgst ||
+      roundMoney(item.igst) !== expectedIgst
+    )
+  })
+  const componentTaxTotal = roundMoney(lineTaxTotal + shippingTaxTotal)
   const splitTaxTotal = roundMoney(
     Number(invoice?.tax?.cgst || 0) +
       Number(invoice?.tax?.sgst || 0) +
@@ -259,9 +468,41 @@ function validateInvoiceSnapshot(invoice, { gstRequired = false, gstEnabled = tr
     Number(amounts.total) < 0 ||
     roundMoney(invoice.tax?.totalGst) !== roundMoney(amounts.totalGst) ||
     roundMoney(amounts.total) !== expectedTotal ||
-    lineTaxTotal !== roundMoney(amounts.totalGst) ||
+    (schemaVersion >= 6 && (
+      roundMoney(amounts.netSubtotal) !== lineSubtotal ||
+      roundMoney(amounts.total) !== roundMoney(
+        lineSubtotal + Number(amounts.shipping || 0) + Number(amounts.totalGst || 0),
+      )
+    )) ||
+    componentTaxTotal !== roundMoney(amounts.totalGst) ||
     (!historicalInvoice && !['intra-state', 'inter-state'].includes(invoice.tax?.supplyType)) ||
-    (!historicalInvoice && splitTaxTotal !== lineTaxTotal) ||
+    (!historicalInvoice && splitTaxTotal !== componentTaxTotal) ||
+    (schemaVersion >= 5 && schemaVersion < 7 && (
+      shippingTaxTotal < 0 ||
+      shippingTaxTotal !== expectedShippingTax
+    )) ||
+    (schemaVersion >= 7 && (
+      invalidLineTax ||
+      invalidShippingTaxLine ||
+      !['fixed', 'product-rates', 'exempt'].includes(invoice.tax?.shippingTaxTreatment) ||
+      shippingTaxTotal !== shippingBreakdownTaxTotal ||
+      roundMoney(invoice.tax?.shippingTaxableValue) !== shippingBreakdownTaxableTotal ||
+      roundMoney(invoice.tax?.taxableValue) !== roundMoney(lineSubtotal + shippingBreakdownTaxableTotal) ||
+      (invoice.tax?.shippingTaxTreatment === 'exempt'
+        ? shippingTaxTotal !== 0 || shippingTaxBreakdown.length !== 0
+        : shippingBreakdownTaxableTotal !== roundMoney(amounts.shipping)) ||
+      roundMoney(invoice.tax?.shippingCgst) !== (schemaVersion >= 8
+        ? roundMoney(shippingTaxBreakdown.reduce((sum, item) => sum + Number(item.cgst || 0), 0))
+        : invoice.tax?.supplyType === 'intra-state' ? roundMoney(shippingTaxTotal / 2) : 0) ||
+      roundMoney(invoice.tax?.shippingSgst) !== (schemaVersion >= 8
+        ? roundMoney(shippingTaxBreakdown.reduce((sum, item) => sum + Number(item.sgst || 0), 0))
+        : invoice.tax?.supplyType === 'intra-state'
+          ? roundMoney(shippingTaxTotal - roundMoney(shippingTaxTotal / 2))
+          : 0) ||
+      roundMoney(invoice.tax?.shippingIgst) !== (schemaVersion >= 8
+        ? roundMoney(shippingTaxBreakdown.reduce((sum, item) => sum + Number(item.igst || 0), 0))
+        : invoice.tax?.supplyType === 'inter-state' ? shippingTaxTotal : 0)
+    )) ||
     (!historicalInvoice && !invoice.buyer?.billing?.formatted) ||
     (!historicalInvoice && !invoice.buyer?.shipping?.formatted) ||
     (schemaVersion >= 3 &&

@@ -6,35 +6,45 @@ const money = (value) => {
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100
 const normalizedText = (value) => String(value || '').trim().toLowerCase()
 const GST_EXCLUSIVE_PRICING_MODEL = 'gst-exclusive-v1'
+const normalizedHsnCode = (value) => {
+  const hsnCode = String(value || '').trim()
+  return /^[0-9]{8}$/.test(hsnCode) ? hsnCode : ''
+}
 
 const taxRateFor = (product = {}, fallbackRate = 18) => {
   const value = Number(product.taxRate ?? fallbackRate)
   return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0
 }
 
+const shippingTaxTreatmentFor = (taxSettings = {}) => {
+  const treatment = String(taxSettings.shippingTaxTreatment || 'product-rates')
+  return ['fixed', 'product-rates', 'exempt'].includes(treatment)
+    ? treatment
+    : 'product-rates'
+}
+
 const priceBreakdown = (product, storedPrice, fallbackRate = 18) => {
   const price = roundMoney(money(storedPrice))
   const taxRate = taxRateFor(product, fallbackRate)
-  const taxExclusive = product.pricingModel === GST_EXCLUSIVE_PRICING_MODEL ||
-    product.priceIncludesTax === false
-  if (taxExclusive) {
-    const gstAmount = roundMoney(price * taxRate / 100)
-    return {
-      basePrice: price,
-      gstAmount,
-      finalPrice: roundMoney(price + gstAmount),
-      taxRate,
-    }
-  }
-  const basePrice = taxRate > 0
-    ? roundMoney(price * 100 / (100 + taxRate))
-    : price
+  const gstAmount = roundMoney(price * taxRate / 100)
   return {
-    basePrice,
-    gstAmount: roundMoney(price - basePrice),
-    finalPrice: price,
+    basePrice: price,
+    gstAmount,
+    finalPrice: roundMoney(price + gstAmount),
     taxRate,
   }
+}
+
+const taxComponentsFor = (taxableValue, gstRate, supplyType) => {
+  const taxable = roundMoney(taxableValue)
+  const rate = taxRateFor({ taxRate: gstRate }, 0)
+  const gstAmount = roundMoney(taxable * rate / 100)
+  if (supplyType === 'inter-state') {
+    return { cgst: 0, sgst: 0, igst: gstAmount, gstAmount }
+  }
+  const cgst = roundMoney(gstAmount / 2)
+  const sgst = roundMoney(gstAmount - cgst)
+  return { cgst, sgst, igst: 0, gstAmount }
 }
 
 const DEFAULT_PAYMENT_CONFIGURATION = Object.freeze({
@@ -124,8 +134,13 @@ function calculateOrderQuote({
   coupon = null,
   couponCode = '',
   shippingSettings = {},
+  taxSettings = {},
   deliveryId = 'standard',
+  supplyType = 'intra-state',
 }) {
+  const normalizedSupplyType = supplyType === 'inter-state'
+    ? 'inter-state'
+    : 'intra-state'
   const productsById = products instanceof Map
     ? products
     : new Map(products.map((product) => [String(product.id), product]))
@@ -156,14 +171,8 @@ function calculateOrderQuote({
       error.code = 'insufficient-stock'
       throw error
     }
-    const variantPrice = money(variant?.price)
-    const legacyVariantDiscountPrice = money(variant?.discountPrice)
-    const usesExclusivePricing = product.pricingModel === GST_EXCLUSIVE_PRICING_MODEL ||
-      product.priceIncludesTax === false
     let storedPrice = variant
-      ? !usesExclusivePricing && legacyVariantDiscountPrice > 0 && legacyVariantDiscountPrice <= variantPrice
-        ? legacyVariantDiscountPrice
-        : variantPrice
+      ? money(variant.price)
       : money(product.price)
 
     let appliedTier = null
@@ -205,6 +214,7 @@ function calculateOrderQuote({
       productId: String(product.id),
       ...(variant ? { variantId: String(variant.id) } : {}),
       sku: String(variant?.sku || product.sku || `PE-${String(product.id).padStart(4, '0')}`).slice(0, 100),
+      hsnCode: normalizedHsnCode(product.hsnCode),
       productName: String(product.name || 'Product').slice(0, 200),
       variant: String(variant?.name || product.variant || product.specification || '').slice(0, 200),
       variantModelNumber: String(variant?.modelNumber || '').slice(0, 100),
@@ -273,39 +283,216 @@ function calculateOrderQuote({
         ? 0
         : standardShipping,
   )
-  const tax = roundMoney(
-        items.reduce((sum, item) => {
-          const lineValue = item.price * item.qty
-          const couponShare = sellingSubtotal
-            ? (couponDiscount * lineValue) / sellingSubtotal
-            : 0
-          const taxable = Math.max(0, lineValue - couponShare)
-          if (!couponDiscount) return sum + item.unitGst * item.qty
-          const lineRate = Number(item.taxRate || 0)
-          return sum + (taxable * lineRate) / 100
-        }, 0),
+  let allocatedDiscount = 0
+  const quotedItems = items.map((item, index) => {
+    const grossAmount = roundMoney(item.price * item.qty)
+    const discount = index === items.length - 1
+      ? roundMoney(Math.max(0, couponDiscount - allocatedDiscount))
+      : roundMoney(sellingSubtotal ? couponDiscount * grossAmount / sellingSubtotal : 0)
+    allocatedDiscount = roundMoney(allocatedDiscount + discount)
+    const taxableValue = roundMoney(Math.max(0, grossAmount - discount))
+    const taxComponents = taxComponentsFor(
+      taxableValue,
+      item.taxRate,
+      normalizedSupplyType,
+    )
+    const lineTax = taxComponents.gstAmount
+    return {
+      ...item,
+      grossAmount,
+      discount,
+      taxableValue,
+      productTotal: taxableValue,
+      unitSellingPrice: item.qty > 0 ? taxableValue / item.qty : 0,
+      cgst: taxComponents.cgst,
+      sgst: taxComponents.sgst,
+      igst: taxComponents.igst,
+      lineTax,
+      lineTotal: roundMoney(taxableValue + lineTax),
+    }
+  })
+  const taxableSubtotal = roundMoney(
+    quotedItems.reduce((sum, item) => sum + item.taxableValue, 0),
+  )
+  const productTax = roundMoney(
+    quotedItems.reduce((sum, item) => sum + item.lineTax, 0),
+  )
+  const shippingTaxTreatment = taxSettings.gstEnabled !== false
+    ? shippingTaxTreatmentFor(taxSettings)
+    : 'exempt'
+  let shippingTaxBreakdown = []
+  if (shipping > 0 && shippingTaxTreatment === 'fixed') {
+    const rate = taxRateFor(
+      { taxRate: taxSettings.shippingTaxRate ?? shippingSettings.taxRate },
+      18,
+    )
+    const components = taxComponentsFor(shipping, rate, normalizedSupplyType)
+    shippingTaxBreakdown = [{
+      taxableValue: shipping,
+      gstRate: rate,
+      ...components,
+    }]
+  } else if (shipping > 0 && shippingTaxTreatment === 'product-rates') {
+    let allocatedShipping = 0
+    shippingTaxBreakdown = quotedItems.map((item, index) => {
+      const taxableValue = index === quotedItems.length - 1
+        ? roundMoney(Math.max(0, shipping - allocatedShipping))
+        : roundMoney(taxableSubtotal
+            ? shipping * item.taxableValue / taxableSubtotal
+            : 0)
+      allocatedShipping = roundMoney(allocatedShipping + taxableValue)
+      const components = taxComponentsFor(
+        taxableValue,
+        item.taxRate,
+        normalizedSupplyType,
       )
+      return {
+        productId: item.productId,
+        variantId: item.variantId || '',
+        taxableValue,
+        gstRate: Number(item.taxRate || 0),
+        ...components,
+      }
+    })
+  }
+  const shippingTax = roundMoney(
+    shippingTaxBreakdown.reduce((sum, item) => sum + item.gstAmount, 0),
+  )
+  const shippingTaxRate = shippingTaxTreatment === 'fixed'
+    ? Number(shippingTaxBreakdown[0]?.gstRate || 0)
+    : 0
+  const tax = roundMoney(productTax + shippingTax)
+  const cgst = roundMoney(
+    quotedItems.reduce((sum, item) => sum + Number(item.cgst || 0), 0) +
+      shippingTaxBreakdown.reduce((sum, item) => sum + Number(item.cgst || 0), 0),
+  )
+  const sgst = roundMoney(
+    quotedItems.reduce((sum, item) => sum + Number(item.sgst || 0), 0) +
+      shippingTaxBreakdown.reduce((sum, item) => sum + Number(item.sgst || 0), 0),
+  )
+  const igst = roundMoney(
+    quotedItems.reduce((sum, item) => sum + Number(item.igst || 0), 0) +
+      shippingTaxBreakdown.reduce((sum, item) => sum + Number(item.igst || 0), 0),
+  )
   const total = roundMoney(
     Math.max(
       0,
-      sellingSubtotal - couponDiscount + shipping + tax,
+      taxableSubtotal + shipping + tax,
     ),
   )
 
   return {
-    items,
+    items: quotedItems,
     itemSignature: itemSignature(items),
     couponId: coupon ? String(coupon.id || '') : '',
     couponCode: coupon ? String(couponCode || coupon.code || '').toUpperCase() : '',
     deliveryId: deliveryId === 'express' ? 'express' : 'standard',
     pricingModel: GST_EXCLUSIVE_PRICING_MODEL,
+    supplyType: normalizedSupplyType,
     sellingSubtotal,
+    taxableSubtotal,
     couponDiscount,
     shipping,
+    productTax,
+    shippingTax,
+    shippingTaxRate,
+    shippingTaxTreatment,
+    shippingTaxBreakdown,
     tax,
+    cgst,
+    sgst,
+    igst,
     total,
     totalPaise: Math.round(total * 100),
   }
+}
+
+function payableAmountPaiseForQuote(quote = {}) {
+  const sellingSubtotal = roundMoney(quote.sellingSubtotal)
+  const couponDiscount = roundMoney(quote.couponDiscount)
+  const taxableSubtotal = roundMoney(quote.taxableSubtotal)
+  const shipping = roundMoney(quote.shipping)
+  const productTax = roundMoney(quote.productTax)
+  const shippingTax = roundMoney(quote.shippingTax)
+  const tax = roundMoney(quote.tax)
+  const total = roundMoney(quote.total)
+  const componentTax = roundMoney(
+    Number(quote.cgst || 0) + Number(quote.sgst || 0) + Number(quote.igst || 0),
+  )
+  const totalPaise = Number(quote.totalPaise)
+  const expectedTaxableSubtotal = roundMoney(sellingSubtotal - couponDiscount)
+  const expectedTax = roundMoney(productTax + shippingTax)
+  const expectedTotal = roundMoney(taxableSubtotal + shipping + tax)
+  const expectedTotalPaise = Math.round(expectedTotal * 100)
+  const items = Array.isArray(quote.items) ? quote.items : []
+  const invalidItem = items.some((item) => {
+    const quantity = Number(item.qty)
+    const unitPrice = roundMoney(item.price)
+    const grossAmount = roundMoney(item.grossAmount)
+    const discount = roundMoney(item.discount)
+    const taxableValue = roundMoney(item.taxableValue)
+    const rate = taxRateFor({ taxRate: item.taxRate }, 0)
+    const lineTax = roundMoney(item.lineTax)
+    return (
+      !Number.isInteger(quantity) ||
+      quantity < 1 ||
+      unitPrice <= 0 ||
+      grossAmount !== roundMoney(unitPrice * quantity) ||
+      discount < 0 ||
+      taxableValue !== roundMoney(grossAmount - discount) ||
+      lineTax !== roundMoney(taxableValue * rate / 100) ||
+      roundMoney(item.lineTotal) !== roundMoney(taxableValue + lineTax)
+    )
+  })
+  const itemTaxableSubtotal = roundMoney(
+    items.reduce((sum, item) => sum + Number(item.taxableValue || 0), 0),
+  )
+  const itemTaxTotal = roundMoney(
+    items.reduce((sum, item) => sum + Number(item.lineTax || 0), 0),
+  )
+  const shippingBreakdown = Array.isArray(quote.shippingTaxBreakdown)
+    ? quote.shippingTaxBreakdown
+    : []
+  const shippingBreakdownTax = roundMoney(
+    shippingBreakdown.reduce((sum, item) => sum + Number(item.gstAmount || 0), 0),
+  )
+  const shippingBreakdownTaxable = roundMoney(
+    shippingBreakdown.reduce((sum, item) => sum + Number(item.taxableValue || 0), 0),
+  )
+  const values = [
+    sellingSubtotal,
+    couponDiscount,
+    taxableSubtotal,
+    shipping,
+    productTax,
+    shippingTax,
+    tax,
+    total,
+  ]
+
+  if (
+    values.some((value) => !Number.isFinite(value) || value < 0) ||
+    items.length < 1 ||
+    invalidItem ||
+    itemTaxableSubtotal !== taxableSubtotal ||
+    itemTaxTotal !== productTax ||
+    shippingBreakdownTax !== shippingTax ||
+    (quote.shippingTaxTreatment === 'exempt'
+      ? shippingBreakdown.length !== 0 || shippingTax !== 0
+      : shippingBreakdownTaxable !== shipping) ||
+    taxableSubtotal !== expectedTaxableSubtotal ||
+    tax !== expectedTax ||
+    componentTax !== tax ||
+    total !== expectedTotal ||
+    !Number.isInteger(totalPaise) ||
+    totalPaise !== expectedTotalPaise
+  ) {
+    const error = new Error('The verified checkout total is inconsistent.')
+    error.code = 'invalid-payable-amount'
+    throw error
+  }
+
+  return totalPaise
 }
 
 module.exports = {
@@ -315,6 +502,7 @@ module.exports = {
   money,
   normalizePaymentConfiguration,
   normalizeRequestedItems,
+  payableAmountPaiseForQuote,
   razorpayEnvironmentForKey,
   roundMoney,
 }

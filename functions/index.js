@@ -11,7 +11,9 @@ const {
   itemSignature,
   normalizePaymentConfiguration,
   normalizeRequestedItems,
+  payableAmountPaiseForQuote,
   razorpayEnvironmentForKey,
+  roundMoney,
 } = require('./checkout')
 const {
   removePurchasedCartItems,
@@ -22,12 +24,22 @@ const {
   normalizeInvoiceSettings,
   validateInvoiceSnapshot,
 } = require('./invoice')
-const { normalizeGstProfile } = require('./gst')
+const { normalizeGstProfile, stateCodeFor } = require('./gst')
 
 initializeApp()
 
 const db = getFirestore()
 const adminAuth = getAuth()
+
+const supplyTypeFor = (taxSettings = {}, shippingAddress = {}) => {
+  const sellerGstin = String(taxSettings.gstin || '').trim().toUpperCase()
+  const sellerStateCode = String(taxSettings.stateCode || sellerGstin.slice(0, 2)).trim()
+  const placeOfSupplyStateCode = stateCodeFor(shippingAddress.state)
+  if (!placeOfSupplyStateCode || !/^\d{2}$/.test(sellerStateCode) || sellerStateCode === '00') {
+    throw new Error('A valid seller state and delivery state are required for GST calculation.')
+  }
+  return placeOfSupplyStateCode === sellerStateCode ? 'intra-state' : 'inter-state'
+}
 
 const requireActiveCustomer = async (request) => {
   const uid = requireUser(request)
@@ -412,6 +424,7 @@ async function reserveCheckoutStock({
     }))
     let quote
     try {
+      const taxSettings = normalizeInvoiceSettings(invoiceSettingsDocument.data() || {}).tax
       quote = calculateOrderQuote({
         requestedItems: items,
         products,
@@ -420,8 +433,9 @@ async function reserveCheckoutStock({
           : null,
         couponCode,
         shippingSettings: shippingSettingsDocument.data() || {},
-        taxSettings: invoiceSettingsDocument.data()?.tax || {},
+        taxSettings,
         deliveryId: requestData.deliveryId,
+        supplyType: supplyTypeFor(taxSettings, shippingAddress),
       })
     } catch (error) {
       throw checkoutError(error)
@@ -731,7 +745,35 @@ async function createRazorpayOrderHandler(request) {
     gstProfile,
   })
   const quote = reservation.quote
+  let amount
+  try {
+    amount = payableAmountPaiseForQuote(quote)
+  } catch {
+    await releaseStockReservation({
+      uid,
+      reservationId: reservation.id,
+      reason: 'Inconsistent authoritative payable amount',
+    })
+    throw new HttpsError(
+      'data-loss',
+      'The checkout total could not be verified. Restart checkout and try again.',
+    )
+  }
   if (reservation.reused && reservation.gatewayOrder) {
+    if (
+      Number(reservation.gatewayOrder.amount) !== amount ||
+      String(reservation.gatewayOrder.currency) !== 'INR'
+    ) {
+      await releaseStockReservation({
+        uid,
+        reservationId: reservation.id,
+        reason: 'Stored Razorpay order amount did not match the authoritative quote',
+      })
+      throw new HttpsError(
+        'data-loss',
+        'The existing payment amount no longer matches checkout. Restart checkout and try again.',
+      )
+    }
     return {
       environment,
       keyId,
@@ -743,7 +785,6 @@ async function createRazorpayOrderHandler(request) {
       order: reservation.gatewayOrder,
     }
   }
-  const amount = quote.totalPaise
   if (!Number.isInteger(amount) || amount < 100 || amount > 50_000_000) {
     await releaseStockReservation({
       uid,
@@ -967,6 +1008,18 @@ async function verifyRazorpayPaymentHandler(request) {
     throw new HttpsError('permission-denied', 'This payment does not belong to your account.')
   }
   const intent = intentDocument.data()
+  let authoritativeAmount
+  try {
+    authoritativeAmount = payableAmountPaiseForQuote(intent.quote)
+  } catch {
+    throw new HttpsError('data-loss', 'The stored payment total is inconsistent.')
+  }
+  if (
+    authoritativeAmount !== Number(intent.amount) ||
+    String(intent.currency) !== 'INR'
+  ) {
+    throw new HttpsError('data-loss', 'The stored payment amount does not match checkout.')
+  }
   const expectedSignature = createHmac('sha256', razorpayKeySecret.value())
     .update(`${orderId}|${paymentId}`)
     .digest('hex')
@@ -1577,6 +1630,7 @@ async function placeOrderHandler(request) {
     let quote
     if (isCashOnDelivery) {
       try {
+        const taxSettings = normalizeInvoiceSettings(invoiceSettingsDocument.data() || {}).tax
         quote = calculateOrderQuote({
           requestedItems: items,
           products,
@@ -1585,8 +1639,9 @@ async function placeOrderHandler(request) {
             : null,
           couponCode,
           shippingSettings: shippingSettingsDocument.data() || {},
-          taxSettings: invoiceSettingsDocument.data()?.tax || {},
+          taxSettings,
           deliveryId: submittedOrder.deliveryId,
+          supplyType: supplyTypeFor(taxSettings, shippingAddress),
         })
       } catch (error) {
         throw checkoutError(error)
@@ -1599,10 +1654,17 @@ async function placeOrderHandler(request) {
       }
     } else {
       quote = cleanObject(paymentIntent.quote)
+      let authoritativeAmount
+      try {
+        authoritativeAmount = payableAmountPaiseForQuote(quote)
+      } catch {
+        throw new HttpsError('data-loss', 'The stored checkout total is inconsistent.')
+      }
       if (
         !Array.isArray(quote.items) ||
         quote.itemSignature !== itemSignature(items) ||
-        Number(quote.totalPaise) !== Number(paymentIntent.amount)
+        authoritativeAmount !== Number(paymentIntent.amount) ||
+        authoritativeAmount !== Number(paymentIntent.payment?.amount)
       ) {
         throw new HttpsError('failed-precondition', 'The paid checkout details do not match this order.')
       }
@@ -1709,10 +1771,20 @@ async function placeOrderHandler(request) {
     )
     const invoiceQuote = {
       ...quote,
-      items: quote.items.map((item) => ({
-        ...item,
-        hsnCode: String(invoiceProductsById.get(item.productId)?.hsnCode || '').trim(),
-      })),
+      items: quote.items.map((item) => {
+        const quotedHsnCode = String(item.hsnCode || '').trim()
+        const currentHsnCode = String(
+          invoiceProductsById.get(item.productId)?.hsnCode || '',
+        ).trim()
+        return {
+          ...item,
+          hsnCode: /^[0-9]{8}$/.test(quotedHsnCode)
+            ? quotedHsnCode
+            : /^[0-9]{8}$/.test(currentHsnCode)
+              ? currentHsnCode
+              : '',
+        }
+      }),
     }
     let invoice
     try {
@@ -1739,6 +1811,38 @@ async function placeOrderHandler(request) {
     } catch (error) {
       throw new HttpsError('failed-precondition', error.message)
     }
+    const invoiceTotalPaise = Math.round(Number(invoice.amounts.total) * 100)
+    if (
+      invoiceTotalPaise !== Number(quote.totalPaise) ||
+      (!isCashOnDelivery && (
+        invoiceTotalPaise !== Number(paymentIntent.amount) ||
+        invoiceTotalPaise !== Number(verifiedPayment.amount)
+      ))
+    ) {
+      throw new HttpsError(
+        'data-loss',
+        'The verified payment, order, and invoice totals do not match.',
+      )
+    }
+    const orderItems = invoiceQuote.items.map((item, index) => {
+      const invoiceLine = invoice.lineItems[index] || {}
+      return {
+        ...item,
+        quantity: invoiceLine.quantity,
+        hsnCode: invoiceLine.hsnCode || '',
+        unitSellingPrice: invoiceLine.unitSellingPrice,
+        grossAmount: invoiceLine.grossAmount,
+        discount: invoiceLine.discount,
+        productTotal: invoiceLine.productTotal,
+        taxableValue: invoiceLine.taxableValue,
+        gstRate: invoiceLine.gstRate,
+        cgst: invoiceLine.cgst,
+        sgst: invoiceLine.sgst,
+        igst: invoiceLine.igst,
+        lineTax: invoiceLine.lineTax,
+        lineTotal: invoiceLine.lineTotal,
+      }
+    })
     const order = {
       id: orderReference.id,
       clientRequestId: requestId,
@@ -1749,14 +1853,26 @@ async function placeOrderHandler(request) {
       date: now.slice(0, 10),
       total: formatOrderTotal(quote.total),
       totalValue: quote.total,
+      totalPaise: Number(quote.totalPaise),
       subtotal: quote.sellingSubtotal,
+      netSubtotal: invoice.amounts.netSubtotal,
       discount: quote.couponDiscount,
       deliveryCharges: quote.shipping,
+      productTax: roundMoney(
+        Number(invoice.amounts.totalGst || 0) - Number(invoice.amounts.shippingGst || 0),
+      ),
+      shippingTax: Number(invoice.amounts.shippingGst || 0),
+      shippingTaxableValue: Number(invoice.tax.shippingTaxableValue || 0),
+      shippingTaxRate: Number(invoice.tax.shippingGstRate || 0),
+      shippingTaxTreatment: invoice.tax.shippingTaxTreatment,
+      shippingCgst: Number(invoice.tax.shippingCgst || 0),
+      shippingSgst: Number(invoice.tax.shippingSgst || 0),
+      shippingIgst: Number(invoice.tax.shippingIgst || 0),
       taxAmount: quote.tax,
       pricingModel: quote.pricingModel,
       couponCode: quote.couponCode,
       deliveryId: quote.deliveryId,
-      items: quote.items,
+      items: orderItems,
       itemsCount: quote.items.reduce((sum, item) => sum + item.qty, 0),
       status: orderStatus,
       invoiceNumber: invoice.invoiceNumber,
@@ -1774,6 +1890,8 @@ async function placeOrderHandler(request) {
       gstProfile,
       gstBreakdown: invoice.tax,
       paymentStatus,
+      paymentAmountPaise: isCashOnDelivery ? 0 : Number(verifiedPayment.amount),
+      paymentCurrency: isCashOnDelivery ? 'INR' : String(verifiedPayment.currency || 'INR'),
       paymentDate: isCashOnDelivery ? null : now,
       paymentMethod,
       paymentEnvironment: isCashOnDelivery ? 'Cash on Delivery' : paymentEnvironment,
@@ -1972,7 +2090,44 @@ async function getOrderInvoiceHandler(request) {
     throw new HttpsError('data-loss', 'The stored invoice could not be validated.')
   }
 
-  return { invoice: cleanObject(invoice) }
+  const orderItems = Array.isArray(order.items) ? order.items : []
+  const invoiceWithStoredHsn = {
+    ...invoice,
+    lineItems: (Array.isArray(invoice.lineItems) ? invoice.lineItems : []).map(
+      (invoiceItem, index) => {
+        const invoiceHsnCode = String(invoiceItem?.hsnCode || '').trim()
+        if (/^[0-9]{8}$/.test(invoiceHsnCode)) {
+          return { ...invoiceItem, hsnCode: invoiceHsnCode }
+        }
+
+        const indexedItem = orderItems[index]
+        const matchesInvoiceItem = (orderItem) => {
+          if (!orderItem) return false
+          const productId = String(invoiceItem?.productId || '')
+          const storedProductId = String(orderItem.productId || '')
+          if (productId) {
+            return (
+              productId === storedProductId &&
+              String(invoiceItem?.variantId || '') === String(orderItem.variantId || '')
+            )
+          }
+          const sku = String(invoiceItem?.sku || '').trim()
+          return Boolean(sku) && sku === String(orderItem.sku || '').trim()
+        }
+        const matchingItem =
+          matchesInvoiceItem(indexedItem)
+            ? indexedItem
+            : orderItems.find(matchesInvoiceItem)
+        const storedHsnCode = String(matchingItem?.hsnCode || '').trim()
+        return {
+          ...invoiceItem,
+          hsnCode: /^[0-9]{8}$/.test(storedHsnCode) ? storedHsnCode : '',
+        }
+      },
+    ),
+  }
+
+  return { invoice: cleanObject(invoiceWithStoredHsn) }
 }
 
 exports.getOrderInvoice = onCall(callableOptions, getOrderInvoiceHandler)

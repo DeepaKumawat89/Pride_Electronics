@@ -10,35 +10,21 @@ export const getProductTaxRate = (product = {}, fallbackRate = 18) => {
   return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0
 }
 
-export const usesGstExclusivePricing = (product = {}) =>
-  product.pricingModel === GST_EXCLUSIVE_PRICING_MODEL ||
-  product.priceIncludesTax === false
+// Catalog prices are unconditionally GST-exclusive. The persisted flags are
+// retained for schema validation, not for choosing a different calculation.
+export const usesGstExclusivePricing = () => true
 
 export function getPriceBreakdown(product = {}, storedPrice = product.price, fallbackRate = 18) {
   const price = parsePrice(storedPrice)
   const taxRate = getProductTaxRate(product, fallbackRate)
-
-  if (usesGstExclusivePricing(product)) {
-    const basePrice = roundMoney(price)
-    const gstAmount = roundMoney(basePrice * taxRate / 100)
-    return {
-      basePrice,
-      gstAmount,
-      finalPrice: roundMoney(basePrice + gstAmount),
-      taxRate,
-    }
-  }
-
-  // Legacy products stored the customer-facing price as tax-inclusive.
-  // Preserve that payable price until an admin explicitly edits the product.
-  const finalPrice = roundMoney(price)
-  const basePrice = taxRate > 0
-    ? roundMoney(finalPrice * 100 / (100 + taxRate))
-    : finalPrice
+  // Catalog selling prices are always GST-exclusive. Historical orders keep
+  // their immutable invoice/order snapshots and never pass through this path.
+  const basePrice = roundMoney(price)
+  const gstAmount = roundMoney(basePrice * taxRate / 100)
   return {
     basePrice,
-    gstAmount: roundMoney(finalPrice - basePrice),
-    finalPrice,
+    gstAmount,
+    finalPrice: roundMoney(basePrice + gstAmount),
     taxRate,
   }
 }

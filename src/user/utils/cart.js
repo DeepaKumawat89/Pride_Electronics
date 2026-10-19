@@ -7,6 +7,30 @@ const normalize = (value) => String(value || '').trim().toLowerCase()
 const roundMoney = (value) =>
   Math.round((Number(value) + Number.EPSILON) * 100) / 100
 
+const normalizeTaxRate = (value, fallback = 18) => {
+  const rate = Number(value ?? fallback)
+  return Number.isFinite(rate) ? Math.max(0, Math.min(100, rate)) : 0
+}
+
+const shippingTaxTreatmentFor = (taxSettings = {}) => {
+  const treatment = String(taxSettings.shippingTaxTreatment || 'product-rates')
+  return ['fixed', 'product-rates', 'exempt'].includes(treatment)
+    ? treatment
+    : 'product-rates'
+}
+
+const taxComponentsFor = (taxableValue, gstRate, supplyType) => {
+  const taxable = roundMoney(taxableValue)
+  const rate = normalizeTaxRate(gstRate, 0)
+  const gstAmount = roundMoney(taxable * rate / 100)
+  if (supplyType === 'inter-state') {
+    return { cgst: 0, sgst: 0, igst: gstAmount, gstAmount }
+  }
+  const cgst = roundMoney(gstAmount / 2)
+  const sgst = roundMoney(gstAmount - cgst)
+  return { cgst, sgst, igst: 0, gstAmount }
+}
+
 export const toRazorpayAmount = (amountInRupees) =>
   Math.round(Number(amountInRupees) * 100)
 
@@ -27,6 +51,67 @@ export const paymentAmountMatchesCheckout = (
     checkoutAmountPaise === quotedAmountPaise &&
     quotedAmountPaise === gatewayAmountPaise
   )
+}
+
+export function authoritativePricingFromQuote(quote = {}, gatewayAmount) {
+  const pricing = {
+    sellingSubtotal: roundMoney(quote.sellingSubtotal),
+    taxableSubtotal: roundMoney(quote.taxableSubtotal),
+    couponDiscount: roundMoney(quote.couponDiscount),
+    shipping: roundMoney(quote.shipping),
+    productTax: roundMoney(quote.productTax),
+    shippingTax: roundMoney(quote.shippingTax),
+    tax: roundMoney(quote.tax),
+    cgst: roundMoney(quote.cgst),
+    sgst: roundMoney(quote.sgst),
+    igst: roundMoney(quote.igst),
+    total: roundMoney(quote.total),
+    totalPaise: Number(quote.totalPaise),
+    supplyType: quote.supplyType === 'inter-state' ? 'inter-state' : 'intra-state',
+    shippingTaxRate: Number(quote.shippingTaxRate || 0),
+    shippingTaxTreatment: String(quote.shippingTaxTreatment || 'exempt'),
+    shippingTaxBreakdown: Array.isArray(quote.shippingTaxBreakdown)
+      ? quote.shippingTaxBreakdown
+      : [],
+    lineTaxes: Array.isArray(quote.items) ? quote.items : [],
+  }
+  const monetaryValues = [
+    pricing.sellingSubtotal,
+    pricing.taxableSubtotal,
+    pricing.couponDiscount,
+    pricing.shipping,
+    pricing.productTax,
+    pricing.shippingTax,
+    pricing.tax,
+    pricing.cgst,
+    pricing.sgst,
+    pricing.igst,
+    pricing.total,
+  ]
+  const expectedTaxableSubtotal = roundMoney(
+    pricing.sellingSubtotal - pricing.couponDiscount,
+  )
+  const expectedTax = roundMoney(pricing.productTax + pricing.shippingTax)
+  const expectedSplitTax = roundMoney(pricing.cgst + pricing.sgst + pricing.igst)
+  const expectedTotal = roundMoney(
+    pricing.taxableSubtotal + pricing.shipping + pricing.tax,
+  )
+  const expectedTotalPaise = toRazorpayAmount(expectedTotal)
+
+  if (
+    monetaryValues.some((value) => !Number.isFinite(value) || value < 0) ||
+    pricing.taxableSubtotal !== expectedTaxableSubtotal ||
+    pricing.tax !== expectedTax ||
+    pricing.tax !== expectedSplitTax ||
+    pricing.total !== expectedTotal ||
+    !Number.isInteger(pricing.totalPaise) ||
+    pricing.totalPaise !== expectedTotalPaise ||
+    Number(gatewayAmount) !== expectedTotalPaise
+  ) {
+    throw new Error('Firebase returned an inconsistent checkout calculation. Please try again.')
+  }
+
+  return pricing
 }
 
 const appliesToProduct = (coupon, product) => {
@@ -103,7 +188,12 @@ export function calculateCartPricing(
   coupons = [],
   userKey = '',
   shippingSettings = {},
+  taxSettings = {},
+  supplyType = 'intra-state',
 ) {
+  const normalizedSupplyType = supplyType === 'inter-state'
+    ? 'inter-state'
+    : 'intra-state'
   const sellingSubtotal = roundMoney(items.reduce(
     (sum, { product, quantity }) =>
       sum + getApplicablePricingTier(product, quantity).baseUnitPrice * Number(quantity || 0),
@@ -137,20 +227,80 @@ export function calculateCartPricing(
       ? 0
       : Number(shippingSettings.standardCharge ?? STANDARD_SHIPPING_CHARGE)
   const shipping = roundMoney(coupon.freeShipping ? 0 : standardShipping)
-  const taxableAmount = Math.max(0, sellingSubtotal - coupon.discount)
-  const tax = roundMoney(
-        items.reduce((sum, { product, quantity }) => {
-          const tier = getApplicablePricingTier(product, quantity)
-          const lineValue = tier.baseUnitPrice * Number(quantity || 0)
-          const couponShare = sellingSubtotal
-            ? (coupon.discount * lineValue) / sellingSubtotal
-            : 0
-          const lineTaxableValue = Math.max(0, lineValue - couponShare)
-          if (!coupon.discount) return sum + tier.unitGst * Number(quantity || 0)
-          const lineTaxRate = tier.taxRate
-          return sum + (lineTaxableValue * lineTaxRate) / 100
-        }, 0),
-      )
+  let allocatedDiscount = 0
+  const lineTaxes = items.map(({ product, quantity }, index) => {
+    const tier = getApplicablePricingTier(product, quantity)
+    const grossAmount = roundMoney(tier.baseUnitPrice * Number(quantity || 0))
+    const discount = index === items.length - 1
+      ? roundMoney(Math.max(0, coupon.discount - allocatedDiscount))
+      : roundMoney(sellingSubtotal ? coupon.discount * grossAmount / sellingSubtotal : 0)
+    allocatedDiscount = roundMoney(allocatedDiscount + discount)
+    const taxableValue = roundMoney(Math.max(0, grossAmount - discount))
+    const gstRate = normalizeTaxRate(tier.taxRate, 0)
+    const taxComponents = taxComponentsFor(taxableValue, gstRate, normalizedSupplyType)
+    return {
+      productId: product.id,
+      variantId: product.selectedVariantId || '',
+      taxableValue,
+      gstRate,
+      ...taxComponents,
+    }
+  })
+  const taxableAmount = roundMoney(
+    lineTaxes.reduce((sum, item) => sum + item.taxableValue, 0),
+  )
+  const productTax = roundMoney(
+    lineTaxes.reduce((sum, item) => sum + item.gstAmount, 0),
+  )
+  const shippingTaxTreatment = taxSettings.gstEnabled !== false
+    ? shippingTaxTreatmentFor(taxSettings)
+    : 'exempt'
+  let shippingTaxBreakdown = []
+  if (shipping > 0 && shippingTaxTreatment === 'fixed') {
+    const rate = normalizeTaxRate(
+      taxSettings.shippingTaxRate ?? shippingSettings.taxRate,
+      18,
+    )
+    shippingTaxBreakdown = [{
+      taxableValue: shipping,
+      gstRate: rate,
+      ...taxComponentsFor(shipping, rate, normalizedSupplyType),
+    }]
+  } else if (shipping > 0 && shippingTaxTreatment === 'product-rates') {
+    let allocatedShipping = 0
+    shippingTaxBreakdown = lineTaxes.map((line, index) => {
+      const taxableValue = index === lineTaxes.length - 1
+        ? roundMoney(Math.max(0, shipping - allocatedShipping))
+        : roundMoney(taxableAmount ? shipping * line.taxableValue / taxableAmount : 0)
+      allocatedShipping = roundMoney(allocatedShipping + taxableValue)
+      return {
+        productId: line.productId,
+        variantId: line.variantId,
+        taxableValue,
+        gstRate: line.gstRate,
+        ...taxComponentsFor(taxableValue, line.gstRate, normalizedSupplyType),
+      }
+    })
+  }
+  const shippingTax = roundMoney(
+    shippingTaxBreakdown.reduce((sum, item) => sum + item.gstAmount, 0),
+  )
+  const shippingTaxRate = shippingTaxTreatment === 'fixed'
+    ? Number(shippingTaxBreakdown[0]?.gstRate || 0)
+    : 0
+  const tax = roundMoney(productTax + shippingTax)
+  const cgst = roundMoney(
+    lineTaxes.reduce((sum, item) => sum + Number(item.cgst || 0), 0) +
+      shippingTaxBreakdown.reduce((sum, item) => sum + Number(item.cgst || 0), 0),
+  )
+  const sgst = roundMoney(
+    lineTaxes.reduce((sum, item) => sum + Number(item.sgst || 0), 0) +
+      shippingTaxBreakdown.reduce((sum, item) => sum + Number(item.sgst || 0), 0),
+  )
+  const igst = roundMoney(
+    lineTaxes.reduce((sum, item) => sum + Number(item.igst || 0), 0) +
+      shippingTaxBreakdown.reduce((sum, item) => sum + Number(item.igst || 0), 0),
+  )
   const preTaxTotal = roundMoney(Math.max(0, taxableAmount + shipping))
   const total = roundMoney(Math.max(0, taxableAmount + shipping + tax))
 
@@ -158,7 +308,17 @@ export function calculateCartPricing(
     sellingSubtotal,
     couponDiscount: coupon.discount,
     shipping,
+    productTax,
+    lineTaxes,
+    shippingTax,
+    shippingTaxRate,
+    shippingTaxTreatment,
+    shippingTaxBreakdown,
     tax,
+    cgst,
+    sgst,
+    igst,
+    supplyType: normalizedSupplyType,
     preTaxTotal,
     total,
     coupon,

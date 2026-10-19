@@ -17,6 +17,12 @@ const productsCollection = collection(db, 'products')
 const serializeProduct = (product) => {
   const serialized = JSON.parse(JSON.stringify(product))
   delete serialized.id
+  if (Object.prototype.hasOwnProperty.call(serialized, 'hsnCode')) {
+    serialized.hsnCode = String(serialized.hsnCode || '').trim()
+  }
+  if (Object.prototype.hasOwnProperty.call(serialized, 'taxRate')) {
+    serialized.taxRate = Number(serialized.taxRate)
+  }
   return serialized
 }
 

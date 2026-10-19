@@ -87,26 +87,19 @@ const imageLabel = (path, url, index) => {
 const LEGACY_SUBCATEGORY_VALUE = '__legacy_subcategory__'
 
 const convertProductToGstExclusive = (product = {}) => {
-  const alreadyExclusive = product.pricingModel === GST_EXCLUSIVE_PRICING_MODEL ||
-    product.priceIncludesTax === false
   const convertedProduct = {
     ...product,
-    price: alreadyExclusive ? parsePrice(product.price) : getProductBasePrice(product),
+    // The value stored in Firestore is the admin-entered, GST-exclusive selling
+    // price. Never reverse-calculate it when an older record lacks model flags.
+    price: parsePrice(product.price),
     pricingTiers: (product.pricingTiers || []).map((tier) => ({
       ...tier,
-      unitPrice: alreadyExclusive
-        ? parsePrice(tier.unitPrice)
-        : getProductBasePrice(product, tier.unitPrice),
+      unitPrice: parsePrice(tier.unitPrice),
     })),
     variants: (product.variants || []).map((variant) => {
-      const sellingPrice = !alreadyExclusive && parsePrice(variant.discountPrice) > 0
-        ? variant.discountPrice
-        : variant.price
       const converted = {
         ...variant,
-        price: alreadyExclusive
-          ? parsePrice(sellingPrice)
-          : getProductBasePrice(product, sellingPrice),
+        price: parsePrice(variant.price),
       }
       delete converted.discountPrice
       return converted
@@ -745,7 +738,7 @@ export default function ProductsPage({
                 />
               </AffixedInput>
             </FormField>
-            <FormField label="Tax / GST (%)" required error={formErrors.taxRate}>
+            <FormField label="Product GST (%)" required error={formErrors.taxRate}>
               <input required type="number" min="0" max="100" step="0.01" {...field('taxRate')} className={inputClass} />
             </FormField>
 

@@ -1,5 +1,3 @@
-import { usesGstExclusivePricing } from './productPricing.js'
-
 const cleanText = (value) => String(value ?? '').trim()
 const money = (value) => {
   const parsed = Number(String(value ?? '').replace(/[^\d.-]/g, ''))
@@ -66,11 +64,6 @@ export function productForVariant(product, variantId) {
   if (!variant) return null
 
   const variantPrice = money(variant.price)
-  const legacyDiscountPrice = money(variant.discountPrice)
-  const sellingPrice = !usesGstExclusivePricing(product) &&
-      legacyDiscountPrice > 0 && legacyDiscountPrice <= variantPrice
-    ? legacyDiscountPrice
-    : variantPrice
   const images = variant.images.length
     ? variant.images
     : Array.isArray(product.images) && product.images.length
@@ -84,7 +77,7 @@ export function productForVariant(product, variantId) {
     variantSnapshot: variant,
     sku: variant.sku || product.sku,
     modelNumber: variant.modelNumber || product.modelNumber,
-    price: sellingPrice,
+    price: variantPrice,
     stock: getVariantAvailableStock(variant),
     reservedStock: variant.reservedStock,
     image: images[0] || product.image || '',

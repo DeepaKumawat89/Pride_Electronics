@@ -526,6 +526,7 @@ export default function AccountPanel({
                     onDismissUnavailable={onDismissUnavailableCartItems}
                     onCheckout={onCheckout}
                     shippingSettings={shippingSettings}
+                    taxSettings={invoiceSettings.tax}
                   />
                 )}
                 {section === 'address' && (
@@ -1371,6 +1372,7 @@ function CartSection({
   onDismissUnavailable,
   onCheckout,
   shippingSettings,
+  taxSettings,
 }) {
   const [coupon, setCoupon] = useState('')
   const [appliedCoupon, setAppliedCoupon] = useState('')
@@ -1384,8 +1386,9 @@ function CartSection({
         coupons,
         userKey,
         shippingSettings,
+        taxSettings,
       ),
-    [appliedCoupon, coupons, items, shippingSettings, userKey],
+    [appliedCoupon, coupons, items, shippingSettings, taxSettings, userKey],
   )
   const hasUnavailableItems = items.some(
     ({ product, quantity }) =>
@@ -1439,7 +1442,7 @@ function CartSection({
           </p>
         </div>
         <div className="space-y-3">
-          {items.map(({ key, product, quantity, priceChanged, quantityAdjusted }) => (
+          {items.map(({ key, product, quantity, priceChanged, quantityAdjusted }, itemIndex) => (
             <article
               key={key}
               className="rounded-[22px] border border-slate-100 bg-[#fafbf8] p-3 transition hover:shadow-md sm:p-4"
@@ -1466,6 +1469,9 @@ function CartSection({
                   {(() => {
                     const applicableTier = getApplicablePricingTier(product, quantity)
                     const unitPrice = applicableTier.unitPrice
+                    const itemTax = pricing.lineTaxes[itemIndex]
+                    const gstRate = Number(itemTax?.gstRate ?? applicableTier.taxRate ?? 0)
+                    const gstAmount = Number(itemTax?.gstAmount || 0)
                     return (
                       <>
                         <p className="mt-2 flex flex-wrap items-center gap-2 text-sm font-extrabold text-[#ff5c35]">
@@ -1474,6 +1480,13 @@ function CartSection({
                             <span className="rounded-full bg-[#e4f1e7] px-2 py-0.5 text-[8px] font-extrabold text-[#366643]">
                               Bulk Tier ({applicableTier.tierLabel})
                             </span>
+                          )}
+                        </p>
+                        <p className="mt-1 text-[10px] font-semibold text-slate-500">
+                          GST @ {gstRate.toLocaleString('en-IN', { maximumFractionDigits: 2 })}%:{' '}
+                          <span className="font-extrabold text-slate-700">{formatCurrency(gstAmount)}</span>
+                          {pricing.couponDiscount > 0 && (
+                            <span className="text-slate-400"> after applicable discount</span>
                           )}
                         </p>
                         {(priceChanged || quantityAdjusted || Number(product.stock) <= 0 || !hasValidPrice(product.price)) && (
@@ -1558,23 +1571,32 @@ function CartSection({
           )}
         </div>
         <div className="mt-5 space-y-3 text-xs text-[#5d705e]">
-          <CartSummaryRow label="Subtotal (excluding GST)" value={formatCurrency(pricing.sellingSubtotal)} />
+          <CartSummaryRow label="Subtotal (Excl. GST)" value={formatCurrency(pricing.sellingSubtotal)} />
+          {pricing.coupon.status === 'applied' && pricing.couponDiscount > 0 && (
+            <CartSummaryRow
+              label="Coupon Discount"
+              value={`−${formatCurrency(pricing.couponDiscount)}`}
+              accent
+            />
+          )}
+          <CartSummaryRow label="Product GST" value={formatCurrency(pricing.productTax)} />
           <CartSummaryRow
-            label="Coupon discount"
-            value={`−${formatCurrency(pricing.couponDiscount)}`}
-            accent={pricing.couponDiscount > 0}
-          />
-          <CartSummaryRow
-            label="Shipping"
+            label="Shipping Charges"
             value={pricing.shipping ? formatCurrency(pricing.shipping) : 'Free'}
             accent={!pricing.shipping}
           />
+          {pricing.shipping > 0 && pricing.shippingTax > 0 && (
+            <CartSummaryRow
+              label="Shipping GST (18%)"
+              value={formatCurrency(pricing.shippingTax)}
+            />
+          )}
         </div>
         <div className="my-5 h-px bg-[#253329]/10" />
         <div className="flex items-end justify-between">
-          <span className="text-sm font-bold text-[#253329]">Cart total (Excl. GST)</span>
+          <span className="text-sm font-bold text-[#253329]">Final Cart Total (Incl. GST)</span>
           <strong className="text-xl text-[#253329]">
-            {formatCurrency(pricing.preTaxTotal)}
+            {formatCurrency(pricing.total)}
           </strong>
         </div>
         <button

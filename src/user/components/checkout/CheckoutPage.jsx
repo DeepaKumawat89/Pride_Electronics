@@ -18,11 +18,12 @@ import {
 import { formatCurrency, hasValidPrice } from '../../utils/currency'
 import { getApplicablePricingTier } from '../../../utils/productPricing'
 import {
+  authoritativePricingFromQuote,
   calculateCartPricing,
   paymentAmountMatchesCheckout,
-  toRazorpayAmount,
 } from '../../utils/cart'
 import { getAddressValidationError, normalizeAddress } from '../../utils/address'
+import { getIndianStateCode } from '../../utils/indianLocations'
 import { loadRazorpayCheckout, postRazorpayApi } from '../../utils/razorpay'
 import {
   createRazorpayDisplayConfig,
@@ -156,6 +157,7 @@ export default function CheckoutPage({
   const [couponAttempted, setCouponAttempted] = useState(Boolean(initialCouponCode))
   const [paymentError, setPaymentError] = useState('')
   const [paying, setPaying] = useState(false)
+  const [authoritativePricing, setAuthoritativePricing] = useState(null)
 
   const defaultPayment = savedPayments.find((payment) => payment.isDefault) || savedPayments[0]
   const onlinePaymentEnabled = paymentSettings.razorpayEnabled && [
@@ -189,6 +191,13 @@ export default function CheckoutPage({
         ? normalizeAddress(billingAddressForm)
         : (savedAddresses.find((address) => address.id === billingAddressId) || selectedDeliveryAddress))
 
+  const sellerStateCode = String(taxSettings.stateCode || taxSettings.gstin?.slice(0, 2) || '')
+    .padStart(2, '0')
+  const placeOfSupplyStateCode = getIndianStateCode(selectedDeliveryAddress?.state)
+  const supplyType = placeOfSupplyStateCode && sellerStateCode
+    ? placeOfSupplyStateCode === sellerStateCode ? 'intra-state' : 'inter-state'
+    : 'intra-state'
+
   // Pricing computation
   const pricing = calculateCartPricing(
     items,
@@ -197,9 +206,14 @@ export default function CheckoutPage({
     coupons,
     user?.email,
     shippingSettings,
+    taxSettings,
+    supplyType,
   )
 
-  const checkoutTotal = pricing.total
+  const checkoutPricing = authoritativePricing
+    ? { ...pricing, ...authoritativePricing }
+    : pricing
+  const checkoutTotal = checkoutPricing.total
 
   const hasUnavailableItems = items.some(
     ({ product, quantity }) =>
@@ -211,15 +225,27 @@ export default function CheckoutPage({
   // Coupon handling
   const handleApplyCoupon = (codeToApply = coupon) => {
     const trimmed = String(codeToApply || '').trim().toUpperCase()
+    setAuthoritativePricing(null)
     setCoupon(trimmed)
     setAppliedCoupon(trimmed)
     setCouponAttempted(true)
   }
 
   const handleClearCoupon = () => {
+    setAuthoritativePricing(null)
     setCoupon('')
     setAppliedCoupon('')
     setCouponAttempted(false)
+  }
+
+  const updateCheckoutQuantity = (itemKey, delta) => {
+    setAuthoritativePricing(null)
+    onUpdateQuantity?.(itemKey, delta)
+  }
+
+  const removeCheckoutItem = (itemKey) => {
+    setAuthoritativePricing(null)
+    onRemoveItem?.(itemKey)
   }
 
   // Address form toggles
@@ -488,9 +514,9 @@ export default function CheckoutPage({
       billingAddress: checkoutBillingAddress,
       gstProfile: checkoutAddresses?.gstProfile || null,
       payment: { type: paymentMode === 'online' ? 'Online Payment' : 'Cash on Delivery' },
-      discount: pricing.couponDiscount,
-      shipping: pricing.shipping,
-      tax: pricing.tax,
+      discount: checkoutPricing.couponDiscount,
+      shipping: checkoutPricing.shipping,
+      tax: checkoutPricing.tax,
       total: checkoutTotal,
       expectedTotalPaise: Math.round(checkoutTotal * 100),
       couponCode: pricing.coupon.status === 'applied' ? appliedCoupon : '',
@@ -532,7 +558,6 @@ export default function CheckoutPage({
       const [loaded, paymentOrder] = await Promise.all([
         loadRazorpayCheckout(),
         postRazorpayApi('orders', {
-          amount: toRazorpayAmount(checkoutTotal),
           requestId: checkoutRequestId.current,
           checkoutMode: checkoutMode === 'buy-now' ? 'buy-now' : 'cart',
           items: items.map(({ product, quantity }) => ({
@@ -556,14 +581,12 @@ export default function CheckoutPage({
       }
 
       const { environment, keyId, order, quote, reservation } = paymentOrder
-
-      if (!paymentAmountMatchesCheckout(
-        checkoutTotal,
-        order.amount,
-        quote?.totalPaise,
-      )) {
+      const verifiedPricing = authoritativePricingFromQuote(quote, order.amount)
+      const serverTotalPaise = verifiedPricing.totalPaise
+      if (!paymentAmountMatchesCheckout(checkoutTotal, order.amount, serverTotalPaise)) {
+        setAuthoritativePricing(verifiedPricing)
         throw new Error(
-          'Your cart total changed while checking out. Review the updated cart and try again.',
+          'Your verified checkout total changed before payment. Review the updated amount and press Pay Now again.',
         )
       }
       const checkoutTimeout = reservationTimeoutSeconds(reservation?.expiresAt)
@@ -1275,9 +1298,9 @@ export default function CheckoutPage({
                             type="button"
                             onClick={() => {
                               if (quantity > 1) {
-                                onUpdateQuantity?.(key, -1)
+                                updateCheckoutQuantity(key, -1)
                               } else {
-                                onRemoveItem?.(key)
+                                removeCheckoutItem(key)
                               }
                             }}
                             className="grid size-6 place-items-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200"
@@ -1291,7 +1314,7 @@ export default function CheckoutPage({
                           <button
                             type="button"
                             disabled={quantity >= stock}
-                            onClick={() => onUpdateQuantity?.(key, 1)}
+                            onClick={() => updateCheckoutQuantity(key, 1)}
                             className="grid size-6 place-items-center rounded-full bg-[#253329] text-white transition hover:bg-[#397a4a] disabled:opacity-30"
                             title="Increase quantity"
                           >
@@ -1401,21 +1424,21 @@ export default function CheckoutPage({
 
               {/* Complete Price Breakdown (Indian Rupees ₹) */}
               <div className="mt-4 space-y-2.5 text-xs text-slate-600">
-                <SummaryRow label="Item Subtotal (excluding GST)" value={formatCurrency(pricing.sellingSubtotal)} />
+                <SummaryRow label="Item Subtotal (excluding GST)" value={formatCurrency(checkoutPricing.sellingSubtotal)} />
 
-                {pricing.couponDiscount > 0 && (
-                  <SummaryRow label="Coupon Discount" value={`−${formatCurrency(pricing.couponDiscount)}`} accent />
+                {checkoutPricing.couponDiscount > 0 && (
+                  <SummaryRow label="Coupon Discount" value={`−${formatCurrency(checkoutPricing.couponDiscount)}`} accent />
                 )}
 
                 <SummaryRow
                   label="Shipping Fee"
-                  value={pricing.shipping ? formatCurrency(pricing.shipping) : 'FREE'}
-                  accent={!pricing.shipping}
+                  value={checkoutPricing.shipping ? formatCurrency(checkoutPricing.shipping) : 'FREE'}
+                  accent={!checkoutPricing.shipping}
                 />
 
                 <SummaryRow
                   label="GST / Tax Amount"
-                  value={`${formatCurrency(pricing.tax)} (added)`}
+                  value={`${formatCurrency(checkoutPricing.tax)} (added)`}
                 />
               </div>
 

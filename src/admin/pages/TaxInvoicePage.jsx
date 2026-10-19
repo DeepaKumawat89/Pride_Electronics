@@ -45,7 +45,18 @@ export default function TaxInvoicePage({ settings, onUpdate }) {
             <Field label="Registration type"><select className={inputClass} value={form.tax.registrationType} onChange={(e) => update('tax', { registrationType: e.target.value })}><option>Regular</option><option>Composition</option><option>Unregistered</option></select></Field>
             <Field label="State"><input className={inputClass} value={form.tax.state} onChange={(e) => update('tax', { state: e.target.value })} /></Field>
             <Field label="State code"><input maxLength="2" className={inputClass} value={form.tax.stateCode} onChange={(e) => update('tax', { stateCode: e.target.value.replace(/\D/g, '').slice(0, 2) })} /></Field>
+            <Field label="Delivery GST treatment">
+              <select className={inputClass} value={form.tax.shippingTaxTreatment || 'product-rates'} onChange={(e) => update('tax', { shippingTaxTreatment: e.target.value })}>
+                <option value="fixed">Configured delivery GST rate</option>
+                <option value="product-rates">Follow product GST rates</option>
+                <option value="exempt">No GST on delivery charges</option>
+              </select>
+            </Field>
+            {(form.tax.shippingTaxTreatment || 'product-rates') === 'fixed' && (
+              <Field label="Delivery GST rate (%)"><input type="number" min="0" max="100" step="0.01" className={inputClass} value={form.tax.shippingTaxRate ?? 18} onChange={(e) => update('tax', { shippingTaxRate: Number(e.target.value) })} /></Field>
+            )}
           </div>
+          <p className="mt-4 text-[9px] leading-4 text-slate-400">Use the configured 18% rate only when delivery is independently taxable at that rate. Select product rates for ancillary freight that follows the supplied goods, or no GST where delivery is not taxable.</p>
         </Section>
 
         <Section icon={Building2} title="Business details" description="Store information printed in the invoice header and footer.">
