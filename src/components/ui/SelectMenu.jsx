@@ -33,6 +33,9 @@ export default function SelectMenu({
     triggerRef,
     popoverRef: menuRef,
     fixedWidth: menuWidth,
+    constrainWidth: true,
+    panelHeight: 208,
+    flipVertical: true,
   })
 
   const selectOption = (option) => {

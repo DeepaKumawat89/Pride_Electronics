@@ -58,6 +58,7 @@ import {
   subcategoryForProduct,
 } from './utils/catalogTaxonomy'
 import { productForStorefront } from './utils/productVariants'
+import { createOrderMoment } from './utils/orderTimestamps'
 
 const getChangedProducts = (currentProducts, nextProducts) =>
   nextProducts.filter((nextProduct) => {
@@ -638,6 +639,7 @@ function App() {
     )
     const statusChanged = order.status !== newStatus
     const updatedAt = new Date()
+    const statusMoment = createOrderMoment(updatedAt)
     const updatedOrder = {
       ...order,
       status: newStatus,
@@ -650,17 +652,13 @@ function App() {
         newStatus === 'Refunded'
           ? 'Refunded'
           : options.paymentStatus || order.paymentStatus,
+      updatedAt: statusMoment.timestamp,
       statusHistory: statusChanged
         ? [
             ...(order.statusHistory || []),
             {
               status: newStatus,
-              timestamp: updatedAt.toISOString(),
-              date: updatedAt.toISOString().slice(0, 10),
-              time: updatedAt.toLocaleTimeString('en-IN', {
-                hour: 'numeric',
-                minute: '2-digit',
-              }),
+              ...statusMoment,
             },
           ]
         : order.statusHistory,
@@ -1037,7 +1035,6 @@ function App() {
           onUpdateMarketingSettings={updateMarketingSettings}
           onUpdateInvoiceSettings={updateInvoiceSettings}
           onUpdateAdminSettings={updateAdminSettings}
-          onSwitchToStore={() => switchPortal('user')}
         />
       )}
     </div>

@@ -62,6 +62,7 @@ export function Modal({
   children,
   maxWidth = 'max-w-3xl',
   inline = false,
+  scrollBody = false,
 }) {
   if (!open) return null
   if (inline) {
@@ -84,9 +85,9 @@ export function Modal({
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
       <section
-        className={`max-h-[94vh] w-full overflow-y-auto rounded-t-[30px] bg-[#f7f8f5] shadow-2xl sm:rounded-[30px] ${maxWidth}`}
+        className={`${scrollBody ? 'flex max-h-[100dvh] flex-col overflow-hidden sm:max-h-[94dvh]' : 'max-h-[94vh] overflow-y-auto'} w-full rounded-t-[30px] bg-[#f7f8f5] shadow-2xl sm:rounded-[30px] ${maxWidth}`}
       >
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-[#f7f8f5]/95 px-5 py-4 backdrop-blur-xl sm:px-7">
+        <header className={`${scrollBody ? 'shrink-0' : 'sticky top-0'} z-10 flex items-center justify-between border-b border-slate-200 bg-[#f7f8f5]/95 px-5 py-4 backdrop-blur-xl sm:px-7`}>
           <div>
             <p className="text-[9px] font-extrabold uppercase tracking-[0.17em] text-[#ff5c35]">
               {eyebrow}
@@ -103,7 +104,11 @@ export function Modal({
             <X size={17} />
           </button>
         </header>
-        {children}
+        {scrollBody ? (
+          <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {children}
+          </div>
+        ) : children}
       </section>
     </div>
   )

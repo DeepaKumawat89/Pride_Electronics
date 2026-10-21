@@ -44,6 +44,7 @@ import { initialShippingSettings } from '../../../data/shipping'
 import { initialInvoiceSettings } from '../../../data/invoice'
 import { getOrderDeliverySnapshot } from '../../../utils/orderDelivery'
 import { getOrderDisplayId } from '../../../utils/orderIdentifiers'
+import { getOrderPlacedMoment } from '../../../utils/orderTimestamps'
 
 const genderOptions = [
   { value: '', label: 'Select gender' },
@@ -1220,6 +1221,7 @@ function OrdersSection({
 }
 
 function OrderCard({ order, onSelect }) {
+  const placedMoment = getOrderPlacedMoment(order)
   const firstItem = order.items?.[0]
   const pricesExcludeTax = order.pricingModel === 'gst-exclusive-v1' || (
     Number(order.invoice?.schemaVersion || 0) >= 4 &&
@@ -1330,8 +1332,8 @@ function OrderCard({ order, onSelect }) {
       <div className="flex flex-col gap-2 border-t border-slate-100 bg-white/70 px-4 py-3 text-[9px] text-slate-400 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <span className="flex items-center gap-1.5">
           <CalendarDays size={12} />
-          Ordered {order.date}
-          {order.orderTime ? ` · ${order.orderTime}` : ''}
+          Ordered {placedMoment.date}
+          {placedMoment.time ? ` · ${placedMoment.time}` : ''}
         </span>
         <span className="flex items-center gap-1.5">
           <ShieldCheck size={12} className="text-[#75916f]" />

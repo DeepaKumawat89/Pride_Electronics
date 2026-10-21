@@ -1,4 +1,4 @@
-import { Bell, Menu, Search, X } from 'lucide-react'
+import { Menu, Search, X } from 'lucide-react'
 import { getInitials } from '../utils/adminFormatters'
 
 const titles = {
@@ -24,7 +24,6 @@ export default function AdminHeader({
   searchQuery,
   onSearch,
   onOpenSidebar,
-  notificationSettings,
 }) {
   const [title, subtitle] = titles[activeTab] || titles.dashboard
   return (
@@ -62,14 +61,6 @@ export default function AdminHeader({
             </button>
           )}
         </label>
-        <button
-          type="button"
-          className="relative grid size-10 shrink-0 place-items-center rounded-full bg-white text-slate-600 shadow-sm transition hover:text-[#ff5c35]"
-          aria-label="Notifications"
-        >
-          <Bell size={17} />
-          {notificationSettings?.browserAlerts && <span className="absolute right-1.5 top-1.5 size-2 rounded-full border-2 border-white bg-[#ff5c35]" />}
-        </button>
         <div className="hidden items-center gap-2.5 rounded-full bg-white py-1.5 pl-1.5 pr-3 shadow-sm md:flex">
           <span className="grid size-8 place-items-center rounded-full bg-[#397a4a] text-[9px] font-extrabold text-white">
             {getInitials(admin.name)}

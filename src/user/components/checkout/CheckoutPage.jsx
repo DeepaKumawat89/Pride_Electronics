@@ -115,6 +115,7 @@ export default function CheckoutPage({
   onPrepareCheckout,
   onBack,
   onPlaceOrder,
+  onPaymentAuthorized,
   onUpdateQuantity,
   onRemoveItem,
   onOpenPolicy,
@@ -664,36 +665,14 @@ export default function CheckoutPage({
             )
           },
         },
-        handler: async (response) => {
-          let paymentVerified = false
-          let verifiedCheckout = null
-          try {
-            const verification = await postRazorpayApi('verify', response)
-            if (!verification.verified) {
-              throw new Error(
-                'Payment verification failed. Your order was not placed; contact support if an amount was debited.',
-              )
-            }
-            paymentVerified = true
-            verifiedCheckout = {
-              ...checkoutDetails,
-              razorpay: response,
-              verifiedPayment: verification.payment,
-            }
-            await onPlaceOrder(verifiedCheckout)
-          } catch (error) {
-            setOrderConfirmationAttempt(verifiedCheckout || {
-              ...checkoutDetails,
-              razorpay: response,
-            })
-            setPaymentError(
-              paymentVerified
-                ? `${error.message || 'Order confirmation is temporarily unavailable.'} Your payment is already verified; retry confirmation without paying again.`
-                : `${error.message || 'Payment confirmation is temporarily unavailable.'} Retry confirmation without paying again.`,
-            )
+        handler: (response) => {
+          if (!onPaymentAuthorized) {
+            setPaymentError('Payment confirmation is temporarily unavailable. Please contact support if an amount was debited.')
             paymentInFlight.current = false
             setPaying(false)
+            return
           }
+          onPaymentAuthorized({ checkoutDetails, razorpay: response })
         },
       })
 

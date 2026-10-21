@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import {
   AlertCircle,
-  ArrowLeft,
   ArrowRight,
   BarChart3,
   Eye,
@@ -20,7 +19,6 @@ export default function AdminLoginPage({
   loading,
   onLogin,
   onResetPassword,
-  onSwitchToStore,
   products = [],
   orders = [],
 }) {
@@ -117,13 +115,6 @@ export default function AdminLoginPage({
         </section>
         <section className="flex min-h-[650px] items-center p-5 sm:p-10 lg:p-12">
           <div className="mx-auto w-full max-w-md">
-            <button
-              type="button"
-              onClick={onSwitchToStore}
-              className="mb-8 flex items-center gap-2 text-[10px] font-extrabold text-slate-500 transition hover:text-[#397a4a]"
-            >
-              <ArrowLeft size={14} /> Back to storefront
-            </button>
             <span className="grid size-12 place-items-center rounded-2xl bg-[#e4f1e7] text-[#397a4a]">
               <Sparkles size={20} />
             </span>

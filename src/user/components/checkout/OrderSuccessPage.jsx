@@ -1,17 +1,42 @@
-import { ArrowRight, Check, CheckCircle2, CreditCard, MapPin, PackageCheck, ReceiptText, ShoppingBag } from 'lucide-react'
-import { formatCurrency, parsePrice } from '../../utils/currency'
-import { getOrderDeliverySnapshot } from '../../../utils/orderDelivery'
+import { AlertTriangle, ArrowRight, Check, CheckCircle2, CreditCard, LoaderCircle } from 'lucide-react'
 import { getOrderDisplayId } from '../../../utils/orderIdentifiers'
 
-export default function OrderSuccessPage({ order, onContinueShopping, onViewOrders }) {
-  const items = order.items || []
-  const pricesExcludeTax = order.pricingModel === 'gst-exclusive-v1' || (
-    Number(order.invoice?.schemaVersion || 0) >= 4 &&
-    order.invoice?.tax?.pricesIncludeTax === false
-  )
+export default function OrderSuccessPage({
+  order,
+  verificationState,
+  onRetryVerification,
+  onContinueShopping,
+  onViewOrders,
+}) {
+  if (verificationState) {
+    const failed = verificationState.status === 'error'
+    return (
+      <div className="min-h-[calc(100vh-8rem)] bg-[#f7f8f5]">
+        <div className="mx-auto grid min-h-[calc(100vh-8rem)] max-w-[1120px] place-items-center px-4 py-7 sm:px-6 sm:py-10 lg:px-10 lg:py-14">
+          <section className="w-full max-w-xl rounded-[32px] bg-white px-6 py-12 text-center shadow-sm sm:px-10 sm:py-16" aria-live="polite" aria-busy={!failed}>
+            <span className={`mx-auto grid size-16 place-items-center rounded-full ${failed ? 'bg-red-50 text-red-600' : 'bg-[#e4f1e7] text-[#397a4a]'}`}>
+              {failed ? <AlertTriangle size={27} /> : <LoaderCircle size={28} className="animate-spin" />}
+            </span>
+            <h1 className="mt-6 text-2xl font-extrabold tracking-[-0.035em] text-slate-950 sm:text-3xl">
+              {failed ? 'Payment verification incomplete' : 'Verifying your payment...'}
+            </h1>
+            <p className="mx-auto mt-3 max-w-md text-xs font-semibold leading-6 text-slate-500">
+              {failed
+                ? verificationState.message
+                : 'Please wait while we securely confirm your payment and create your order.'}
+            </p>
+            {failed && (
+              <button type="button" onClick={onRetryVerification} className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-[#397a4a] px-7 text-xs font-extrabold text-white transition hover:bg-[#2f663d]">
+                Retry verification
+              </button>
+            )}
+          </section>
+        </div>
+      </div>
+    )
+  }
+
   const isCod = /cash|cod/i.test(order.paymentMethod || '')
-  const isTestPayment = /test/i.test(order.paymentEnvironment || order.paymentMethod || '')
-  const delivery = getOrderDeliverySnapshot(order)
   const orderDisplayId = getOrderDisplayId(order)
   return (
     <div className="min-h-[calc(100vh-8rem)] bg-[#f7f8f5]">
@@ -20,61 +45,18 @@ export default function OrderSuccessPage({ order, onContinueShopping, onViewOrde
           <div className="absolute -right-16 -top-24 -z-10 size-72 rounded-full bg-[#9bcaa6]/45 blur-3xl" />
           <div className="absolute inset-x-0 bottom-0 -z-10 h-28 bg-gradient-to-t from-[#aacfb3]/45 to-transparent" />
           <span className="mx-auto grid size-18 place-items-center rounded-full bg-[#397a4a] text-white shadow-xl shadow-[#397a4a]/25"><Check size={31} strokeWidth={3} /></span>
-          <p className="mt-5 text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#397a4a]">{isCod ? 'Cash on Delivery Order Confirmed' : isTestPayment ? 'Razorpay Test Payment Successful' : 'Payment Successful'}</p>
+          <p className="mt-5 text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#397a4a]">{isCod ? 'Cash on Delivery Order Confirmed' : 'Payment Successful'}</p>
           <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.045em] text-slate-950 sm:text-5xl">Order Placed Successfully</h1>
-          <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600">{isCod ? 'Thanks for shopping with Pride Electronics. Payment will be collected when your order is delivered.' : isTestPayment ? 'Thanks for shopping with Pride Electronics. No real money was deducted because this payment used Razorpay Test Mode.' : 'Thanks for shopping with Pride Electronics. Your payment was verified successfully.'}</p>
+          <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600">Thank you for shopping with Pride Circuit! Your order has been placed successfully.</p>
           <div className="mx-auto mt-6 flex w-fit flex-wrap items-center justify-center gap-2 rounded-full bg-white/75 px-4 py-2.5 text-[10px] font-bold text-slate-600 backdrop-blur"><CheckCircle2 size={14} className="text-[#397a4a]" /> Order {orderDisplayId}<span className="size-1 rounded-full bg-slate-300" />{isCod ? 'Payment due on delivery' : 'Payment verified'}</div>
         </section>
-
-        <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
-          <section className="rounded-[28px] bg-white p-5 shadow-sm sm:p-7">
-            <div className="flex items-center justify-between gap-3"><div><p className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-[#ff5c35]">Order details</p><h2 className="mt-1 text-xl font-extrabold text-slate-950">Items in your order</h2></div><span className="grid size-10 place-items-center rounded-2xl bg-[#e4f1e7] text-[#397a4a]"><ShoppingBag size={18} /></span></div>
-            <div className="mt-5 space-y-3">
-              {items.map((item, index) => (
-                <article key={`${item.productName}-${item.variantId || index}`} className="flex items-center gap-3 rounded-[20px] bg-[#f7f8f5] p-3 sm:gap-4"><img src={item.image} alt={item.productName} className="size-16 shrink-0 rounded-2xl object-cover sm:size-18" /><div className="min-w-0 flex-1"><h3 className="line-clamp-2 text-xs font-extrabold leading-5 text-slate-900">{item.productName}</h3>{item.variant && <p className="mt-1 text-[9px] font-bold text-[#397a4a]">{item.variant}{item.variantModelNumber ? ` · ${item.variantModelNumber}` : ''}</p>}<p className="mt-1 text-[9px] font-semibold text-slate-400">Quantity: {item.qty}</p></div><strong className="shrink-0 text-right text-xs text-slate-900">{formatCurrency(parsePrice(item.price) * item.qty)}{pricesExcludeTax && <span className="block text-[8px] font-semibold text-slate-400">(Excl. GST)</span>}</strong></article>
-              ))}
-            </div>
-          </section>
-
-          <aside className="space-y-4">
-            <div className="rounded-[26px] bg-[#183020] p-5 text-white shadow-sm">
-              <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-white/10 text-[#9bcaa6]"><ReceiptText size={18} /></span><div><p className="text-[9px] font-bold uppercase tracking-wider text-white/45">{isCod ? 'Amount due' : 'Amount paid'}</p><strong className="text-xl">{order.total}</strong></div></div>
-              <div className="mt-5 space-y-3 border-t border-white/10 pt-4 text-[10px]"><DetailRow label="Order ID" value={orderDisplayId} /><DetailRow label="Invoice Number" value={order.invoiceNumber || 'Being prepared'} /><DetailRow label="Payment method" value={order.paymentMethod || 'Online payment'} /><DetailRow label="Payment ID" value={order.razorpayPaymentId || 'Not available'} /><DetailRow label="Payment status" value={order.paymentStatus || 'Pending'} accent /><DetailRow label="Order status" value={order.status || 'Pending'} /></div>
-            </div>
-            <div className="rounded-[26px] bg-white p-5 shadow-sm">
-              <p className="flex items-center gap-2 text-xs font-extrabold text-slate-900"><MapPin size={15} className="text-[#397a4a]" /> Delivery Method</p>
-              {delivery ? (
-                <div className="mt-3 text-[10px] leading-5 text-slate-500">
-                  <strong className="block text-xs text-[#397a4a]">{delivery.label}</strong>
-                  {delivery.method === 'office_pickup' && <p className="mt-1">Office No. 237, 2nd Floor, XION Mall, Hinjewadi, Pune, MH 411057.</p>}
-                </div>
-              ) : <p className="mt-3 text-[10px] text-slate-500">Delivery method was not recorded for this order.</p>}
-              <p className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-4 text-[9px] font-bold text-slate-500"><PackageCheck size={13} className="text-[#397a4a]" /> {formatOrderDate(order.deliveryDate)}</p>
-            </div>
-          </aside>
-        </div>
 
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-center">
           <button type="button" onClick={onContinueShopping} className="flex h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-6 text-xs font-extrabold text-slate-700 transition hover:border-slate-950 hover:bg-slate-950 hover:text-white">Continue shopping</button>
           <button type="button" onClick={onViewOrders} className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#397a4a] px-6 text-xs font-extrabold text-white transition hover:bg-[#2f663d]">View Order <ArrowRight size={15} /></button>
         </div>
-        <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-[9px] font-semibold text-slate-400"><CreditCard size={12} /> {isCod ? 'Pay securely when your order arrives' : isTestPayment ? 'Razorpay Test Mode transaction — no real funds transferred' : 'Secure online payment'}</p>
+        <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-[9px] font-semibold text-slate-400"><CreditCard size={12} /> {isCod ? 'Pay securely when your order arrives' : 'Secure online payment'}</p>
       </div>
     </div>
   )
-}
-
-function formatOrderDate(value) {
-  if (!value) return 'being scheduled'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-}
-
-function DetailRow({ label, value, accent = false }) {
-  return <div className="flex items-start justify-between gap-4"><span className="text-white/45">{label}</span><strong className={`max-w-[190px] break-all text-right ${accent ? 'text-[#9bcaa6]' : 'text-white/80'}`}>{value}</strong></div>
 }

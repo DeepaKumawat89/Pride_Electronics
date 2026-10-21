@@ -6,7 +6,6 @@ import {
   RotateCcw,
   TicketPercent,
   ShoppingBag,
-  Store,
   Users,
   Warehouse,
   Images,
@@ -15,8 +14,8 @@ import {
   MessageSquareText,
   Tags,
   X,
-  Zap,
 } from 'lucide-react'
+import prideCircuitLogo from '../../../images/Prism_Circuit_Tech_Logo-removebg-preview.png'
 
 const navItems = [
   {
@@ -103,11 +102,9 @@ export default function AdminSidebar({
   activeTab,
   onSelectTab,
   onLogout,
-  onSwitchToStore,
   isOpen,
   onClose,
   permissions = ['*'],
-  storeName = 'Pride Electronics',
 }) {
   return (
     <>
@@ -121,20 +118,18 @@ export default function AdminSidebar({
         className={`fixed inset-y-0 left-0 z-[60] flex w-[278px] flex-col overflow-hidden bg-[#17251c] text-white shadow-2xl transition-transform duration-300 lg:sticky lg:top-0 lg:z-20 lg:h-screen lg:translate-x-0 lg:rounded-r-[30px] ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full bg-[#9bcaa6]/15 blur-3xl" />
-        <div className="relative flex items-center gap-3 px-5 py-6">
-          <span className="grid size-11 place-items-center rounded-2xl bg-[#ff5c35] text-white shadow-lg shadow-[#ff5c35]/20">
-            <Zap size={19} fill="currentColor" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-extrabold">{storeName}</p>
-            <p className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-[#9bcaa6]">
-              Admin Console
-            </p>
+        <div className="relative flex min-h-[104px] items-center px-5 py-5">
+          <div className="mr-11 flex min-w-0 flex-1 items-center justify-center overflow-hidden px-1 py-2.5 lg:mr-0">
+            <img
+              src={prideCircuitLogo}
+              alt="Pride Circuit"
+              className="h-auto max-h-14 w-full object-contain object-center"
+            />
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="grid size-9 place-items-center rounded-full bg-white/10 text-white/70 lg:hidden"
+            className="absolute right-5 grid size-9 place-items-center rounded-full bg-white/10 text-white/70 lg:hidden"
           >
             <X size={17} />
           </button>
@@ -181,17 +176,10 @@ export default function AdminSidebar({
         <div className="relative border-t border-white/10 p-4">
           <button
             type="button"
-            onClick={onSwitchToStore}
-            className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-xs font-bold text-white/65 transition hover:bg-white/8 hover:text-white"
-          >
-            <Store size={17} className="text-[#9bcaa6]" /> Customer storefront
-          </button>
-          <button
-            type="button"
             onClick={onLogout}
-            className="mt-1 flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-xs font-bold text-red-200 transition hover:bg-red-400/10 hover:text-red-100"
+            className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-xs font-bold text-red-200 transition hover:bg-red-400/10 hover:text-red-100"
           >
-            <LogOut size={17} /> Sign out
+            <LogOut size={17} /> Log Out
           </button>
         </div>
       </aside>

@@ -20,6 +20,7 @@ import { initialAdminSettings } from '../data/adminSettings'
 import CategoriesPage from './pages/CategoriesPage'
 import ReviewsPage from './pages/ReviewsPage'
 import { EmptyState } from './components/ui/AdminUI'
+import AdminLogoutConfirmation from './components/AdminLogoutConfirmation'
 
 export default function AdminApp({
   products = [],
@@ -58,7 +59,6 @@ export default function AdminApp({
   onUpdateMarketingSettings,
   onUpdateInvoiceSettings,
   onUpdateAdminSettings,
-  onSwitchToStore,
 }) {
   const {
     admin,
@@ -72,6 +72,7 @@ export default function AdminApp({
   const [activeTab, setActiveTab] = useState('dashboard')
   const [searchQuery, setSearchQuery] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [logoutConfirmationOpen, setLogoutConfirmationOpen] = useState(false)
   const permissions = admin?.permissions || []
   const availableTabs = new Set([
     'dashboard', 'products', 'categories', 'orders', 'inventory', 'payments',
@@ -121,8 +122,9 @@ export default function AdminApp({
     setActiveTab('dashboard')
   }
 
-  const handleLogout = () => {
+  const confirmLogout = () => {
     setIsSidebarOpen(false)
+    setLogoutConfirmationOpen(false)
     logout()
   }
 
@@ -138,7 +140,6 @@ export default function AdminApp({
         loading={loading}
         onLogin={handleLogin}
         onResetPassword={resetPassword}
-        onSwitchToStore={onSwitchToStore}
         products={products}
         orders={orders}
       />
@@ -151,15 +152,15 @@ export default function AdminApp({
       admin={admin}
       sidebarOpen={isSidebarOpen}
       onCloseSidebar={() => setIsSidebarOpen(false)}
-      onLogout={handleLogout}
+      onLogout={() => {
+        setIsSidebarOpen(false)
+        setLogoutConfirmationOpen(true)
+      }}
       onOpenSidebar={() => setIsSidebarOpen(true)}
       onSearch={setSearchQuery}
       onSelectTab={handleSelectTab}
-      onSwitchToStore={onSwitchToStore}
       searchQuery={searchQuery}
-      notificationSettings={adminSettings.notifications}
       permissions={permissions}
-      storeName={adminSettings.store.name}
     >
       {!permittedTab && (
         <EmptyState title="Access restricted" text="Your admin role does not have permission to open a management section. Contact a store administrator." />
@@ -287,6 +288,12 @@ export default function AdminApp({
           onUpdateAdmin={updateProfile}
           onChangePassword={changePassword}
           onNavigate={handleSelectTab}
+        />
+      )}
+      {logoutConfirmationOpen && (
+        <AdminLogoutConfirmation
+          onCancel={() => setLogoutConfirmationOpen(false)}
+          onConfirm={confirmLogout}
         />
       )}
     </AdminLayout>

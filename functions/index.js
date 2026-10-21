@@ -96,6 +96,20 @@ const indiaCalendarParts = (dateValue = new Date()) => Object.fromEntries(
     .map((part) => [part.type, part.value]),
 )
 
+const indiaOrderMoment = (dateValue = new Date()) => {
+  const date = new Date(dateValue)
+  const parts = indiaCalendarParts(date)
+  return {
+    timestamp: date.toISOString(),
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: date.toLocaleTimeString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: 'numeric',
+      minute: '2-digit',
+    }),
+  }
+}
+
 const numberingPeriodsFor = (dateValue = new Date()) => {
   const parts = indiaCalendarParts(dateValue)
   const year = Number(parts.year)
@@ -1961,6 +1975,7 @@ async function placeOrderHandler(request) {
         ? 'Customer will arrange and pay for Porter pickup.'
         : String(quote.deliveryDetails?.instructions || ''),
     }
+    const placedMoment = indiaOrderMoment(now)
     const order = {
       id: orderReference.id,
       orderNumber: orderNumberAllocation.value,
@@ -1969,7 +1984,7 @@ async function placeOrderHandler(request) {
       userId: uid,
       customer: authUser.displayName || 'Pride customer',
       email: String(authUser.email || '').toLowerCase(),
-      date: now.slice(0, 10),
+      date: placedMoment.date,
       total: formatOrderTotal(quote.total),
       totalValue: quote.total,
       totalPaise: Number(quote.totalPaise),
@@ -2003,10 +2018,7 @@ async function placeOrderHandler(request) {
       invoiceDate: invoice.invoiceDate,
       inventoryState: 'reserved',
       inventoryIssue: '',
-      orderTime: new Date().toLocaleTimeString('en-IN', {
-        hour: 'numeric',
-        minute: '2-digit',
-      }),
+      orderTime: placedMoment.time,
       deliveryDate: String(submittedOrder.deliveryDate || 'Being scheduled').slice(0, 100),
       deliveryOption: quote.deliveryMethod,
       shippingAddress,
@@ -2026,9 +2038,7 @@ async function placeOrderHandler(request) {
       statusHistory: [
         {
           status: orderStatus,
-          timestamp: now,
-          date: now.slice(0, 10),
-          time: '',
+          ...placedMoment,
         },
       ],
     }
@@ -2364,6 +2374,7 @@ async function cancelOrderHandler(request) {
     const paymentStatus = /cash|cod/i.test(order.paymentMethod || '')
       ? 'Cancelled'
       : 'Refund Pending'
+    const cancelledMoment = indiaOrderMoment(now)
     const next = {
       ...order,
       status: 'Cancelled',
@@ -2372,7 +2383,7 @@ async function cancelOrderHandler(request) {
       updatedAt: now,
       statusHistory: [
         ...(order.statusHistory || []),
-        { status: 'Cancelled', timestamp: now, date: now.slice(0, 10), time: '' },
+        { status: 'Cancelled', ...cancelledMoment },
       ],
     }
     transaction.update(orderReference, cleanObject(next))

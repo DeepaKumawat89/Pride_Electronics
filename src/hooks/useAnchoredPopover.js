@@ -39,13 +39,35 @@ export function useAnchoredPopover({
                 window.innerWidth - width - viewportPadding,
               ),
             )
-      const top =
+      const gap = 8
+      const desiredHeight = panelHeight || popoverRef.current?.offsetHeight || 0
+      const spaceBelow = Math.max(
+        0,
+        window.innerHeight - rect.bottom - gap - viewportPadding,
+      )
+      const spaceAbove = Math.max(0, rect.top - gap - viewportPadding)
+      const openUpward = Boolean(
         flipVertical &&
-        panelHeight &&
-        rect.bottom + 8 + panelHeight > window.innerHeight - viewportPadding
-          ? Math.max(viewportPadding, rect.top - panelHeight - 8)
-          : rect.bottom + 8
-      setPosition({ left, top, width })
+        desiredHeight &&
+        spaceBelow < desiredHeight &&
+        spaceAbove > spaceBelow,
+      )
+      const availableHeight = openUpward ? spaceAbove : spaceBelow
+      const renderedHeight = desiredHeight
+        ? Math.min(desiredHeight, availableHeight)
+        : availableHeight
+      const top = openUpward
+        ? Math.max(viewportPadding, rect.top - gap - renderedHeight)
+        : Math.min(
+            rect.bottom + gap,
+            window.innerHeight - viewportPadding - renderedHeight,
+          )
+      setPosition({
+        left,
+        top: Math.max(viewportPadding, top),
+        width,
+        ...(flipVertical ? { maxHeight: Math.max(0, availableHeight) } : {}),
+      })
     }
 
     const closeOnOutsideClick = (event) => {

@@ -21,6 +21,7 @@ import { initialInvoiceSettings } from '../../../data/invoice'
 import { getCustomerOrderInvoice } from '../../../firebase/customerData'
 import { getOrderDeliverySnapshot } from '../../../utils/orderDelivery'
 import { getOrderDisplayId } from '../../../utils/orderIdentifiers'
+import { getOrderPlacedMoment, getStatusMoment } from '../../../utils/orderTimestamps'
 
 const RETURN_REASONS = [
   'Product is damaged',
@@ -73,10 +74,7 @@ const getProgress = (order) => {
     const event = [...(order.statusHistory || [])]
       .reverse()
       .find((item) => statuses.includes(item.status))
-    return {
-      date: event?.date || fallbackDate,
-      time: event?.time || fallbackTime,
-    }
+    return getStatusMoment(event, fallbackDate, fallbackTime)
   }
   const confirmed = statusMoment(
     ['Confirmed', 'Processing', 'Packed', 'Pending', 'Ordered'],
@@ -181,6 +179,13 @@ export default function OrderDetailsView({
   const pricesIncludeTax = financials.gstBreakdown?.pricesIncludeTax ?? !pricesExcludeTax
   const deliveryMethod = getOrderDeliverySnapshot(order)
   const orderDisplayId = getOrderDisplayId(order)
+  const placedMoment = getOrderPlacedMoment(order)
+  const latestStatusEvent = [...(order.statusHistory || [])]
+    .reverse()
+    .find((event) => event.status === order.status) || (order.statusHistory || []).at(-1)
+  const latestStatusMoment = latestStatusEvent
+    ? getStatusMoment(latestStatusEvent)
+    : null
   const progress = getProgress(order)
   const delivered = order.status === 'Delivered'
   const deliveredAt = new Date(order.deliveryDate).getTime()
@@ -254,11 +259,19 @@ export default function OrderDetailsView({
               Order #{orderDisplayId}
             </h1>
             <p className="mt-1.5 text-[10px] text-slate-400 sm:text-xs">
-              Ordered on {order.date}
-              {order.orderTime ? ` at ${order.orderTime}` : ''}
+              Ordered on {placedMoment.date}
+              {placedMoment.time ? ` at ${placedMoment.time}` : ''}
             </p>
           </div>
-          <StatusPill status={order.status} />
+          <div className="shrink-0 text-right">
+            <StatusPill status={order.status} />
+            {latestStatusMoment?.date && (
+              <p className="mt-2 text-[8px] font-semibold text-slate-400">
+                Updated {latestStatusMoment.date}
+                {latestStatusMoment.time ? ` at ${latestStatusMoment.time}` : ''}
+              </p>
+            )}
+          </div>
         </div>
       </header>
 
