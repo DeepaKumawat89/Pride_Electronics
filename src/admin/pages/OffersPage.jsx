@@ -1,9 +1,9 @@
-import { useState } from 'react'
-import { Check, Image, Megaphone, Package, Sparkles, Zap } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Image, Megaphone, Package, Pencil, Save, Sparkles, X, Zap } from 'lucide-react'
 import { PageHeader } from '../components/ui/AdminUI'
 
 const inputClass =
-  'mt-1.5 h-11 w-full rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10'
+  'mt-1.5 h-11 w-full rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs text-black outline-none transition disabled:cursor-default disabled:text-black disabled:opacity-100 focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10'
 const textareaClass = `${inputClass} h-24 resize-none py-3`
 
 const copySettings = (settings) => JSON.parse(JSON.stringify(settings))
@@ -40,7 +40,11 @@ function Section({ icon: Icon, title, description, children }) {
 
 export default function OffersPage({ settings, products = [], onUpdate }) {
   const [form, setForm] = useState(() => copySettings(settings))
-  const [saved, setSaved] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+
+  useEffect(() => {
+    if (!isEditing) setForm(copySettings(settings))
+  }, [isEditing, settings])
 
   const updateSection = (section, patch) =>
     setForm((current) => ({
@@ -50,8 +54,12 @@ export default function OffersPage({ settings, products = [], onUpdate }) {
 
   const save = () => {
     onUpdate(copySettings(form))
-    setSaved(true)
-    window.setTimeout(() => setSaved(false), 1800)
+    setIsEditing(false)
+  }
+
+  const cancel = () => {
+    setForm(copySettings(settings))
+    setIsEditing(false)
   }
 
   const productOptions = products.filter((product) => product.enabled !== false)
@@ -62,10 +70,11 @@ export default function OffersPage({ settings, products = [], onUpdate }) {
         eyebrow="Merchandising"
         title="Offers & banners"
         description="Manage storefront banners, featured products, flash sales, deals, and category promotions without editing code."
-        actions={<button type="button" onClick={save} className="inline-flex items-center gap-2 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white transition hover:bg-[#ff5c35]">{saved ? <Check size={15} /> : <Sparkles size={15} />}{saved ? 'Saved' : 'Save changes'}</button>}
+        actions={isEditing ? <div className="flex items-center gap-2"><button type="button" onClick={cancel} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-3 text-xs font-extrabold text-slate-600 transition hover:bg-slate-50"><X size={15} /> Cancel</button><button type="button" onClick={save} className="inline-flex items-center gap-2 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white transition hover:bg-[#ff5c35]"><Save size={15} /> Save Changes</button></div> : <button type="button" onClick={() => setIsEditing(true)} className="inline-flex items-center gap-2 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white transition hover:bg-[#397a4a]"><Pencil size={15} /> Edit Details</button>}
       />
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <fieldset disabled={!isEditing} className="space-y-6">
+        <div className="grid gap-5 xl:grid-cols-2">
         <Section icon={Image} title="Home banner" description="Primary storefront hero content and image.">
           <div className="mb-4"><Toggle checked={form.homeBanner.enabled} onChange={(enabled) => updateSection('homeBanner', { enabled })} /></div>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -117,18 +126,19 @@ export default function OffersPage({ settings, products = [], onUpdate }) {
             </div>
           ))}
         </Section>
-      </div>
-
-      <Section icon={Sparkles} title="Category promotions" description="Control which category shortcuts appear and the label shown to customers.">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {form.categoryPromotions.map((promotion, index) => (
-            <div key={promotion.name} className="rounded-2xl border border-slate-100 bg-[#fafbfa] p-4">
-              <div className="flex items-center justify-between"><strong className="text-[10px] text-slate-800">{promotion.name}</strong><Toggle checked={promotion.enabled} onChange={(enabled) => setForm((current) => ({ ...current, categoryPromotions: current.categoryPromotions.map((item, itemIndex) => itemIndex === index ? { ...item, enabled } : item) }))} /></div>
-              <Field label="Display label"><input className={inputClass} value={promotion.label} onChange={(event) => setForm((current) => ({ ...current, categoryPromotions: current.categoryPromotions.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item) }))} /></Field>
-            </div>
-          ))}
         </div>
-      </Section>
+
+        <Section icon={Sparkles} title="Category promotions" description="Control which category shortcuts appear and the label shown to customers.">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {form.categoryPromotions.map((promotion, index) => (
+              <div key={promotion.name} className="rounded-2xl border border-slate-100 bg-[#fafbfa] p-4">
+                <div className="flex items-center justify-between"><strong className="text-[10px] text-slate-800">{promotion.name}</strong><Toggle checked={promotion.enabled} onChange={(enabled) => setForm((current) => ({ ...current, categoryPromotions: current.categoryPromotions.map((item, itemIndex) => itemIndex === index ? { ...item, enabled } : item) }))} /></div>
+                <Field label="Display label"><input className={inputClass} value={promotion.label} onChange={(event) => setForm((current) => ({ ...current, categoryPromotions: current.categoryPromotions.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item) }))} /></Field>
+              </div>
+            ))}
+          </div>
+        </Section>
+      </fieldset>
     </div>
   )
 }

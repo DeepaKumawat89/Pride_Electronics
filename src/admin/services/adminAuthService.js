@@ -1,15 +1,10 @@
 import {
   browserSessionPersistence,
-  EmailAuthProvider,
   onIdTokenChanged,
-  reauthenticateWithCredential,
   sendPasswordResetEmail,
   setPersistence,
   signInWithEmailAndPassword,
   signOut,
-  updateEmail,
-  updatePassword,
-  updateProfile,
 } from 'firebase/auth'
 import { auth } from '../../firebase/firebase'
 import {
@@ -105,42 +100,6 @@ export function observeAdminSession(onChange) {
       onChange(null)
     }
   })
-}
-
-export async function updateAdminProfile(profile) {
-  const user = auth.currentUser
-  if (!user) {
-    throw createUserFacingAuthError(
-      'Your admin session has expired. Please sign in again.',
-    )
-  }
-  try {
-    if (profile.name !== user.displayName) {
-      await updateProfile(user, { displayName: profile.name.trim() })
-    }
-    if (profile.email.toLowerCase() !== String(user.email).toLowerCase()) {
-      await updateEmail(user, profile.email.trim().toLowerCase())
-    }
-    return await createAdminSession(user, true)
-  } catch (error) {
-    throw getAuthErrorMessage(error)
-  }
-}
-
-export async function updateAdminPassword(currentPassword, nextPassword) {
-  const user = auth.currentUser
-  if (!user?.email) {
-    throw createUserFacingAuthError(
-      'Your admin session has expired. Please sign in again.',
-    )
-  }
-  try {
-    const credential = EmailAuthProvider.credential(user.email, currentPassword)
-    await reauthenticateWithCredential(user, credential)
-    await updatePassword(user, nextPassword)
-  } catch (error) {
-    throw getAuthErrorMessage(error)
-  }
 }
 
 export async function clearAdminSession() {

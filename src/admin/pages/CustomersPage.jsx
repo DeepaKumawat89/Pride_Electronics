@@ -2,11 +2,8 @@ import { useMemo, useState } from 'react'
 import {
   Check,
   Copy,
-  ShieldCheck,
-  UserCheck,
-  Users,
 } from 'lucide-react'
-import { EmptyState, PageHeader, StatCard } from '../components/ui/AdminUI'
+import { EmptyState, PageHeader } from '../components/ui/AdminUI'
 import {
   getInitials,
   moneyValue,
@@ -36,9 +33,6 @@ export default function CustomersPage({
         .toLowerCase()
         .includes(searchQuery.toLowerCase()),
   )
-  const active = profiles.filter((customer) =>
-    String(customer.status).toLowerCase() === 'active',
-  ).length
   const copy = (text) => {
     navigator.clipboard?.writeText(text)
     setCopiedId(text)
@@ -67,10 +61,6 @@ export default function CustomersPage({
         title={`${profiles.length} customer accounts`}
         description="Review customer activity and securely manage account access."
       />
-      <section className="grid grid-cols-2 gap-3">
-        <StatCard icon={Users} label="Total accounts" value={profiles.length} detail="Registered shoppers" />
-        <StatCard icon={UserCheck} label="Active accounts" value={`${Math.round((active / (profiles.length || 1)) * 100)}%`} detail="Verified and active" tone="amber" />
-      </section>
       {statusError && <p className="rounded-2xl bg-red-50 px-4 py-3 text-[9px] font-bold text-red-600">{statusError}</p>}
       {!filtered.length ? (
         <EmptyState title="No matching customers" />
@@ -105,9 +95,6 @@ export default function CustomersPage({
           </div>
         </div>
       )}
-      <section>
-        <article className="relative overflow-hidden rounded-[28px] bg-[#17251c] p-6 text-white"><div className="absolute -right-14 -top-16 size-48 rounded-full bg-[#9bcaa6]/15 blur-2xl" /><ShieldCheck size={22} className="text-[#9bcaa6]" /><h3 className="mt-5 text-xl font-extrabold">Customer data stays protected</h3><p className="mt-2 max-w-md text-xs leading-6 text-white/50">Account information is shown only inside the authenticated management workspace.</p></article>
-      </section>
     </div>
   )
 }

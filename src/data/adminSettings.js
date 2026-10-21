@@ -1,19 +1,3 @@
-export const adminPermissionOptions = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'products', label: 'Products' },
-  { id: 'categories', label: 'Categories' },
-  { id: 'orders', label: 'Orders' },
-  { id: 'inventory', label: 'Inventory' },
-  { id: 'payments', label: 'Payments' },
-  { id: 'returns', label: 'Returns' },
-  { id: 'coupons', label: 'Coupons' },
-  { id: 'users', label: 'Customers' },
-  { id: 'reviews', label: 'Review moderation' },
-  { id: 'offers', label: 'Offers & banners' },
-  { id: 'tax-invoice', label: 'Tax & invoice' },
-  { id: 'settings', label: 'Settings' },
-]
-
 export const initialAdminSettings = {
   store: {
     name: 'Pride Electronics',

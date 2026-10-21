@@ -1,12 +1,9 @@
 import {
   AlertTriangle,
-  ArrowUpRight,
-  Clock3,
   IndianRupee,
   Package,
   Plus,
   ShoppingBag,
-  TrendingUp,
   Users,
 } from 'lucide-react'
 import { EmptyState, PageHeader, StatCard } from '../components/ui/AdminUI'
@@ -102,7 +99,7 @@ export default function DashboardPage({
         />
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,.55fr)]">
+      <section>
         <article className="overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-7">
             <div>
@@ -138,55 +135,6 @@ export default function DashboardPage({
           </div> : <div className="p-5 sm:p-7"><EmptyState title="No sales data yet" text="Revenue activity will appear after the first order is placed." /></div>}
         </article>
 
-        <article className="rounded-[28px] bg-[#17251c] p-5 text-white shadow-sm sm:p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[9px] font-extrabold uppercase tracking-[0.17em] text-[#9bcaa6]">
-                Store ranking
-              </p>
-              <h3 className="mt-1 text-lg font-extrabold">Top products</h3>
-            </div>
-            <TrendingUp size={19} className="text-[#ff7b59]" />
-          </div>
-          <div className="mt-5 space-y-2">
-            {products.slice(0, 4).map((product, index) => (
-              <button
-                key={product.id}
-                type="button"
-                onClick={() => onNavigate('products')}
-                className="flex w-full items-center gap-3 rounded-[18px] bg-white/6 p-2.5 text-left transition hover:bg-white/10"
-              >
-                <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-white/10 text-[9px] font-extrabold text-[#9bcaa6]">
-                  {index + 1}
-                </span>
-                <img
-                  src={product.image}
-                  alt=""
-                  className="size-11 shrink-0 rounded-xl object-cover"
-                />
-                <span className="min-w-0 flex-1">
-                  <strong className="block truncate text-[10px]">
-                    {product.name}
-                  </strong>
-                  <span className="mt-0.5 block text-[8px] text-white/40">
-                    {product.category}
-                  </span>
-                </span>
-                <strong className="text-[9px] text-white/70">
-                  {product.price}
-                </strong>
-              </button>
-            ))}
-            {!products.length && <p className="rounded-2xl border border-white/10 px-4 py-8 text-center text-[9px] font-bold text-white/45">No products in the catalog yet.</p>}
-          </div>
-          <button
-            type="button"
-            onClick={() => onNavigate('products')}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-full border border-white/10 py-3 text-[9px] font-extrabold text-white/70 hover:bg-white/8"
-          >
-            View catalog <ArrowUpRight size={13} />
-          </button>
-        </article>
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)]">
@@ -291,46 +239,8 @@ export default function DashboardPage({
               )}
             </div>
           </article>
-          <article className="rounded-[28px] bg-[#dcebdd] p-5">
-            <p className="text-[9px] font-extrabold uppercase tracking-wider text-[#397a4a]">
-              Quick actions
-            </p>
-            <div className="mt-3 grid gap-2">
-              <QuickAction
-                icon={Plus}
-                text="Add hardware"
-                onClick={() => onNavigate('products')}
-              />
-              <QuickAction
-                icon={Clock3}
-                text={`Process ${pending} pending`}
-                onClick={() => onNavigate('orders')}
-              />
-              <QuickAction
-                icon={Users}
-                text="View customers"
-                onClick={() => onNavigate('users')}
-              />
-            </div>
-          </article>
         </div>
       </section>
     </div>
-  )
-}
-
-function QuickAction({ icon: Icon, text, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex items-center gap-3 rounded-2xl bg-white/70 p-3 text-left text-[10px] font-extrabold text-[#253329] transition hover:bg-white"
-    >
-      <span className="grid size-8 place-items-center rounded-xl bg-white text-[#397a4a]">
-        <Icon size={14} />
-      </span>
-      <span className="flex-1">{text}</span>
-      <ArrowUpRight size={13} />
-    </button>
   )
 }

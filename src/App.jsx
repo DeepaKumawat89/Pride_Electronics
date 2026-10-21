@@ -355,30 +355,6 @@ function App() {
     setInvoiceSettings,
     'invoice',
   )
-  const updateAdminSettings = (valueOrUpdater) =>
-    setAdminSettings((current) => {
-      const next = typeof valueOrUpdater === 'function'
-        ? valueOrUpdater(current)
-        : valueOrUpdater
-      const safeEmailSettings = Object.fromEntries(
-        Object.entries(next.email || {}).filter(([key]) => key !== 'password'),
-      )
-      const persisted = {
-        ...next,
-        email: safeEmailSettings,
-      }
-      void saveSetting('admin', persisted).catch((error) =>
-        setProductsError(error.message || 'Unable to save admin settings.'),
-      )
-      void saveSetting('storefront', {
-        store: persisted.store,
-        payment: persisted.payment,
-      }).catch((error) =>
-        setProductsError(error.message || 'Unable to save storefront settings.'),
-      )
-      return next
-    })
-
   const handleCustomerAuthenticated = () => {}
 
   // Handlers for Admin actions on Products
@@ -1034,7 +1010,6 @@ function App() {
           onUpdateCustomer={handleUpdateCustomer}
           onUpdateMarketingSettings={updateMarketingSettings}
           onUpdateInvoiceSettings={updateInvoiceSettings}
-          onUpdateAdminSettings={updateAdminSettings}
         />
       )}
     </div>

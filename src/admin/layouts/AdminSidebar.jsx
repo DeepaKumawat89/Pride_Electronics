@@ -10,7 +10,6 @@ import {
   Warehouse,
   Images,
   ReceiptText,
-  Settings,
   MessageSquareText,
   Tags,
   X,
@@ -89,12 +88,6 @@ const navItems = [
     label: 'Tax & invoice',
     caption: 'GST & business details',
     icon: ReceiptText,
-  },
-  {
-    id: 'settings',
-    label: 'Settings',
-    caption: 'Store & access controls',
-    icon: Settings,
   },
 ]
 

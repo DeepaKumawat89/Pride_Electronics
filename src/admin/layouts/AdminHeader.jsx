@@ -15,7 +15,6 @@ const titles = {
   reviews: ['Review moderation', 'Manage customer product feedback'],
   offers: ['Offers & banners', 'Manage storefront promotions'],
   'tax-invoice': ['Tax & invoice', 'Configure GST, business details, and numbering'],
-  settings: ['Admin settings', 'Manage store, access, and communications'],
 }
 
 export default function AdminHeader({

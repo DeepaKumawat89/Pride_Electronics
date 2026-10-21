@@ -4,8 +4,6 @@ import {
   observeAdminSession,
   requestAdminPasswordReset,
   signInAdmin,
-  updateAdminPassword,
-  updateAdminProfile,
 } from '../services/adminAuthService'
 
 export function useAdminAuth() {
@@ -36,15 +34,6 @@ export function useAdminAuth() {
     await clearAdminSession()
   }, [])
 
-  const updateProfile = async (profile) => {
-    const session = await updateAdminProfile(profile)
-    setAdmin(session)
-    return session
-  }
-
-  const changePassword = (currentPassword, nextPassword) =>
-    updateAdminPassword(currentPassword, nextPassword)
-
   const resetPassword = (email) => requestAdminPasswordReset(email)
 
   return {
@@ -53,7 +42,5 @@ export function useAdminAuth() {
     login,
     logout,
     resetPassword,
-    updateProfile,
-    changePassword,
   }
 }

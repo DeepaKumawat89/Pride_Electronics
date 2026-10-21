@@ -15,7 +15,6 @@ import { initialMarketingSettings } from '../data/marketing'
 import { initialShippingSettings } from '../data/shipping'
 import { initialInvoiceSettings } from '../data/invoice'
 import TaxInvoicePage from './pages/TaxInvoicePage'
-import AdminSettingsPage from './pages/AdminSettingsPage'
 import { initialAdminSettings } from '../data/adminSettings'
 import CategoriesPage from './pages/CategoriesPage'
 import ReviewsPage from './pages/ReviewsPage'
@@ -58,7 +57,6 @@ export default function AdminApp({
   onUpdateCustomer,
   onUpdateMarketingSettings,
   onUpdateInvoiceSettings,
-  onUpdateAdminSettings,
 }) {
   const {
     admin,
@@ -66,8 +64,6 @@ export default function AdminApp({
     login,
     logout,
     resetPassword,
-    updateProfile,
-    changePassword,
   } = useAdminAuth()
   const [activeTab, setActiveTab] = useState('dashboard')
   const [searchQuery, setSearchQuery] = useState('')
@@ -76,7 +72,7 @@ export default function AdminApp({
   const permissions = admin?.permissions || []
   const availableTabs = new Set([
     'dashboard', 'products', 'categories', 'orders', 'inventory', 'payments',
-    'returns', 'coupons', 'users', 'reviews', 'offers', 'tax-invoice', 'settings',
+    'returns', 'coupons', 'users', 'reviews', 'offers', 'tax-invoice',
   ])
   const canAccess = (tab) =>
     availableTabs.has(tab) &&
@@ -279,17 +275,6 @@ export default function AdminApp({
         />
       )}
 
-      {permittedTab === 'settings' && (
-        <AdminSettingsPage
-          settings={adminSettings}
-          admin={admin}
-          invoiceSettings={invoiceSettings}
-          onUpdate={onUpdateAdminSettings}
-          onUpdateAdmin={updateProfile}
-          onChangePassword={changePassword}
-          onNavigate={handleSelectTab}
-        />
-      )}
       {logoutConfirmationOpen && (
         <AdminLogoutConfirmation
           onCancel={() => setLogoutConfirmationOpen(false)}
