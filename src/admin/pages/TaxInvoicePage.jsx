@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Building2, Check, Hash, ReceiptText, Save } from 'lucide-react'
-import { createInvoiceNumber } from '../../data/invoice'
 import { PageHeader } from '../components/ui/AdminUI'
 
 const inputClass =
@@ -72,15 +71,11 @@ export default function TaxInvoicePage({ settings, onUpdate }) {
         </Section>
       </div>
 
-      <Section icon={Hash} title="Invoice numbering" description="The sequence advances automatically after each newly placed order.">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <Field label="Prefix"><input className={inputClass} value={form.numbering.prefix} onChange={(e) => update('numbering', { prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '') })} /></Field>
-          <Field label="Next number"><input type="number" min="1" className={inputClass} value={form.numbering.nextNumber} onChange={(e) => update('numbering', { nextNumber: Number(e.target.value) })} /></Field>
-          <Field label="Number padding"><input type="number" min="1" max="12" className={inputClass} value={form.numbering.padding} onChange={(e) => update('numbering', { padding: Number(e.target.value) })} /></Field>
-          <Field label="Suffix"><input className={inputClass} value={form.numbering.suffix} onChange={(e) => update('numbering', { suffix: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '') })} /></Field>
-          <div className="flex items-end pb-3"><Toggle label="Include financial year" checked={form.numbering.includeFinancialYear} onChange={(includeFinancialYear) => update('numbering', { includeFinancialYear })} /></div>
+      <Section icon={Hash} title="Automatic numbering" description="Order and invoice sequences are issued securely by the backend.">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl bg-[#f3f7f2] px-4 py-3"><p className="text-[8px] font-extrabold uppercase tracking-wider text-slate-400">Order ID format</p><strong className="mt-1 block font-mono text-xs text-[#397a4a]">PC-YYYY-000001</strong><p className="mt-1 text-[9px] text-slate-500">Resets each calendar year.</p></div>
+          <div className="rounded-2xl bg-[#f3f7f2] px-4 py-3"><p className="text-[8px] font-extrabold uppercase tracking-wider text-slate-400">Invoice format</p><strong className="mt-1 block font-mono text-xs text-[#397a4a]">PC/YY-YY/000001</strong><p className="mt-1 text-[9px] text-slate-500">Resets each Indian financial year.</p></div>
         </div>
-        <div className="mt-5 rounded-2xl bg-[#f3f7f2] px-4 py-3"><p className="text-[8px] font-extrabold uppercase tracking-wider text-slate-400">Next invoice preview</p><strong className="mt-1 block font-mono text-xs text-[#397a4a]">{createInvoiceNumber(form)}</strong></div>
       </Section>
     </div>
   )

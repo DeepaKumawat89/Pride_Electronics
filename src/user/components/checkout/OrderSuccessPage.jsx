@@ -1,6 +1,7 @@
 import { ArrowRight, Check, CheckCircle2, CreditCard, MapPin, PackageCheck, ReceiptText, ShoppingBag } from 'lucide-react'
 import { formatCurrency, parsePrice } from '../../utils/currency'
 import { getOrderDeliverySnapshot } from '../../../utils/orderDelivery'
+import { getOrderDisplayId } from '../../../utils/orderIdentifiers'
 
 export default function OrderSuccessPage({ order, onContinueShopping, onViewOrders }) {
   const items = order.items || []
@@ -11,6 +12,7 @@ export default function OrderSuccessPage({ order, onContinueShopping, onViewOrde
   const isCod = /cash|cod/i.test(order.paymentMethod || '')
   const isTestPayment = /test/i.test(order.paymentEnvironment || order.paymentMethod || '')
   const delivery = getOrderDeliverySnapshot(order)
+  const orderDisplayId = getOrderDisplayId(order)
   return (
     <div className="min-h-[calc(100vh-8rem)] bg-[#f7f8f5]">
       <div className="mx-auto max-w-[1120px] px-4 py-7 sm:px-6 sm:py-10 lg:px-10 lg:py-14">
@@ -21,7 +23,7 @@ export default function OrderSuccessPage({ order, onContinueShopping, onViewOrde
           <p className="mt-5 text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#397a4a]">{isCod ? 'Cash on Delivery Order Confirmed' : isTestPayment ? 'Razorpay Test Payment Successful' : 'Payment Successful'}</p>
           <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.045em] text-slate-950 sm:text-5xl">Order Placed Successfully</h1>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600">{isCod ? 'Thanks for shopping with Pride Electronics. Payment will be collected when your order is delivered.' : isTestPayment ? 'Thanks for shopping with Pride Electronics. No real money was deducted because this payment used Razorpay Test Mode.' : 'Thanks for shopping with Pride Electronics. Your payment was verified successfully.'}</p>
-          <div className="mx-auto mt-6 flex w-fit flex-wrap items-center justify-center gap-2 rounded-full bg-white/75 px-4 py-2.5 text-[10px] font-bold text-slate-600 backdrop-blur"><CheckCircle2 size={14} className="text-[#397a4a]" /> Order {order.id}<span className="size-1 rounded-full bg-slate-300" />{isCod ? 'Payment due on delivery' : 'Payment verified'}</div>
+          <div className="mx-auto mt-6 flex w-fit flex-wrap items-center justify-center gap-2 rounded-full bg-white/75 px-4 py-2.5 text-[10px] font-bold text-slate-600 backdrop-blur"><CheckCircle2 size={14} className="text-[#397a4a]" /> Order {orderDisplayId}<span className="size-1 rounded-full bg-slate-300" />{isCod ? 'Payment due on delivery' : 'Payment verified'}</div>
         </section>
 
         <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
@@ -37,7 +39,7 @@ export default function OrderSuccessPage({ order, onContinueShopping, onViewOrde
           <aside className="space-y-4">
             <div className="rounded-[26px] bg-[#183020] p-5 text-white shadow-sm">
               <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-white/10 text-[#9bcaa6]"><ReceiptText size={18} /></span><div><p className="text-[9px] font-bold uppercase tracking-wider text-white/45">{isCod ? 'Amount due' : 'Amount paid'}</p><strong className="text-xl">{order.total}</strong></div></div>
-              <div className="mt-5 space-y-3 border-t border-white/10 pt-4 text-[10px]"><DetailRow label="Order ID" value={order.id} /><DetailRow label="Payment method" value={order.paymentMethod || 'Online payment'} /><DetailRow label="Payment ID" value={order.razorpayPaymentId || 'Not available'} /><DetailRow label="Payment status" value={order.paymentStatus || 'Pending'} accent /><DetailRow label="Order status" value={order.status || 'Pending'} /></div>
+              <div className="mt-5 space-y-3 border-t border-white/10 pt-4 text-[10px]"><DetailRow label="Order ID" value={orderDisplayId} /><DetailRow label="Invoice Number" value={order.invoiceNumber || 'Being prepared'} /><DetailRow label="Payment method" value={order.paymentMethod || 'Online payment'} /><DetailRow label="Payment ID" value={order.razorpayPaymentId || 'Not available'} /><DetailRow label="Payment status" value={order.paymentStatus || 'Pending'} accent /><DetailRow label="Order status" value={order.status || 'Pending'} /></div>
             </div>
             <div className="rounded-[26px] bg-white p-5 shadow-sm">
               <p className="flex items-center gap-2 text-xs font-extrabold text-slate-900"><MapPin size={15} className="text-[#397a4a]" /> Delivery Method</p>

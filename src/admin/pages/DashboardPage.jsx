@@ -17,6 +17,7 @@ import {
   statusTone,
 } from '../utils/adminFormatters'
 import { getAvailableStock } from '../utils/inventory'
+import { getOrderDisplayId } from '../../utils/orderIdentifiers'
 
 export default function DashboardPage({
   products = [],
@@ -223,7 +224,7 @@ export default function DashboardPage({
                     {order.customer}
                   </strong>
                   <span className="mt-1 block text-[8px] font-semibold text-slate-400">
-                    {order.id} · {order.date}
+                    {getOrderDisplayId(order)} · {order.date}
                   </span>
                 </span>
                 <span className="text-right">

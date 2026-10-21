@@ -175,6 +175,7 @@ function allocateLineTaxes(items, couponDiscount, pricesIncludeTax, legacyProduc
 
 function createInvoiceSnapshot({
   orderId,
+  invoiceNumber,
   invoiceSettings,
   invoiceDate,
   quote,
@@ -304,7 +305,7 @@ function createInvoiceSnapshot({
     placeOfSupplyStateCode,
     reverseCharge: false,
   }
-  const number = invoiceNumberFor(settings.numbering, invoiceDate)
+  const number = text(invoiceNumber, 100) || invoiceNumberFor(settings.numbering, invoiceDate)
   const snapshot = {
     schemaVersion: hasComponentTaxSnapshots && hasShippingComponentSnapshots
       ? 8

@@ -85,6 +85,79 @@ const STOCK_RESERVATION_CLEANUP_BATCHES = 10
 
 const cleanObject = (value) => JSON.parse(JSON.stringify(value || {}))
 
+const indiaCalendarParts = (dateValue = new Date()) => Object.fromEntries(
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(dateValue))
+    .filter((part) => part.type !== 'literal')
+    .map((part) => [part.type, part.value]),
+)
+
+const numberingPeriodsFor = (dateValue = new Date()) => {
+  const parts = indiaCalendarParts(dateValue)
+  const year = Number(parts.year)
+  const month = Number(parts.month)
+  const financialYearStart = month >= 4 ? year : year - 1
+  const financialYear = `${String(financialYearStart).slice(-2)}-${String(financialYearStart + 1).slice(-2)}`
+  return {
+    calendarYear: String(year),
+    financialYear,
+  }
+}
+
+async function prepareNumberAllocation({
+  transaction,
+  type,
+  period,
+  prefix,
+  orderField,
+  now,
+}) {
+  const counterId = `${type}_${String(period).replace(/[^0-9A-Za-z_-]/g, '_')}`
+  const counterReference = db.doc(`numberCounters/${counterId}`)
+  const existingNumberQuery = db.collection('orders')
+    .where(orderField, '>=', prefix)
+    .where(orderField, '<=', `${prefix}\uf8ff`)
+    .orderBy(orderField, 'desc')
+    .limit(1)
+  const [counterDocument, existingNumberDocuments] = await Promise.all([
+    transaction.get(counterReference),
+    transaction.get(existingNumberQuery),
+  ])
+  const existingValue = String(
+    existingNumberDocuments.docs[0]?.data()?.[orderField] || '',
+  )
+  const existingSequence = existingValue.startsWith(prefix)
+    ? Number(existingValue.slice(prefix.length))
+    : 0
+  const counterData = counterDocument.data() || {}
+  const counterSequence = counterData.type === type && counterData.period === period
+    ? Number(counterData.lastIssued || 0)
+    : 0
+  const sequence = Math.max(
+    Number.isInteger(existingSequence) ? existingSequence : 0,
+    Number.isInteger(counterSequence) ? counterSequence : 0,
+  ) + 1
+  if (sequence < 1 || sequence > 999999) {
+    throw new HttpsError('resource-exhausted', `${type === 'order' ? 'Order' : 'Invoice'} number sequence is exhausted for ${period}.`)
+  }
+  return {
+    reference: counterReference,
+    value: `${prefix}${String(sequence).padStart(6, '0')}`,
+    counter: {
+      type,
+      period,
+      prefix,
+      lastIssued: sequence,
+      updatedAt: now,
+      ...(counterDocument.exists ? {} : { createdAt: now }),
+    },
+  }
+}
+
 const razorpayAuthorization = () =>
   `Basic ${Buffer.from(`${razorpayKeyId.value()}:${razorpayKeySecret.value()}`).toString('base64')}`
 
@@ -1672,6 +1745,34 @@ async function placeOrderHandler(request) {
       }
     }
 
+    const numberingPeriods = numberingPeriodsFor(now)
+    const orderNumberAllocation = await prepareNumberAllocation({
+      transaction,
+      type: 'order',
+      period: numberingPeriods.calendarYear,
+      prefix: `PC-${numberingPeriods.calendarYear}-`,
+      orderField: 'orderNumber',
+      now,
+    })
+    const invoiceNumberAllocation = await prepareNumberAllocation({
+      transaction,
+      type: 'invoice',
+      period: numberingPeriods.financialYear,
+      prefix: `PC/${numberingPeriods.financialYear}/`,
+      orderField: 'invoiceNumber',
+      now,
+    })
+    transaction.set(
+      orderNumberAllocation.reference,
+      orderNumberAllocation.counter,
+      { merge: true },
+    )
+    transaction.set(
+      invoiceNumberAllocation.reference,
+      invoiceNumberAllocation.counter,
+      { merge: true },
+    )
+
     const inventoryUpdates = new Map()
     if (isCashOnDelivery) {
       quote.items.forEach((quotedItem, index) => {
@@ -1791,7 +1892,8 @@ async function placeOrderHandler(request) {
     let invoice
     try {
       invoice = createInvoiceSnapshot({
-        orderId: orderReference.id,
+        orderId: orderNumberAllocation.value,
+        invoiceNumber: invoiceNumberAllocation.value,
         invoiceSettings,
         invoiceDate: now,
         quote: invoiceQuote,
@@ -1861,6 +1963,7 @@ async function placeOrderHandler(request) {
     }
     const order = {
       id: orderReference.id,
+      orderNumber: orderNumberAllocation.value,
       clientRequestId: requestId,
       checkoutMode,
       userId: uid,
@@ -1937,15 +2040,6 @@ async function placeOrderHandler(request) {
       updatedAt: now,
     })
     transaction.create(orderReference, cleanObject(order))
-    if (invoiceSettingsDocument.exists) {
-      transaction.update(invoiceSettingsReference, {
-        'numbering.nextNumber': Math.max(
-          1,
-          Number(invoiceSettings.numbering?.nextNumber) || 1,
-        ) + 1,
-        updatedAt: now,
-      })
-    }
     const remainingCartItems = removePurchasedCartItems(
       userDocument.data()?.cartItems,
       quote.items,

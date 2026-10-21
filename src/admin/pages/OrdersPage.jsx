@@ -18,6 +18,7 @@ import {
 import { getInitials, statusTone } from '../utils/adminFormatters'
 import { getPaymentStatus } from '../utils/payments'
 import { getOrderDeliverySnapshot } from '../../utils/orderDelivery'
+import { getOrderDisplayId } from '../../utils/orderIdentifiers'
 
 const statuses = [
   'All',
@@ -57,7 +58,7 @@ export default function OrdersPage({
     (order) =>
       (statusFilter === 'All' || statusForAdmin(order.status) === statusFilter) &&
       (!searchQuery ||
-        `${order.id} ${order.customer} ${order.email} ${order.trackingId || ''}`
+        `${order.id} ${order.orderNumber || ''} ${order.invoiceNumber || ''} ${order.customer} ${order.email} ${order.trackingId || ''}`
           .toLowerCase()
           .includes(searchQuery.toLowerCase())),
   )
@@ -176,24 +177,28 @@ export default function OrdersPage({
               <tbody className="divide-y divide-slate-100">
                 {filtered.map((order) => {
                   const delivery = getOrderDeliverySnapshot(order)
+                  const orderDisplayId = getOrderDisplayId(order)
                   return <tr key={order.id} className="transition hover:bg-[#fafcf9]">
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2">
                         <strong className="text-[10px] text-[#397a4a]">
-                          {order.id}
+                          {orderDisplayId}
                         </strong>
                         <button
                           type="button"
-                          onClick={() => copy(order.id)}
+                          onClick={() => copy(orderDisplayId)}
                           className="text-slate-400 hover:text-[#397a4a]"
                         >
-                          {copiedId === order.id ? (
+                          {copiedId === orderDisplayId ? (
                             <Check size={12} />
                           ) : (
                             <Copy size={12} />
                           )}
                         </button>
                       </div>
+                      <span className="mt-1 block text-[8px] font-semibold text-slate-400">
+                        Invoice {order.invoiceNumber || 'not issued'}
+                      </span>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
@@ -247,7 +252,7 @@ export default function OrdersPage({
                         value={statusForAdmin(order.status)}
                         onChange={(status) => updateOrderStatus(order, status)}
                         options={statusOptions}
-                        ariaLabel={`Status for order ${order.id}`}
+                        ariaLabel={`Status for order ${orderDisplayId}`}
                         className="w-32"
                         menuWidth={176}
                         buttonClassName={`rounded-full px-3 py-2 text-[8px] font-extrabold ring-1 ring-inset ${statusTone[statusForAdmin(order.status)] || 'bg-slate-100 text-slate-600 ring-slate-200'}`}

@@ -20,6 +20,7 @@ import downloadInvoicePdf from './InvoicePdf'
 import { initialInvoiceSettings } from '../../../data/invoice'
 import { getCustomerOrderInvoice } from '../../../firebase/customerData'
 import { getOrderDeliverySnapshot } from '../../../utils/orderDelivery'
+import { getOrderDisplayId } from '../../../utils/orderIdentifiers'
 
 const RETURN_REASONS = [
   'Product is damaged',
@@ -179,6 +180,7 @@ export default function OrderDetailsView({
   )
   const pricesIncludeTax = financials.gstBreakdown?.pricesIncludeTax ?? !pricesExcludeTax
   const deliveryMethod = getOrderDeliverySnapshot(order)
+  const orderDisplayId = getOrderDisplayId(order)
   const progress = getProgress(order)
   const delivered = order.status === 'Delivered'
   const deliveredAt = new Date(order.deliveryDate).getTime()
@@ -249,7 +251,7 @@ export default function OrderDetailsView({
         <div className="mt-5 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">
-              Order #{order.id}
+              Order #{orderDisplayId}
             </h1>
             <p className="mt-1.5 text-[10px] text-slate-400 sm:text-xs">
               Ordered on {order.date}
@@ -454,7 +456,7 @@ export default function OrderDetailsView({
           <div className="mt-4 flex flex-wrap gap-2">
             {helpActions.map(([label, Icon]) =>
               label === 'Contact Support' ? (
-                <a key={label} href={`mailto:support@prideelectronics.in?subject=${encodeURIComponent(`Help with order ${order.id}`)}`} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2.5 text-[9px] font-extrabold text-slate-600 transition hover:border-[#75916f] hover:text-[#253329]"><Icon size={14} />{label}</a>
+                <a key={label} href={`mailto:support@prideelectronics.in?subject=${encodeURIComponent(`Help with order ${orderDisplayId}`)}`} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2.5 text-[9px] font-extrabold text-slate-600 transition hover:border-[#75916f] hover:text-[#253329]"><Icon size={14} />{label}</a>
               ) : (
                 <button key={label} type="button" onClick={() => setActiveAction((current) => current === label ? '' : label)} className={`inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-[9px] font-extrabold transition ${activeAction === label ? 'border-[#75916f] bg-[#eef4e8] text-[#253329]' : 'border-slate-200 text-slate-600 hover:border-[#75916f]'}`}><Icon size={14} />{label}</button>
               ),
@@ -493,8 +495,8 @@ export default function OrderDetailsView({
 
           {activeAction && !['Return Product', 'Cancel Order'].includes(activeAction) && (
             <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-[10px] leading-5 text-slate-500">Tell our support team about your {activeAction.toLowerCase()} request for order {order.id}.</p>
-              <a href={`mailto:support@prideelectronics.in?subject=${encodeURIComponent(`${activeAction} - ${order.id}`)}`} className="w-fit rounded-full bg-[#253329] px-4 py-2.5 text-[9px] font-extrabold text-white">Contact Support</a>
+              <p className="text-[10px] leading-5 text-slate-500">Tell our support team about your {activeAction.toLowerCase()} request for order {orderDisplayId}.</p>
+              <a href={`mailto:support@prideelectronics.in?subject=${encodeURIComponent(`${activeAction} - ${orderDisplayId}`)}`} className="w-fit rounded-full bg-[#253329] px-4 py-2.5 text-[9px] font-extrabold text-white">Contact Support</a>
             </div>
           )}
         </div>

@@ -122,6 +122,7 @@ export async function createInvoicePdfDocument(
     taxDetails: serverInvoice.tax || {},
   }
   const invoiceNumber = serverInvoice.invoiceNumber
+  const orderNumber = serverInvoice.orderId || order.orderNumber || order.id
   const invoiceDate = serverInvoice.invoiceDate
   const billing = {
     name: serverInvoice.buyer?.gst?.legalName || serverInvoice.buyer?.billing?.fullName || serverInvoice.buyer?.name,
@@ -248,8 +249,9 @@ export async function createInvoicePdfDocument(
     pdf.text(`Invoice Date: ${formatDate(invoiceDate)}`, pageWidth - margin, y + 6, {
       align: 'right',
     })
+    pdf.text(`Order ID: ${orderNumber}`, margin, y + 10)
 
-    y += 12
+    y += 16
   }
 
   const drawPartyDetails = () => {
@@ -565,7 +567,7 @@ export async function createInvoicePdfDocument(
 
   pdf.setProperties({
     title: `${invoiceNumber} - Pride Automation Tax Invoice`,
-    subject: `Tax invoice for order ${order.id}`,
+    subject: `Tax invoice for order ${orderNumber}`,
     author: INVOICE_HEADER_BUSINESS.legalName,
     creator: INVOICE_HEADER_BUSINESS.legalName,
     keywords: 'tax invoice, electronics, GST, Pride Automation',

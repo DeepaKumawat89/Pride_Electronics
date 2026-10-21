@@ -41,7 +41,7 @@ export function createPaymentRecords(orders, refunds = []) {
     const refund = refundByOrder.get(String(order.id))
     return {
       id: getPaymentTransactionId(order),
-      orderId: order.id,
+      orderId: order.orderNumber || order.id,
       customer: order.customer || 'Customer not available',
       email: order.email || '',
       amount: formatCurrency(parsePrice(order.total)),

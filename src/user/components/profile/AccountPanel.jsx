@@ -43,6 +43,7 @@ import OrderDetailsView from './OrderDetailsView'
 import { initialShippingSettings } from '../../../data/shipping'
 import { initialInvoiceSettings } from '../../../data/invoice'
 import { getOrderDeliverySnapshot } from '../../../utils/orderDelivery'
+import { getOrderDisplayId } from '../../../utils/orderIdentifiers'
 
 const genderOptions = [
   { value: '', label: 'Select gender' },
@@ -1126,7 +1127,7 @@ function OrdersSection({
       orders.filter((order) => {
         const matchesQuery =
           !query ||
-          `${order.id} ${order.items?.map((item) => item.productName).join(' ')}`
+          `${order.id} ${order.orderNumber || ''} ${order.invoiceNumber || ''} ${order.items?.map((item) => item.productName).join(' ')}`
             .toLowerCase()
             .includes(query.toLowerCase())
         const matchesStatus = status === 'All' || order.status === status
@@ -1227,6 +1228,7 @@ function OrderCard({ order, onSelect }) {
   const delivered = order.status === 'Delivered'
   const cancelled = order.status === 'Cancelled'
   const delivery = getOrderDeliverySnapshot(order)
+  const orderDisplayId = getOrderDisplayId(order)
 
   return (
     <article
@@ -1239,7 +1241,7 @@ function OrderCard({ order, onSelect }) {
           onSelect()
         }
       }}
-      aria-label={`Open details for order ${order.id}`}
+      aria-label={`Open details for order ${orderDisplayId}`}
       className="group block w-full cursor-pointer overflow-hidden rounded-[26px] border border-slate-100 bg-[#fafbf8] text-left shadow-[0_8px_24px_rgba(15,23,42,0.03)] transition duration-300 hover:-translate-y-0.5 hover:border-[#aacfb3]/60 hover:shadow-[0_18px_45px_rgba(40,68,48,0.12)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#9bcaa6]/35"
     >
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-4 sm:px-5">
@@ -1252,7 +1254,10 @@ function OrderCard({ order, onSelect }) {
               Order ID
             </p>
             <p className="mt-0.5 text-xs font-extrabold text-slate-900">
-              {order.id}
+              {orderDisplayId}
+            </p>
+            <p className="mt-0.5 text-[8px] font-semibold text-slate-400">
+              Invoice {order.invoiceNumber || 'being prepared'}
             </p>
           </div>
         </div>

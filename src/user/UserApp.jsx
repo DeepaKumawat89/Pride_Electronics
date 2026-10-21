@@ -32,6 +32,7 @@ import {
 } from './utils/productSearch'
 import { sortCatalogProducts } from './utils/catalog'
 import { normalizeAddress } from './utils/address'
+import { getOrderDisplayId } from '../utils/orderIdentifiers'
 import {
   emptyAccountState,
   removeSavedAddress,
@@ -1645,7 +1646,7 @@ export default function UserApp({
     sessionStorage.removeItem(CHECKOUT_SELECTION_SESSION_KEY)
     checkoutHistoryActive.current = false
     window.scrollTo({ top: 0, behavior: 'auto' })
-    notify(`Order ${savedOrder.id} placed successfully`)
+    notify(`Order ${getOrderDisplayId(savedOrder)} placed successfully`)
     return savedOrder
   }
 
@@ -1662,7 +1663,7 @@ export default function UserApp({
           current.map((item) => (item.id === orderId ? savedOrder : item)),
         )
       }
-      notify(`Order ${orderId} cancelled successfully`)
+      notify(`Order ${getOrderDisplayId(savedOrder || order)} cancelled successfully`)
       return true
     } catch (error) {
       notify(error.message || 'Unable to cancel the order')
