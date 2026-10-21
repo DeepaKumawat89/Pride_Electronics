@@ -1,5 +1,6 @@
 import { ArrowRight, Check, CheckCircle2, CreditCard, MapPin, PackageCheck, ReceiptText, ShoppingBag } from 'lucide-react'
 import { formatCurrency, parsePrice } from '../../utils/currency'
+import { getOrderDeliverySnapshot } from '../../../utils/orderDelivery'
 
 export default function OrderSuccessPage({ order, onContinueShopping, onViewOrders }) {
   const items = order.items || []
@@ -9,6 +10,7 @@ export default function OrderSuccessPage({ order, onContinueShopping, onViewOrde
   )
   const isCod = /cash|cod/i.test(order.paymentMethod || '')
   const isTestPayment = /test/i.test(order.paymentEnvironment || order.paymentMethod || '')
+  const delivery = getOrderDeliverySnapshot(order)
   return (
     <div className="min-h-[calc(100vh-8rem)] bg-[#f7f8f5]">
       <div className="mx-auto max-w-[1120px] px-4 py-7 sm:px-6 sm:py-10 lg:px-10 lg:py-14">
@@ -38,9 +40,14 @@ export default function OrderSuccessPage({ order, onContinueShopping, onViewOrde
               <div className="mt-5 space-y-3 border-t border-white/10 pt-4 text-[10px]"><DetailRow label="Order ID" value={order.id} /><DetailRow label="Payment method" value={order.paymentMethod || 'Online payment'} /><DetailRow label="Payment ID" value={order.razorpayPaymentId || 'Not available'} /><DetailRow label="Payment status" value={order.paymentStatus || 'Pending'} accent /><DetailRow label="Order status" value={order.status || 'Pending'} /></div>
             </div>
             <div className="rounded-[26px] bg-white p-5 shadow-sm">
-              <p className="flex items-center gap-2 text-xs font-extrabold text-slate-900"><MapPin size={15} className="text-[#397a4a]" /> Delivery address</p>
-              {order.shippingAddress ? <p className="mt-3 text-[10px] leading-5 text-slate-500">{order.shippingAddress.fullName}<br />{order.shippingAddress.line1}<br />{order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.pincode}</p> : <p className="mt-3 text-[10px] text-slate-500">Address submitted during checkout</p>}
-              <p className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-4 text-[9px] font-bold text-slate-500"><PackageCheck size={13} className="text-[#397a4a]" /> {order.deliveryOption || 'Standard delivery'} · Estimated delivery {formatOrderDate(order.deliveryDate)}</p>
+              <p className="flex items-center gap-2 text-xs font-extrabold text-slate-900"><MapPin size={15} className="text-[#397a4a]" /> Delivery Method</p>
+              {delivery ? (
+                <div className="mt-3 text-[10px] leading-5 text-slate-500">
+                  <strong className="block text-xs text-[#397a4a]">{delivery.label}</strong>
+                  {delivery.method === 'office_pickup' && <p className="mt-1">Office No. 237, 2nd Floor, XION Mall, Hinjewadi, Pune, MH 411057.</p>}
+                </div>
+              ) : <p className="mt-3 text-[10px] text-slate-500">Delivery method was not recorded for this order.</p>}
+              <p className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-4 text-[9px] font-bold text-slate-500"><PackageCheck size={13} className="text-[#397a4a]" /> {formatOrderDate(order.deliveryDate)}</p>
             </div>
           </aside>
         </div>

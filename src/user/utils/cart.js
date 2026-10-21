@@ -12,13 +12,6 @@ const normalizeTaxRate = (value, fallback = 18) => {
   return Number.isFinite(rate) ? Math.max(0, Math.min(100, rate)) : 0
 }
 
-const shippingTaxTreatmentFor = (taxSettings = {}) => {
-  const treatment = String(taxSettings.shippingTaxTreatment || 'product-rates')
-  return ['fixed', 'product-rates', 'exempt'].includes(treatment)
-    ? treatment
-    : 'product-rates'
-}
-
 const taxComponentsFor = (taxableValue, gstRate, supplyType) => {
   const taxable = roundMoney(taxableValue)
   const rate = normalizeTaxRate(gstRate, 0)
@@ -190,6 +183,7 @@ export function calculateCartPricing(
   shippingSettings = {},
   taxSettings = {},
   supplyType = 'intra-state',
+  deliveryId = 'office_pickup',
 ) {
   const normalizedSupplyType = supplyType === 'inter-state'
     ? 'inter-state'
@@ -219,14 +213,10 @@ export function calculateCartPricing(
     ...validatedCoupon,
     discount: roundMoney(validatedCoupon.discount),
   }
-  const standardShipping =
-    sellingSubtotal >=
-      Number(
-        shippingSettings.freeShippingThreshold ?? FREE_SHIPPING_THRESHOLD,
-      ) || sellingSubtotal === 0
-      ? 0
-      : Number(shippingSettings.standardCharge ?? STANDARD_SHIPPING_CHARGE)
-  const shipping = roundMoney(coupon.freeShipping ? 0 : standardShipping)
+  const normalizedDeliveryId = ['office_pickup', 'porter', 'delivery_express'].includes(deliveryId)
+    ? deliveryId
+    : 'office_pickup'
+  const shipping = normalizedDeliveryId === 'delivery_express' ? 100 : 0
   let allocatedDiscount = 0
   const lineTaxes = items.map(({ product, quantity }, index) => {
     const tier = getApplicablePricingTier(product, quantity)
@@ -252,13 +242,13 @@ export function calculateCartPricing(
   const productTax = roundMoney(
     lineTaxes.reduce((sum, item) => sum + item.gstAmount, 0),
   )
-  const shippingTaxTreatment = taxSettings.gstEnabled !== false
-    ? shippingTaxTreatmentFor(taxSettings)
+  const shippingTaxTreatment = shipping > 0
+    ? 'fixed'
     : 'exempt'
   let shippingTaxBreakdown = []
   if (shipping > 0 && shippingTaxTreatment === 'fixed') {
     const rate = normalizeTaxRate(
-      taxSettings.shippingTaxRate ?? shippingSettings.taxRate,
+      18,
       18,
     )
     shippingTaxBreakdown = [{
@@ -319,6 +309,7 @@ export function calculateCartPricing(
     sgst,
     igst,
     supplyType: normalizedSupplyType,
+    deliveryId: normalizedDeliveryId,
     preTaxTotal,
     total,
     coupon,

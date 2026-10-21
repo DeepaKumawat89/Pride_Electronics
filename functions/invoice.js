@@ -313,6 +313,14 @@ function createInvoiceSnapshot({
     invoiceNumber: number,
     invoiceDate: new Date(invoiceDate).toISOString(),
     orderId: text(orderId, 200),
+    delivery: {
+      id: text(quote.deliveryId, 50),
+      code: text(quote.deliveryId, 50),
+      method: text(quote.deliveryMethod, 100),
+      details: quote.deliveryDetails && typeof quote.deliveryDetails === 'object'
+        ? JSON.parse(JSON.stringify(quote.deliveryDetails))
+        : {},
+    },
     seller: {
       legalName: text(settings.business.legalName, 200),
       displayName: text(settings.business.displayName, 200),

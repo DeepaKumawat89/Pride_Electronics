@@ -17,6 +17,7 @@ import {
 } from '../components/ui/AdminUI'
 import { getInitials, statusTone } from '../utils/adminFormatters'
 import { getPaymentStatus } from '../utils/payments'
+import { getOrderDeliverySnapshot } from '../../utils/orderDelivery'
 
 const statuses = [
   'All',
@@ -150,7 +151,7 @@ export default function OrdersPage({
       ) : (
         <div className="overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] border-collapse text-left">
+            <table className="w-full min-w-[1080px] border-collapse text-left">
               <thead className="bg-[#f3f7f2]">
                 <tr>
                   {[
@@ -158,6 +159,7 @@ export default function OrdersPage({
                     'Customer',
                     'Date',
                     'Products',
+                    'Delivery',
                     'Total',
                     'Payment',
                     'Status',
@@ -172,8 +174,9 @@ export default function OrdersPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map((order) => (
-                  <tr key={order.id} className="transition hover:bg-[#fafcf9]">
+                {filtered.map((order) => {
+                  const delivery = getOrderDeliverySnapshot(order)
+                  return <tr key={order.id} className="transition hover:bg-[#fafcf9]">
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2">
                         <strong className="text-[10px] text-[#397a4a]">
@@ -227,6 +230,9 @@ export default function OrdersPage({
                         )}
                       </div>
                     </td>
+                    <td className="px-5 py-4">
+                      <strong className="block text-[9px] text-[#397a4a]">{delivery?.label || 'Not recorded'}</strong>
+                    </td>
                     <td className="px-5 py-4 text-xs font-extrabold text-slate-900">
                       {order.total}
                     </td>
@@ -248,7 +254,7 @@ export default function OrdersPage({
                       />
                     </td>
                   </tr>
-                ))}
+                })}
               </tbody>
             </table>
           </div>

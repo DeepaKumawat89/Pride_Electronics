@@ -502,6 +502,8 @@ async function reserveCheckoutStock({
       billingAddress,
       gstProfile,
       deliveryId: quote.deliveryId,
+      deliveryMethod: quote.deliveryMethod,
+      deliveryDetails: cleanObject(quote.deliveryDetails),
       deliveryDate: String(requestData.deliveryDate || 'Being scheduled').slice(0, 100),
       paymentMethod: 'Online payment',
       items: quote.items.map((item) => ({
@@ -1843,6 +1845,20 @@ async function placeOrderHandler(request) {
         lineTotal: invoiceLine.lineTotal,
       }
     })
+    const deliverySnapshot = {
+      method: quote.deliveryId,
+      label: quote.deliveryMethod,
+      charges: Number(quote.shipping || 0),
+      gst: Number(quote.shippingTax || 0),
+      address: quote.deliveryId === 'office_pickup'
+        ? String(quote.deliveryDetails?.pickupAddress || '')
+        : quote.deliveryId === 'delivery_express'
+          ? cleanObject(shippingAddress)
+          : null,
+      instructions: quote.deliveryId === 'porter'
+        ? 'Customer will arrange and pay for Porter pickup.'
+        : String(quote.deliveryDetails?.instructions || ''),
+    }
     const order = {
       id: orderReference.id,
       clientRequestId: requestId,
@@ -1872,6 +1888,11 @@ async function placeOrderHandler(request) {
       pricingModel: quote.pricingModel,
       couponCode: quote.couponCode,
       deliveryId: quote.deliveryId,
+      deliveryMethod: quote.deliveryId,
+      deliveryMethodId: quote.deliveryId,
+      deliveryMethodLabel: quote.deliveryMethod,
+      delivery: cleanObject(deliverySnapshot),
+      deliveryDetails: cleanObject(quote.deliveryDetails),
       items: orderItems,
       itemsCount: quote.items.reduce((sum, item) => sum + item.qty, 0),
       status: orderStatus,
@@ -1884,7 +1905,7 @@ async function placeOrderHandler(request) {
         minute: '2-digit',
       }),
       deliveryDate: String(submittedOrder.deliveryDate || 'Being scheduled').slice(0, 100),
-      deliveryOption: quote.deliveryId === 'express' ? 'Express delivery' : 'Standard delivery',
+      deliveryOption: quote.deliveryMethod,
       shippingAddress,
       billingAddress,
       gstProfile,

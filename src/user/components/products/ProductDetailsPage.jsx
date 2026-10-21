@@ -303,20 +303,6 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                   </button>
                 )}
 
-                {quantity > 1 && priceAvailable && (
-                  <p className="w-full text-xs font-extrabold text-[#397a4a]">
-                    Total: {formatCurrency(applicableUnitPrice * quantity)} (Excl. GST){' '}
-                    <span className="font-semibold text-slate-500">
-                      ({formatCurrency(applicableUnitPrice)} × {quantity})
-                    </span>
-                    {applicableTier.isBulkTier && (
-                      <span className="ml-2 inline-flex rounded-full bg-[#e4f1e7] px-2 py-0.5 text-[9px] font-bold text-[#366643]">
-                        {applicableTier.tierLabel} applied
-                      </span>
-                    )}
-                  </p>
-                )}
-
                 {showBulkPopover && hasBulkPricing && (
                   <div
                     ref={popoverRef}

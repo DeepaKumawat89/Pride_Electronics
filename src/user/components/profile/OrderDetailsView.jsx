@@ -19,6 +19,7 @@ import { formatCurrency, parsePrice } from '../../utils/currency'
 import downloadInvoicePdf from './InvoicePdf'
 import { initialInvoiceSettings } from '../../../data/invoice'
 import { getCustomerOrderInvoice } from '../../../firebase/customerData'
+import { getOrderDeliverySnapshot } from '../../../utils/orderDelivery'
 
 const RETURN_REASONS = [
   'Product is damaged',
@@ -28,30 +29,6 @@ const RETURN_REASONS = [
   'No longer needed',
 ]
 const NOW = Date.now()
-
-const getAddressParts = (address) => {
-  if (!address) {
-    return {
-      name: 'Pride Customer',
-      address: 'Address not available',
-      phone: 'Phone number not available',
-    }
-  }
-  if (typeof address === 'string') {
-    return { name: 'Pride Customer', address, phone: 'Phone number not available' }
-  }
-  return {
-    name: address.fullName || 'Pride Customer',
-    address: [
-      address.line1,
-      address.line2,
-      [address.city, address.state, address.pincode].filter(Boolean).join(', '),
-    ]
-      .filter(Boolean)
-      .join(', '),
-    phone: address.phone || 'Phone number not available',
-  }
-}
 
 const getFinancials = (order, taxSettings) => {
   if (order.invoice?.generatedBy === 'server') {
@@ -176,7 +153,6 @@ function SummaryRow({ label, value, muted = false }) {
 
 export default function OrderDetailsView({
   order,
-  address,
   returnRequest,
   onSubmitReturn,
   onCancelOrder,
@@ -202,7 +178,7 @@ export default function OrderDetailsView({
     order.invoice?.tax?.pricesIncludeTax === false
   )
   const pricesIncludeTax = financials.gstBreakdown?.pricesIncludeTax ?? !pricesExcludeTax
-  const delivery = getAddressParts(address)
+  const deliveryMethod = getOrderDeliverySnapshot(order)
   const progress = getProgress(order)
   const delivered = order.status === 'Delivered'
   const deliveredAt = new Date(order.deliveryDate).getTime()
@@ -360,9 +336,10 @@ export default function OrderDetailsView({
           <div>
             <SectionTitle icon={MapPin}>Delivery</SectionTitle>
             <dl className="mt-4 space-y-3 text-[10px]">
-              <div><dt className="text-slate-400">Customer</dt><dd className="mt-0.5 font-bold text-slate-700">{delivery.name}</dd></div>
-              <div><dt className="text-slate-400">Delivery address</dt><dd className="mt-0.5 max-w-md font-semibold leading-5 text-slate-600">{delivery.address}</dd></div>
-              <div><dt className="text-slate-400">Phone</dt><dd className="mt-0.5 font-semibold text-slate-600">{delivery.phone}</dd></div>
+              {deliveryMethod ? <>
+                <div><dt className="text-slate-400">Delivery Method</dt><dd className="mt-0.5 font-bold text-[#397a4a]">{deliveryMethod.label}</dd></div>
+                {deliveryMethod.method === 'office_pickup' && <div><dt className="text-slate-400">Office address</dt><dd className="mt-0.5 max-w-md font-semibold leading-5 text-slate-600">Office No. 237, 2nd Floor, XION Mall, Hinjewadi, Pune, MH 411057.</dd></div>}
+              </> : <div><dt className="text-slate-400">Delivery Method</dt><dd className="mt-0.5 font-semibold text-slate-500">Not recorded for this order</dd></div>}
               <div><dt className="text-slate-400">{delivered ? 'Delivered on' : 'Estimated delivery'}</dt><dd className="mt-0.5 font-bold text-slate-700">{order.deliveryDate || 'Being scheduled'}</dd></div>
             </dl>
           </div>

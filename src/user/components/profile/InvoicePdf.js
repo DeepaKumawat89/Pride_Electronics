@@ -469,6 +469,7 @@ export async function createInvoicePdfDocument(
     )
     const rows = [
       ['Subtotal (excluding GST)', moneyValue(taxableSubtotal)],
+      ['Delivery Method', serverInvoice.delivery?.method || order.deliveryMethod || order.deliveryOption || 'Delivery'],
       ['Delivery Charges (excluding GST)', data.delivery ? moneyValue(data.delivery) : 'FREE'],
     ]
     if (data.taxDetails.supplyType === 'intra-state') {

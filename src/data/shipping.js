@@ -34,6 +34,6 @@ export const initialShippingSettings = {
   pickup: {
     enabled: true,
     processingHours: 24,
-    address: 'Pride Electronics Fulfillment Centre, Pune, Maharashtra',
+    address: 'Office No. 237, 2nd Floor, XION Mall, Hinjewadi, Pune, MH 411057',
   },
 }

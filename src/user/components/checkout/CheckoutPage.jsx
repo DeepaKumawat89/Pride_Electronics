@@ -9,6 +9,8 @@ import {
   MapPin,
   Minus,
   Package,
+  Store,
+  Truck,
   Pencil,
   Plus,
   ShoppingBag,
@@ -54,6 +56,33 @@ const createEstimatedDeliveryDate = (days) => {
   date.setDate(date.getDate() + days)
   return date.toISOString().slice(0, 10)
 }
+
+const PORTER_NOTICE = 'Please book Porter yourself and pay the delivery charges directly to Porter. No delivery charges will be collected by Pride Circuit.'
+const OFFICE_PICKUP_ADDRESS = 'Office No. 237, 2nd Floor, XION Mall, Hinjewadi, Pune, MH 411057'
+
+const deliveryMethods = [
+  {
+    id: 'office_pickup',
+    name: 'Collect From Office',
+    icon: Store,
+    description: 'Collect your order after we confirm that it is ready.',
+    detail: OFFICE_PICKUP_ADDRESS,
+  },
+  {
+    id: 'porter',
+    name: 'Through Porter',
+    icon: Package,
+    description: 'Arrange a Porter pickup after your order is shipped.',
+    detail: PORTER_NOTICE,
+  },
+  {
+    id: 'delivery_express',
+    name: 'Delivery Express',
+    icon: Truck,
+    description: 'Fast delivery arranged by Pride Circuit.',
+    detail: 'Pride Circuit will arrange express delivery to your selected address.',
+  },
+]
 
 const createCheckoutAddress = (user, address = {}) => {
   const normalizedAddress = normalizeAddress(address)
@@ -158,6 +187,7 @@ export default function CheckoutPage({
   const [paymentError, setPaymentError] = useState('')
   const [paying, setPaying] = useState(false)
   const [authoritativePricing, setAuthoritativePricing] = useState(null)
+  const [deliveryId, setDeliveryId] = useState('office_pickup')
 
   const defaultPayment = savedPayments.find((payment) => payment.isDefault) || savedPayments[0]
   const onlinePaymentEnabled = paymentSettings.razorpayEnabled && [
@@ -208,6 +238,7 @@ export default function CheckoutPage({
     shippingSettings,
     taxSettings,
     supplyType,
+    deliveryId,
   )
 
   const checkoutPricing = authoritativePricing
@@ -521,9 +552,13 @@ export default function CheckoutPage({
       expectedTotalPaise: Math.round(checkoutTotal * 100),
       couponCode: pricing.coupon.status === 'applied' ? appliedCoupon : '',
       delivery: {
-        id: 'standard',
-        name: 'Standard Delivery',
-        estimatedDate: createEstimatedDeliveryDate(3),
+        id: deliveryId,
+        name: deliveryMethods.find((method) => method.id === deliveryId)?.name,
+        estimatedDate: deliveryId === 'delivery_express'
+          ? createEstimatedDeliveryDate(2)
+          : 'To be coordinated',
+        ...(deliveryId === 'office_pickup' ? { pickupAddress: OFFICE_PICKUP_ADDRESS } : {}),
+        ...(deliveryId === 'porter' ? { instructions: PORTER_NOTICE } : {}),
       },
     }
 
@@ -566,7 +601,7 @@ export default function CheckoutPage({
             quantity,
           })),
           couponCode: pricing.coupon.status === 'applied' ? appliedCoupon : '',
-          deliveryId: 'standard',
+          deliveryId,
           deliveryDate: checkoutDetails.delivery.estimatedDate,
           shippingAddress: checkoutDetails.address,
           billingAddress: checkoutDetails.billingAddress,
@@ -1338,6 +1373,51 @@ export default function CheckoutPage({
               </div>
             </section>
 
+            {/* Delivery Method Selection */}
+            <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
+              <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3.5">
+                <Truck size={18} className="text-[#397a4a]" />
+                <div>
+                  <h2 className="text-base font-extrabold text-slate-900">Delivery Method</h2>
+                  <p className="text-[10px] text-slate-500">Choose how you would like to receive your order.</p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                {deliveryMethods.map((method) => {
+                  const Icon = method.icon
+                  const selected = deliveryId === method.id
+                  return (
+                    <label
+                      key={method.id}
+                      className={`cursor-pointer rounded-2xl border-2 p-4 transition ${selected ? 'border-[#397a4a] bg-[#f3f8f3] shadow-sm' : 'border-slate-100 bg-[#fafbfa] hover:border-slate-300'}`}
+                    >
+                      <span className="flex items-start gap-3">
+                        <input
+                          type="radio"
+                          name="delivery-method"
+                          value={method.id}
+                          checked={selected}
+                          onChange={() => {
+                            setDeliveryId(method.id)
+                            setAuthoritativePricing(null)
+                            setPaymentError('')
+                          }}
+                          className="mt-1 size-4 border-slate-300 text-[#397a4a] focus:ring-[#397a4a]"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2">
+                            <strong className="flex items-center gap-1.5 text-xs text-slate-900"><Icon size={14} className="text-[#397a4a]" />{method.name}</strong>
+                          </span>
+                          <span className="mt-2 block text-[10px] font-semibold leading-4 text-slate-600">{method.description}</span>
+                          <span className={`mt-2 block rounded-lg p-2.5 text-[9px] leading-4 ${method.id === 'porter' ? 'bg-amber-50 font-bold text-amber-800' : 'bg-white/80 text-slate-500'}`}>{method.detail}</span>
+                        </span>
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            </section>
+
             {/* Offers & Coupons Section */}
             <section className="rounded-2xl bg-white p-4 shadow-sm border border-slate-200/80">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
@@ -1431,14 +1511,14 @@ export default function CheckoutPage({
                 )}
 
                 <SummaryRow
-                  label="Shipping Fee"
+                  label="Delivery Charges"
                   value={checkoutPricing.shipping ? formatCurrency(checkoutPricing.shipping) : 'FREE'}
                   accent={!checkoutPricing.shipping}
                 />
 
                 <SummaryRow
-                  label="GST / Tax Amount"
-                  value={`${formatCurrency(checkoutPricing.tax)} (added)`}
+                  label="GST"
+                  value={formatCurrency(checkoutPricing.tax)}
                 />
               </div>
 
@@ -1472,7 +1552,7 @@ export default function CheckoutPage({
                 <div className="flex items-start gap-2">
                   <LockKeyhole size={14} className="mt-0.5 shrink-0 text-[#397a4a]" />
                   <p className="leading-4">
-                    By clicking <strong>{primaryActionLabel}</strong>, you agree to Pride Electronics'{' '}
+                    By clicking <strong>{primaryActionLabel}</strong>, you agree to Pride Circuit&apos;s{' '}
                     <button
                       type="button"
                       onClick={() => onOpenPolicy?.('terms')}
@@ -1488,7 +1568,7 @@ export default function CheckoutPage({
                     >
                       Privacy Policy
                     </button>
-                    . Payments are securely processed via 256-bit SSL encryption.
+                    .
                   </p>
                 </div>
               </div>

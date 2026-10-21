@@ -6,6 +6,17 @@ const money = (value) => {
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100
 const normalizedText = (value) => String(value || '').trim().toLowerCase()
 const GST_EXCLUSIVE_PRICING_MODEL = 'gst-exclusive-v1'
+const DELIVERY_METHODS = Object.freeze({
+  office_pickup: { name: 'Collect From Office', charge: 0 },
+  porter: { name: 'Through Porter', charge: 0 },
+  delivery_express: { name: 'Delivery Express', charge: 100 },
+})
+const DELIVERY_METHOD_ALIASES = Object.freeze({
+  'office-pickup': 'office_pickup',
+  'delivery-express': 'delivery_express',
+})
+const PORTER_NOTICE = 'Please book Porter yourself and pay the delivery charges directly to Porter. No delivery charges will be collected by Pride Circuit.'
+const OFFICE_PICKUP_ADDRESS = 'Office No. 237, 2nd Floor, XION Mall, Hinjewadi, Pune, MH 411057'
 const normalizedHsnCode = (value) => {
   const hsnCode = String(value || '').trim()
   return /^[0-9]{8}$/.test(hsnCode) ? hsnCode : ''
@@ -14,13 +25,6 @@ const normalizedHsnCode = (value) => {
 const taxRateFor = (product = {}, fallbackRate = 18) => {
   const value = Number(product.taxRate ?? fallbackRate)
   return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0
-}
-
-const shippingTaxTreatmentFor = (taxSettings = {}) => {
-  const treatment = String(taxSettings.shippingTaxTreatment || 'product-rates')
-  return ['fixed', 'product-rates', 'exempt'].includes(treatment)
-    ? treatment
-    : 'product-rates'
 }
 
 const priceBreakdown = (product, storedPrice, fallbackRate = 18) => {
@@ -135,7 +139,7 @@ function calculateOrderQuote({
   couponCode = '',
   shippingSettings = {},
   taxSettings = {},
-  deliveryId = 'standard',
+  deliveryId = '',
   supplyType = 'intra-state',
 }) {
   const normalizedSupplyType = supplyType === 'inter-state'
@@ -271,18 +275,23 @@ function calculateOrderQuote({
   const couponDiscount = roundMoney(
     Math.max(0, Math.min(rawCouponDiscount, maximumDiscount, eligibleSubtotal)),
   )
-  const standardShipping =
-    sellingSubtotal === 0 ||
-    sellingSubtotal >= Number(shippingSettings.freeShippingThreshold ?? 999)
-      ? 0
-      : Number(shippingSettings.standardCharge ?? 99)
-  const shipping = roundMoney(
-    deliveryId === 'express'
-      ? Number(shippingSettings.expressCharge ?? 199)
-      : coupon?.discountType === 'Free Shipping'
-        ? 0
-        : standardShipping,
-  )
+  const requestedDeliveryId = DELIVERY_METHOD_ALIASES[deliveryId] || deliveryId
+  if (!Object.hasOwn(DELIVERY_METHODS, requestedDeliveryId)) {
+    const error = new Error('Select a valid delivery method.')
+    error.code = 'invalid-delivery-method'
+    throw error
+  }
+  const normalizedDeliveryId = requestedDeliveryId
+  const deliveryMethod = DELIVERY_METHODS[normalizedDeliveryId]
+  const shipping = deliveryMethod.charge
+  const deliveryDetails = normalizedDeliveryId === 'office_pickup'
+    ? {
+        pickupAddress: OFFICE_PICKUP_ADDRESS,
+        instructions: 'Collect your order after Pride Circuit confirms that it is ready.',
+      }
+    : normalizedDeliveryId === 'porter'
+      ? { instructions: PORTER_NOTICE, chargesCollectedByPrideCircuit: false }
+      : { baseCharge: 100, gstRate: 18, gstAmount: 18 }
   let allocatedDiscount = 0
   const quotedItems = items.map((item, index) => {
     const grossAmount = roundMoney(item.price * item.qty)
@@ -317,13 +326,13 @@ function calculateOrderQuote({
   const productTax = roundMoney(
     quotedItems.reduce((sum, item) => sum + item.lineTax, 0),
   )
-  const shippingTaxTreatment = taxSettings.gstEnabled !== false
-    ? shippingTaxTreatmentFor(taxSettings)
+  const shippingTaxTreatment = shipping > 0
+    ? 'fixed'
     : 'exempt'
   let shippingTaxBreakdown = []
   if (shipping > 0 && shippingTaxTreatment === 'fixed') {
     const rate = taxRateFor(
-      { taxRate: taxSettings.shippingTaxRate ?? shippingSettings.taxRate },
+      { taxRate: 18 },
       18,
     )
     const components = taxComponentsFor(shipping, rate, normalizedSupplyType)
@@ -386,7 +395,9 @@ function calculateOrderQuote({
     itemSignature: itemSignature(items),
     couponId: coupon ? String(coupon.id || '') : '',
     couponCode: coupon ? String(couponCode || coupon.code || '').toUpperCase() : '',
-    deliveryId: deliveryId === 'express' ? 'express' : 'standard',
+    deliveryId: normalizedDeliveryId,
+    deliveryMethod: deliveryMethod.name,
+    deliveryDetails,
     pricingModel: GST_EXCLUSIVE_PRICING_MODEL,
     supplyType: normalizedSupplyType,
     sellingSubtotal,
