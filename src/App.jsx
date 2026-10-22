@@ -204,7 +204,6 @@ function App() {
       subscribeToCollection('coupons', setCouponsList, reportError),
       subscribeToCollection('categories', setCategoriesList, reportError),
       subscribeToCollection('subcategories', setSubcategoriesList, reportError),
-      subscribeToPublishedReviews(setPublicReviews, reportError),
       subscribeToSetting('marketing', (value) =>
         setMarketingSettings(mergeSetting(initialMarketingSettings, value)), reportError),
       subscribeToSetting('shipping', (value) =>
@@ -227,7 +226,23 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!adminAuthenticated || productsLoading || !categoriesList.length) return
+    if (activePortal !== 'user') return undefined
+    return subscribeToPublishedReviews(
+      setPublicReviews,
+      (error) =>
+        setProductsError(
+          error.message || 'Unable to load product reviews from Firestore.',
+        ),
+    )
+  }, [activePortal])
+
+  useEffect(() => {
+    if (
+      activePortal !== 'admin' ||
+      !adminAuthenticated ||
+      productsLoading ||
+      !categoriesList.length
+    ) return
     const legacySubcategories = legacySubcategoriesForProducts(
       productsList,
       categoriesList,
@@ -270,6 +285,7 @@ function App() {
       )
     })
   }, [
+    activePortal,
     adminAuthenticated,
     categoriesList,
     productsList,
@@ -305,7 +321,7 @@ function App() {
         .catch(() => false)
       if (revision !== authRevision) return
       setAdminAuthenticated(authorized)
-      if (!authorized) {
+      if (!authorized || activePortal !== 'admin') {
         clearRestrictedData()
         return
       }
@@ -324,7 +340,7 @@ function App() {
       unsubscribeAuth()
       stopRestrictedListeners()
     }
-  }, [])
+  }, [activePortal])
 
   const switchPortal = (portal) => {
     const path = portal === 'admin' ? '/admin' : '/'
@@ -335,7 +351,10 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'auto' })
   }
 
-  const reviewsList = adminAuthenticated ? adminReviews : publicReviews
+  const reviewsList =
+    activePortal === 'admin' && adminAuthenticated
+      ? adminReviews
+      : publicReviews
 
   const persistSettings = (setter, settingName) => (valueOrUpdater) =>
     setter((current) => {
