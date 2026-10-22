@@ -228,6 +228,9 @@ const checkoutError = (error) => {
   if (String(error?.code || '').startsWith('coupon-')) {
     return new HttpsError('failed-precondition', error.message)
   }
+  if (error?.code === 'minimum-order-not-met') {
+    return new HttpsError('failed-precondition', error.message)
+  }
   return new HttpsError('invalid-argument', 'The checkout details are invalid.')
 }
 
@@ -2420,7 +2423,7 @@ async function recalculateProductRatingStats(productId) {
   return { rating: average, reviewsCount: count }
 }
 
-async function submitOrderFeedbackHandler(request) {
+async function submitOrderFeedbackHandler(request) {  
   const uid = await requireActiveCustomer(request)
   const orderId = String(request.data?.orderId || '').trim()
   const explicitProductId = String(request.data?.productId || '').trim()

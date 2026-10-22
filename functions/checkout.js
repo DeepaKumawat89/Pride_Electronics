@@ -6,6 +6,8 @@ const money = (value) => {
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100
 const normalizedText = (value) => String(value || '').trim().toLowerCase()
 const GST_EXCLUSIVE_PRICING_MODEL = 'gst-exclusive-v1'
+const MINIMUM_ORDER_VALUE = 100
+const MINIMUM_ORDER_MESSAGE = 'Minimum order value is ₹100 (excluding GST and delivery charges).'
 const DELIVERY_METHODS = Object.freeze({
   office_pickup: { name: 'Collect From Office', charge: 0 },
   porter: { name: 'Through Porter', charge: 0 },
@@ -323,6 +325,11 @@ function calculateOrderQuote({
   const taxableSubtotal = roundMoney(
     quotedItems.reduce((sum, item) => sum + item.taxableValue, 0),
   )
+  if (taxableSubtotal < MINIMUM_ORDER_VALUE) {
+    const error = new Error(MINIMUM_ORDER_MESSAGE)
+    error.code = 'minimum-order-not-met'
+    throw error
+  }
   const productTax = roundMoney(
     quotedItems.reduce((sum, item) => sum + item.lineTax, 0),
   )
@@ -484,6 +491,7 @@ function payableAmountPaiseForQuote(quote = {}) {
   if (
     values.some((value) => !Number.isFinite(value) || value < 0) ||
     items.length < 1 ||
+    taxableSubtotal < MINIMUM_ORDER_VALUE ||
     invalidItem ||
     itemTaxableSubtotal !== taxableSubtotal ||
     itemTaxTotal !== productTax ||
@@ -508,6 +516,8 @@ function payableAmountPaiseForQuote(quote = {}) {
 
 module.exports = {
   DEFAULT_PAYMENT_CONFIGURATION,
+  MINIMUM_ORDER_MESSAGE,
+  MINIMUM_ORDER_VALUE,
   calculateOrderQuote,
   itemSignature,
   money,

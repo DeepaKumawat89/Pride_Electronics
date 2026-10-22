@@ -33,7 +33,11 @@ import { useAnchoredPopover } from '../../../hooks/useAnchoredPopover'
 import { getInitials } from '../../../utils/text'
 import { formatCurrency, hasValidPrice } from '../../utils/currency'
 import { getApplicablePricingTier, getProductBasePrice } from '../../../utils/productPricing'
-import { calculateCartPricing } from '../../utils/cart'
+import {
+  calculateCartPricing,
+  MINIMUM_ORDER_MESSAGE,
+  MINIMUM_ORDER_VALUE,
+} from '../../utils/cart'
 import {
   getAddressValidationError,
   normalizeAddress,
@@ -1403,6 +1407,7 @@ function CartSection({
       quantity > Number(product.stock) ||
       !hasValidPrice(product.price),
   )
+  const minimumOrderNotMet = pricing.taxableSubtotal < MINIMUM_ORDER_VALUE
 
   const applyCoupon = () => {
     setAppliedCoupon(coupon.trim().toUpperCase())
@@ -1608,12 +1613,17 @@ function CartSection({
         </div>
         <button
           type="button"
-          disabled={hasUnavailableItems}
+          disabled={hasUnavailableItems || minimumOrderNotMet}
           onClick={() => onCheckout({ couponCode: pricing.coupon.status === 'applied' ? appliedCoupon : '' })}
           className="mt-5 w-full rounded-full bg-[#253329] px-5 py-3.5 text-xs font-extrabold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:hover:translate-y-0"
         >
           Proceed to Checkout
         </button>
+        {minimumOrderNotMet && (
+          <p className="mt-3 text-center text-[9px] font-semibold text-amber-700">
+            {MINIMUM_ORDER_MESSAGE}
+          </p>
+        )}
         <p className="mt-3 flex items-center justify-center gap-1.5 text-[9px] font-semibold text-[#687963]">
           <ShieldCheck size={12} />
           Secure encrypted checkout

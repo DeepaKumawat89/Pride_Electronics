@@ -22,6 +22,8 @@ import { getApplicablePricingTier } from '../../../utils/productPricing'
 import {
   authoritativePricingFromQuote,
   calculateCartPricing,
+  MINIMUM_ORDER_MESSAGE,
+  MINIMUM_ORDER_VALUE,
   paymentAmountMatchesCheckout,
 } from '../../utils/cart'
 import { getAddressValidationError, normalizeAddress } from '../../utils/address'
@@ -246,6 +248,7 @@ export default function CheckoutPage({
     ? { ...pricing, ...authoritativePricing }
     : pricing
   const checkoutTotal = checkoutPricing.total
+  const minimumOrderNotMet = checkoutPricing.taxableSubtotal < MINIMUM_ORDER_VALUE
 
   const hasUnavailableItems = items.some(
     ({ product, quantity }) =>
@@ -403,6 +406,11 @@ export default function CheckoutPage({
     setGstDetailsError('')
     setPage1Error('')
 
+    if (minimumOrderNotMet) {
+      setPage1Error(MINIMUM_ORDER_MESSAGE)
+      return
+    }
+
     // Capture immutable checkout addresses before Firebase account snapshots or
     // later form edits can change the saved-address collection beneath step 2.
     let checkoutDeliveryAddress = selectedDeliveryAddress
@@ -536,6 +544,10 @@ export default function CheckoutPage({
 
     if (!items.length || hasUnavailableItems) {
       setPaymentError('Your cart contains unavailable or invalid items. Return to your cart and review them before placing the order.')
+      return
+    }
+    if (minimumOrderNotMet) {
+      setPaymentError(MINIMUM_ORDER_MESSAGE)
       return
     }
 
@@ -1173,13 +1185,20 @@ export default function CheckoutPage({
                 <span>{page1Error}</span>
               </div>
             )}
+            {minimumOrderNotMet && !page1Error && (
+              <div className="flex items-center gap-2.5 rounded-xl bg-amber-50 p-3.5 text-xs font-bold text-amber-800 border border-amber-200">
+                <AlertCircle size={16} className="shrink-0" />
+                <span>{MINIMUM_ORDER_MESSAGE}</span>
+              </div>
+            )}
 
             {/* Proceed to Page 2 Button */}
             <div className="flex justify-end pt-2">
               <button
                 type="button"
                 onClick={handleProceedToSummary}
-                className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#253329] px-7 text-xs font-extrabold text-white shadow-md transition hover:bg-[#397a4a]"
+                disabled={minimumOrderNotMet}
+                className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#253329] px-7 text-xs font-extrabold text-white shadow-md transition hover:bg-[#397a4a] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
               >
                 Continue to Order Summary →
               </button>
@@ -1496,9 +1515,15 @@ export default function CheckoutPage({
                 />
 
                 <SummaryRow
-                  label="GST"
-                  value={formatCurrency(checkoutPricing.tax)}
+                  label="Product GST"
+                  value={formatCurrency(checkoutPricing.productTax)}
                 />
+                {checkoutPricing.shipping > 0 && checkoutPricing.shippingTax > 0 && (
+                  <SummaryRow
+                    label={`Delivery GST (${checkoutPricing.shippingTaxRate}%)`}
+                    value={formatCurrency(checkoutPricing.shippingTax)}
+                  />
+                )}
               </div>
 
               <div className="my-4 h-px bg-slate-100" />
@@ -1523,6 +1548,11 @@ export default function CheckoutPage({
               {hasUnavailableItems && (
                 <div className="mt-4 rounded-xl bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-800 border border-amber-200">
                   Some products are out of stock. Please adjust quantities before placing your order.
+                </div>
+              )}
+              {minimumOrderNotMet && (
+                <div className="mt-4 rounded-xl bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-800 border border-amber-200">
+                  {MINIMUM_ORDER_MESSAGE}
                 </div>
               )}
 
@@ -1556,7 +1586,7 @@ export default function CheckoutPage({
               <button
                 type="button"
                 onClick={submitOrder}
-                disabled={!items.length || hasUnavailableItems || paying}
+                disabled={!items.length || hasUnavailableItems || minimumOrderNotMet || paying}
                 className="mt-4 flex h-13 w-full items-center justify-center gap-2 rounded-full bg-[#253329] px-6 text-sm font-extrabold text-white shadow-md transition hover:bg-[#397a4a] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
               >
                 <LockKeyhole size={16} />

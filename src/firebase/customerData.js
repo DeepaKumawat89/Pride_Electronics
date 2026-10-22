@@ -9,7 +9,9 @@ const callOperation = (operation, payload = {}) =>
   operationGateway({ operation, payload })
 
 const messageFor = (error, fallback) => {
-  const backendMessage = String(error?.message || '').trim()
+  const backendMessage = String(error?.message || '')
+    .replace(/\s*\[400\]\s*$/, '')
+    .trim()
   const messages = {
     'functions/failed-precondition':
       backendMessage || 'The order requirements changed. Review your checkout and try again.',

@@ -3,6 +3,9 @@ import { userFunctions } from '../../firebase/firebase'
 
 let razorpayScriptPromise
 
+const customerMessage = (value) =>
+  String(value || '').replace(/\s*\[400\]\s*$/, '').trim()
+
 const operationFor = {
   orders: httpsCallable(userFunctions, 'createRazorpayOrder', { timeout: 30000 }),
   verify: httpsCallable(userFunctions, 'verifyRazorpayPayment', { timeout: 30000 }),
@@ -70,7 +73,7 @@ export async function postRazorpayApi(path, payload) {
     }
     const message = firebaseMessages[error.code] || (
       safeBackendCodes.has(error.code)
-        ? error.message
+        ? customerMessage(error.message)
         : 'The payment request could not be completed. Please try again.'
     )
     throw new Error(

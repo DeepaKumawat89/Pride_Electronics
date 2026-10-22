@@ -2,6 +2,8 @@ import { getApplicablePricingTier } from '../../utils/productPricing.js'
 
 export const FREE_SHIPPING_THRESHOLD = 999
 export const STANDARD_SHIPPING_CHARGE = 99
+export const MINIMUM_ORDER_VALUE = 100
+export const MINIMUM_ORDER_MESSAGE = 'Minimum order value is ₹100 (excluding GST and delivery charges).'
 
 const normalize = (value) => String(value || '').trim().toLowerCase()
 const roundMoney = (value) =>
@@ -93,6 +95,7 @@ export function authoritativePricingFromQuote(quote = {}, gatewayAmount) {
 
   if (
     monetaryValues.some((value) => !Number.isFinite(value) || value < 0) ||
+    pricing.taxableSubtotal < MINIMUM_ORDER_VALUE ||
     pricing.taxableSubtotal !== expectedTaxableSubtotal ||
     pricing.tax !== expectedTax ||
     pricing.tax !== expectedSplitTax ||
@@ -296,6 +299,7 @@ export function calculateCartPricing(
 
   return {
     sellingSubtotal,
+    taxableSubtotal: taxableAmount,
     couponDiscount: coupon.discount,
     shipping,
     productTax,
