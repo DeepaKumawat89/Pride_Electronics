@@ -1845,6 +1845,7 @@ export default function UserApp({
         onAuthOpen={() => setAuthOpen(true)}
         onProfileSelect={handleProfileSelect}
         onLogout={() => setLogoutConfirmOpen(true)}
+        hidePhoneNavigation={authOpen && !passwordResetActionRequested}
       />
       <main>
         {protectedAuthPending || protectedDataPending ? (

@@ -194,7 +194,7 @@ export default function AuthModal({ initialMode = 'login', open, onClose, onSucc
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-end bg-slate-950/60 p-0 backdrop-blur-sm md:place-items-center md:p-6"
+      className="fixed inset-0 z-50 overflow-hidden bg-[#f7f8f5] sm:grid sm:place-items-end sm:bg-slate-950/60 sm:backdrop-blur-sm md:place-items-center md:p-6"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -202,7 +202,7 @@ export default function AuthModal({ initialMode = 'login', open, onClose, onSucc
     >
       <div
         aria-busy={submitting}
-        className={`storefront-modal-surface relative max-h-[96dvh] w-full overflow-y-auto overscroll-contain rounded-t-[30px] bg-[#f7f8f5] shadow-2xl transition-[max-width] duration-300 md:rounded-[32px] ${
+        className={`storefront-modal-surface storefront-auth-page relative h-[100dvh] w-full overflow-y-auto overscroll-contain bg-[#f7f8f5] shadow-none transition-[max-width] duration-300 sm:h-auto sm:max-h-[96dvh] sm:rounded-t-[30px] sm:shadow-2xl md:rounded-[32px] ${
           isSignup
             ? 'md:max-w-5xl'
             : isForgotPassword
@@ -214,7 +214,7 @@ export default function AuthModal({ initialMode = 'login', open, onClose, onSucc
           type="button"
           disabled={submitting}
           onClick={closeModal}
-          className="absolute right-4 top-4 z-20 grid size-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm transition hover:bg-slate-950 hover:text-white disabled:cursor-wait disabled:opacity-50 md:right-5 md:top-5"
+          className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-20 grid size-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm transition hover:bg-slate-950 hover:text-white disabled:cursor-wait disabled:opacity-50 sm:top-4 md:right-5 md:top-5"
           aria-label="Close authentication"
         >
           <X size={17}/>

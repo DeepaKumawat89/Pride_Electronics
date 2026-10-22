@@ -50,6 +50,19 @@
     overscroll-behavior: contain;
   }
 
+  /* Authentication is a dedicated, viewport-filling page on phones. The
+     surface itself scrolls so the on-screen keyboard cannot strand actions. */
+  .customer-shell .storefront-auth-page {
+    box-sizing: border-box;
+    height: 100dvh;
+    min-height: 100dvh;
+    max-height: none;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+    scroll-padding-top: env(safe-area-inset-top);
+    scroll-padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+  }
+
   [data-storefront-overlay="filters"] {
     inset: auto 0 0 !important;
     width: 100% !important;

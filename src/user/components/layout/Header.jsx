@@ -30,6 +30,7 @@ export default function Header({
   onAuthOpen,
   onProfileSelect,
   onLogout,
+  hidePhoneNavigation = false,
 }) {
   const goHome = () => {
     onHome()
@@ -187,7 +188,7 @@ export default function Header({
         </div>
       </header>
 
-      <PhoneBottomNavigation items={navigationItems} />
+      {!hidePhoneNavigation && <PhoneBottomNavigation items={navigationItems} />}
 
       <nav
         data-header-control
