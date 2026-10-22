@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronDown, FileText } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, FileText } from 'lucide-react'
 
 function getSectionId(title, index) {
   const slug = title
@@ -20,6 +20,10 @@ export default function LegalPageLayout({
   onBack,
   icon: Icon = FileText,
   eyebrow = 'Pride Electronics',
+  hideIntro = false,
+  hideSectionNavigation = false,
+  showAboutBreadcrumb = false,
+  breadcrumbLabel = '',
 }) {
   const sectionLinks = sections.map((section, index) => ({
     title: getSectionLabel(
@@ -41,16 +45,27 @@ export default function LegalPageLayout({
   return (
     <main className="min-h-[75vh] overflow-x-hidden bg-[#f7f8f5] text-slate-800">
       <div className="mx-auto w-full max-w-[1440px] px-4 py-4 sm:px-6 sm:py-6 lg:px-10 lg:py-9">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-xs font-extrabold text-slate-700 transition hover:border-[#ff5c35] hover:text-[#ff5c35]"
-        >
-          <ArrowLeft size={15} />
-          Back
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-xs font-extrabold text-slate-700 transition hover:border-[#ff5c35] hover:text-[#ff5c35]"
+          >
+            <ArrowLeft size={15} />
+            Back
+          </button>
+          {(showAboutBreadcrumb || breadcrumbLabel) && (
+            <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs font-bold text-slate-500">
+              <button type="button" onClick={onBack} className="transition hover:text-[#397a4a]">
+                Home
+              </button>
+              <ChevronRight size={14} aria-hidden="true" className="text-slate-300" />
+              <span aria-current="page" className="text-slate-800">{breadcrumbLabel || 'About Us'}</span>
+            </nav>
+          )}
+        </div>
 
-        <header className="relative mt-4 isolate overflow-hidden rounded-[24px] bg-[#dcebdd] px-5 py-7 sm:rounded-[28px] sm:px-8 sm:py-9 md:px-10 lg:px-12 lg:py-11">
+        {!hideIntro && <header className="relative mt-4 isolate overflow-hidden rounded-[24px] bg-[#dcebdd] px-5 py-7 sm:rounded-[28px] sm:px-8 sm:py-9 md:px-10 lg:px-12 lg:py-11">
           <div className="absolute -right-32 -top-44 -z-10 size-96 rounded-full bg-[#9bcaa6]/40 blur-3xl sm:-right-20" />
           <div className="absolute -bottom-40 left-1/4 -z-10 size-80 rounded-full bg-white/45 blur-3xl" />
           <div className="relative max-w-4xl">
@@ -72,9 +87,9 @@ export default function LegalPageLayout({
               </p>
             )}
           </div>
-        </header>
+        </header>}
 
-        <div className="mt-5 lg:hidden">
+        {!hideSectionNavigation && <div className="mt-5 lg:hidden">
           <label
             htmlFor="legal-section-selector"
             className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#ff5c35]"
@@ -108,10 +123,10 @@ export default function LegalPageLayout({
               className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
             />
           </div>
-        </div>
+        </div>}
 
-        <div className="mt-5 grid items-start gap-7 sm:mt-6 lg:mt-9 lg:grid-cols-[230px_minmax(0,1fr)] lg:gap-10 xl:grid-cols-[260px_minmax(0,1fr)]">
-          <aside className="sticky top-28 hidden lg:block">
+        <div className={`mt-5 grid items-start gap-7 sm:mt-6 ${hideSectionNavigation ? '' : 'lg:mt-9 lg:grid-cols-[230px_minmax(0,1fr)] lg:gap-10 xl:grid-cols-[260px_minmax(0,1fr)]'}`}>
+          {!hideSectionNavigation && <aside className="sticky top-28 hidden lg:block">
             <p className="border-b border-slate-200 pb-3 text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#ff5c35]">
               On this page
             </p>
@@ -133,7 +148,7 @@ export default function LegalPageLayout({
                 </button>
               ))}
             </nav>
-          </aside>
+          </aside>}
 
           <article className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-sm sm:rounded-[26px]">
             {sections.map((section, index) => {

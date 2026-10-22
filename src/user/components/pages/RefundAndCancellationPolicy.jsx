@@ -1,261 +1,287 @@
+import { useEffect } from 'react'
 import { RefreshCcw } from 'lucide-react'
 import LegalPageLayout from './LegalPageLayout'
 
+const SUPPORT_EMAIL = 'Support@pridecircuit.in'
+const SUPPORT_PHONE = '8574859658'
+
 const sections = [
   [
-    '1. Scope of This Policy',
+    '1. Scope and Business Identity',
     <>
       <p>
-        This policy explains how cancellations, returns, replacements, and
-        refunds are handled for products purchased from Pride Electronics
-        through pridecircuit.in.
+        This Cancellation, Return &amp; Refund Policy applies to electronic
+        components, modules, and related products purchased from Pride Circuit
+        at pridecircuit.in. Pride Circuit is operated by Pride Automation.
       </p>
       <p>
-        Return eligibility may vary for certain products because of their
-        condition, use, manufacturer warranty, safety requirements, or
-        product-specific terms. Any different condition shown on the product
-        page before purchase will form part of this policy.
+        Product-specific return conditions displayed before purchase also form
+        part of this policy. Nothing in this policy limits a customer right or
+        remedy that cannot lawfully be excluded under applicable Indian law.
       </p>
     </>,
   ],
   [
-    '2. Cancelling an Order',
+    '2. Order Cancellation',
     <>
       <p>
-        You may request cancellation while an order is pending, confirmed, or
-        being processed and before it has been shipped. Use the cancellation
-        option in your account where available, or contact customer support with
-        your order number.
+        A customer may request cancellation while an order is marked Pending,
+        Confirmed, or Processing. Use the cancellation option for the order in
+        your Pride Circuit account, where available, or contact support with
+        the order number and the email address or phone number used to order.
       </p>
       <p>
-        A cancellation request cannot be guaranteed after packing or dispatch
-        has begun. Once an order has shipped, you may need to receive it and
-        request a return if the product is eligible.
+        Cancellation is no longer available after the order moves beyond those
+        stages or has been dispatched. After dispatch, the customer may request
+        a return after delivery if the product and reason are eligible under
+        this policy. Refusing delivery does not by itself guarantee a refund.
+      </p>
+      <p>
+        Pride Circuit may cancel an order where a product is unavailable, the
+        price or tax is materially incorrect, payment cannot be verified, the
+        delivery information is invalid or unserviceable, or fulfilment would
+        breach a legal or safety requirement. Any refundable amount for a
+        cancelled prepaid order will be returned through the original payment
+        route.
       </p>
     </>,
   ],
   [
-    '3. Cancellation by Pride Electronics',
+    '3. Return Request Period',
     <>
-      <p>We may cancel or place an order on hold for reasons including:</p>
+      <p>
+        The customer account currently provides the return-request option for
+        an eligible delivered order for up to 30 calendar days after the
+        recorded delivery date. A request submitted during this period is not
+        automatically approved.
+      </p>
+      <p>
+        Pride Circuit reviews the reason, product condition, order record,
+        supporting evidence, and any product-specific condition before
+        approving a return, replacement, or refund. Rights available for a
+        defective, damaged, misdescribed, missing, or incorrect product remain
+        subject to applicable law even where a website option is unavailable.
+      </p>
+    </>,
+  ],
+  [
+    '4. Eligible Returns',
+    <>
+      <p>A return may be eligible where:</p>
       <ul>
-        <li>The product or selected variant is unavailable.</li>
-        <li>A material product, price, tax, discount, or shipping error.</li>
-        <li>A failed, incomplete, reversed, unauthorized, or suspicious payment.</li>
-        <li>An incomplete, invalid, or unserviceable delivery address.</li>
-        <li>Suspected fraud, resale abuse, or violation of purchase limits.</li>
-        <li>A legal, regulatory, safety, or technical restriction.</li>
+        <li>The product received is defective, damaged, materially different from its description, or not the product ordered.</li>
+        <li>An item, part, or included accessory is missing from the delivered order.</li>
+        <li>An unused product is otherwise shown as returnable and is approved after review.</li>
       </ul>
       <p>
-        If we cancel a prepaid order, the eligible amount will be refunded to
-        the original payment method.
+        Unless the reported issue reasonably requires otherwise, the product
+        must be unused and returned with its original packaging, labels,
+        manuals, accessories, included parts, and intact serial or model
+        identification. Proof of purchase and requested photographs or video
+        may be required to assess the claim.
       </p>
     </>,
   ],
   [
-    '4. Seven-Day Return Window',
+    '5. Non-returnable or Ineligible Products',
     <>
-      <p>
-        An eligible product may be returned within seven calendar days after
-        delivery. The return request must be submitted before the end of the
-        seventh day. For example, a product delivered on the 1st must generally
-        be reported no later than the 8th.
-      </p>
-      <p>
-        A return request is not an automatic approval. We may review the order,
-        reason, supporting evidence, product category, and product condition
-        before approving pickup, replacement, or refund.
-      </p>
-    </>,
-  ],
-  [
-    '5. Conditions for an Eligible Return',
-    <>
-      <p>Unless the product arrived damaged, defective, or incorrect:</p>
+      <p>Except where required by law, a return may be declined if the product:</p>
       <ul>
-        <li>The product must be unused and in its original condition.</li>
-        <li>Original packaging, labels, manuals, accessories, and included components must be returned.</li>
-        <li>The serial number, model number, and other identifying marks must remain intact and match the order.</li>
-        <li>The product must not have been installed, programmed, soldered, modified, damaged, or misused.</li>
-        <li>Proof of purchase and any requested photos or videos must be provided.</li>
+        <li>Has been used, installed, soldered, programmed, modified, repaired, or physically altered.</li>
+        <li>Was damaged after delivery by incorrect voltage, polarity, wiring, installation, electrostatic discharge, liquid, misuse, neglect, or unsuitable storage.</li>
+        <li>Has missing packaging, accessories, parts, labels, seals, or serial identification that prevents verification.</li>
+        <li>Does not match the product supplied with the order.</li>
+        <li>Was clearly identified as non-returnable or subject to a product-specific condition before purchase.</li>
       </ul>
       <p>
-        Handle and test products only to the extent reasonably necessary to
-        confirm their identity and condition.
+        These exclusions do not apply where the exclusion would improperly
+        remove a statutory remedy for a product that was defective, damaged,
+        misdescribed, missing, or incorrect when supplied.
       </p>
     </>,
   ],
   [
-    '6. Products That May Not Be Returnable',
-    <>
-      <p>Except where required by law or where the product arrived defective, damaged, or incorrect, returns may be declined for:</p>
-      <ul>
-        <li>Products identified as non-returnable on the product page.</li>
-        <li>Opened consumables, adhesives, chemicals, batteries, or hygiene-sensitive products.</li>
-        <li>Software, licence keys, downloadable products, or activated digital entitlements.</li>
-        <li>Custom-cut, made-to-order, configured, engraved, or personalized products.</li>
-        <li>Electronic components damaged through incorrect voltage, polarity, wiring, soldering, installation, static discharge, or misuse.</li>
-        <li>Products with removed serial labels, tamper seals, protective films, or missing accessories.</li>
-        <li>Products damaged after delivery through accident, neglect, liquid, improper storage, or unauthorized repair.</li>
-      </ul>
-      <p>
-        Manufacturer warranty service may remain available even when a product
-        is not eligible for a return.
-      </p>
-    </>,
-  ],
-  [
-    '7. Damaged, Defective, Incorrect, or Missing Items',
+    '6. Damaged, Defective, Missing, or Incorrect Items',
     <>
       <p>
-        Report a damaged package, defective product, incorrect product, or
-        missing item within 48 hours of delivery. Contact support with:
+        Report the issue promptly after delivery through the return option in
+        the relevant order or by contacting support. Keep the product and all
+        packaging until the review is complete. The request should include:
       </p>
       <ul>
-        <li>Your order number and the affected product.</li>
-        <li>A clear description of the issue.</li>
-        <li>Photos or video of the product, serial label, packaging, and shipping label where requested.</li>
-        <li>An unboxing video where reasonably available, especially for visible transit damage or missing contents.</li>
+        <li>The order number and affected product.</li>
+        <li>A clear description of the defect, damage, shortage, or mismatch.</li>
+        <li>Photographs or video of the product, packaging, shipping label, and serial or model label where relevant.</li>
+        <li>Any other information reasonably needed to verify the delivery and reported issue.</li>
       </ul>
       <p>
-        Keep the product and all packaging until the review is complete. We may
-        offer troubleshooting, replacement, return, refund, missing-item
-        shipment, or manufacturer warranty assistance depending on the issue.
+        Depending on the verified issue and stock availability, the resolution
+        may be supply of a missing item, replacement, return and refund, or
+        another remedy required by applicable law.
       </p>
     </>,
   ],
   [
-    '8. How to Request a Return',
+    '7. Return Process and Shipping',
     <>
+      <ol>
+        <li>Open the delivered order in your account and submit a return request, or contact support if the option is unavailable.</li>
+        <li>Provide the order details, reason, and requested evidence.</li>
+        <li>Wait for approval and return instructions. Do not send the product without authorization.</li>
+        <li>Package the approved product securely and follow the provided pickup or self-shipping instructions.</li>
+        <li>The returned product may be inspected for identity, completeness, condition, and the reported issue before a resolution is confirmed.</li>
+      </ol>
       <p>
-        Submit the request from the relevant order in your Pride Electronics
-        account, where available, or email support@pridecircuit.in. Include the
-        order number, return reason, affected item, and requested evidence.
-      </p>
-      <p>
-        Do not send a product back without return authorization and return
-        instructions. An unauthorized shipment may be delayed, refused, or
-        returned to the sender.
+        Pride Circuit will bear reasonable authorized return-shipping costs for
+        a verified defect, transit damage, missing item, or incorrect product
+        attributable to Pride Circuit. For another approved return, any
+        customer-paid return cost or proposed deduction will be disclosed
+        before the return is finalized. Damage caused by inadequate or
+        unauthorized return packaging may affect the eligible refund, subject
+        to applicable law.
       </p>
     </>,
   ],
   [
-    '9. Return Pickup and Shipping',
+    '8. Full and Partial Refund Eligibility',
     <>
+      <p>A full refund of the eligible product amount may apply when:</p>
+      <ul>
+        <li>A prepaid order is validly cancelled before fulfilment.</li>
+        <li>A verified defective, damaged, or incorrect product is returned and a replacement is not selected or is unavailable.</li>
+        <li>Pride Circuit cannot supply a paid product or another full refund is required by law.</li>
+      </ul>
       <p>
-        If pickup is available for your PIN code, we will provide scheduling
-        information after approving the request. You may be asked to self-ship
-        the product when pickup is unavailable.
-      </p>
-      <p>
-        Pride Electronics will bear reasonable return-shipping costs for a
-        verified damaged, defective, incorrect, or missing-item issue
-        attributable to us. For other approved returns, return-shipping or
-        pickup charges may be deducted from the refund if disclosed before the
-        return is finalized.
-      </p>
-      <p>
-        Package the product securely. We are not responsible for return damage
-        caused by inadequate packaging or a shipping method not authorized by us.
+        A partial refund may apply only to the affected item or quantity, or
+        where an approved return has missing contents or customer-caused loss
+        of value. The reason and calculation will be communicated before the
+        refund is completed. No deduction will be used to remove a statutory
+        customer right.
       </p>
     </>,
   ],
   [
-    '10. Inspection and Resolution',
+    '9. Refund Method and Processing',
     <>
       <p>
-        Returned products may be inspected for identity, completeness,
-        condition, serial number, and the reported issue. We will notify you if
-        additional information is required or if the return is approved or
-        rejected.
+        Online payments are currently processed through Razorpay. An approved
+        prepaid refund is returned to the original payment method through the
+        payment gateway. Pride Circuit will not ask for a card PIN, CVV, UPI
+        PIN, one-time password, or complete card number to process a refund.
       </p>
       <p>
-        Depending on the circumstances and stock availability, an approved
-        claim may result in repair assistance, replacement, store resolution,
-        or refund. A replacement is subject to availability; if a suitable
-        replacement is unavailable, an eligible refund may be offered.
+        For a return, refund processing begins after approval and any required
+        receipt and inspection of the product. The current customer interface
+        states that eligible refunds are processed within 5–7 business days.
+        Once initiated, the bank, card issuer, UPI provider, or other payment
+        provider may require additional time to show the credit. A gateway
+        refund reference will be shared or investigated where available.
+      </p>
+      <p>
+        The website records cancellations and approved return refunds for
+        processing; cancellation of a paid order does not mean the bank credit
+        is immediate. Contact support if the stated processing period has
+        passed without a refund update.
       </p>
     </>,
   ],
   [
-    '11. Refund Amount and Method',
+    '10. Delivery Charges, GST, and Return Costs',
     <>
       <p>
-        An approved refund may include the eligible product amount and any
-        applicable refundable shipping charge. Original outbound shipping or
-        convenience charges may be non-refundable for a discretionary return,
-        but will be considered where the return results from our error or a
-        verified damaged, defective, or incorrect product.
+        Where an entire order is cancelled before dispatch, the eligible refund
+        includes amounts collected for products and unperformed Pride Circuit
+        delivery, together with the corresponding refundable GST. For a
+        verified defect, damage, missing item, or incorrect product attributable
+        to Pride Circuit, the affected product amount and applicable tax are
+        refundable, and related Pride Circuit delivery charges will be
+        considered as required by the circumstances and law.
       </p>
       <p>
-        Prepaid-order refunds are routed through Cashfree Payments to the
-        original payment method used for the transaction. We do not substitute
-        cash or transfer a refund to an unrelated account except where required
-        by applicable law. For Cash on Delivery orders, any approved refund
-        method and required account verification will be communicated securely.
+        Original delivery charges and their tax may not be refundable for a
+        discretionary return after delivery where the delivery service was
+        completed. A Porter service independently arranged and paid for by the
+        customer is a third-party cost and is not collected or refunded by
+        Pride Circuit. Authorized return-shipping responsibility is described
+        in Section 7.
       </p>
     </>,
   ],
   [
-    '12. Refund Timeline',
+    '11. Failed, Pending, or Duplicate Payments',
     <>
       <p>
-        After a cancellation or return is approved, we generally initiate the
-        refund within 5–7 business days. Your bank, card issuer, UPI provider,
-        or payment service may require additional time to credit the amount.
+        A payment deduction without a successful Pride Circuit order
+        confirmation should be reported with the payment date, amount, payment
+        method, gateway transaction reference, and any order reference shown.
+        Do not share confidential payment credentials.
       </p>
       <p>
-        A refund is not complete merely because it has been requested. Where
-        available, we will record or communicate the gateway refund reference
-        and current status.
+        Pride Circuit will check the order and gateway records. A captured
+        payment that cannot be matched to a completed order, including certain
+        payments completed after a stock reservation expired, may be refunded
+        automatically or escalated for review. A verified duplicate or excess
+        captured payment will be refunded through its original payment route.
+        Bank or provider posting time applies after initiation.
       </p>
     </>,
   ],
   [
-    '13. Refund Not Received',
+    '12. Support and Policy Updates',
     <>
       <p>
-        If the expected credit period has passed, first check the original
-        payment account and contact the relevant bank or payment provider. You
-        may then contact us with your order number, payment method, refund date,
-        and refund reference so we can investigate.
+        For cancellation, return, or refund assistance, include the order
+        number and contact Pride Circuit using:
       </p>
-    </>,
-  ],
-  [
-    '14. Abuse and Fraud Prevention',
-    <p>
-      We may request additional verification or reject a claim supported by
-      altered evidence, a mismatched product or serial number, repeated misuse,
-      or other reasonable indicators of fraud. This does not limit any right or
-      remedy that cannot lawfully be excluded.
-    </p>,
-  ],
-  [
-    '15. Contact Us',
-    <>
-      <p><strong>Pride Electronics</strong></p>
-      <p>Website: pridecircuit.in</p>
-      <p>Email: support@pridecircuit.in</p>
       <p>
-        Use the subject &quot;Cancellation&quot;, &quot;Return&quot;, or &quot;Refund&quot; and include
-        your order number. Never send passwords, PINs, one-time passwords, or
-        complete card details.
+        <strong>Email:</strong>{' '}
+        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
+        <br />
+        <strong>Phone:</strong>{' '}
+        <a href={`tel:${SUPPORT_PHONE}`}>{SUPPORT_PHONE}</a>
       </p>
+      <p>
+        This policy may be updated to reflect operational, legal, or payment
+        processing changes. The version displayed when an order is placed will
+        be considered together with any rights that apply by law.
+      </p>
+      <p><strong>Effective date:</strong> October 22, 2026</p>
     </>,
   ],
 ]
 
 export default function RefundAndCancellationPolicy({ onBack }) {
+  useEffect(() => {
+    const previousTitle = document.title
+    const description = document.querySelector('meta[name="description"]')
+    const previousDescription = description?.getAttribute('content')
+
+    document.title = 'Cancellation, Return & Refund Policy | Pride Circuit'
+    description?.setAttribute(
+      'content',
+      'Read Pride Circuit cancellation, electronic product return eligibility, damaged-item reporting, and original-method refund terms.',
+    )
+
+    return () => {
+      document.title = previousTitle
+      if (description && previousDescription !== null) {
+        description.setAttribute('content', previousDescription)
+      }
+    }
+  }, [])
+
   return (
     <LegalPageLayout
-      title="Refund & Cancellation Policy"
-      description="Cancellation, return eligibility, inspection, replacement, and original-method refund terms for pridecircuit.in orders."
-      updatedAt="October 15, 2026"
+      title="Cancellation, Return & Refund Policy"
+      description="Cancellation, electronic product return eligibility, inspection, shipping-cost treatment, and original-method refund terms for Pride Circuit orders."
+      updatedAt="October 22, 2026"
       sections={sections}
       onBack={onBack}
       icon={RefreshCcw}
       eyebrow="Returns & refunds"
+      hideIntro
+      hideSectionNavigation
+      breadcrumbLabel="Cancellation, Return & Refund Policy"
     />
   )
 }

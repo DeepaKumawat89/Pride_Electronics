@@ -12,6 +12,7 @@ import ProductCatalog from './components/products/ProductCatalog'
 import ProductDetailsPage from './components/products/ProductDetailsPage'
 import ProductReviewsPage from './components/products/ProductReviewsPage'
 import ProductsPage from './components/products/ProductsPage'
+import AboutUs from './components/pages/AboutUs'
 import ContactUs from './components/pages/ContactUs'
 import PrivacyPolicy from './components/pages/PrivacyPolicy'
 import RefundAndCancellationPolicy from './components/pages/RefundAndCancellationPolicy'
@@ -85,6 +86,7 @@ const PAYMENT_CONFIRMATION_SESSION_KEY = 'pride_pending_payment_confirmation'
 const INTENDED_ROUTE_SESSION_KEY = 'pride_intended_protected_route'
 const CHECKOUT_SELECTION_SESSION_KEY = 'pride_checkout_selection'
 const CONTENT_PAGE_HASHES = {
+  about: '#about-us',
   privacy: '#privacy-policy',
   terms: '#terms-and-conditions',
   refunds: '#refund-and-cancellation-policy',
@@ -92,6 +94,7 @@ const CONTENT_PAGE_HASHES = {
   contact: '#contact-us',
 }
 const CONTENT_PAGE_COMPONENTS = {
+  about: AboutUs,
   privacy: PrivacyPolicy,
   terms: TermsAndConditions,
   refunds: RefundAndCancellationPolicy,

@@ -1,82 +1,114 @@
+import { useEffect } from 'react'
 import { Truck } from 'lucide-react'
 import LegalPageLayout from './LegalPageLayout'
 
+const pageTitle = 'Shipping & Delivery Policy | Pride Circuit'
+const pageDescription = 'Review Pride Circuit office pickup, customer-arranged Porter pickup, Express Delivery charges, fulfilment, tracking, and delivery-support terms.'
+
 const sections = [
   [
-    '1. Where We Deliver',
+    '1. Scope of This Policy',
     <>
       <p>
-        Pride Electronics delivers to serviceable locations within India.
-        Serviceability depends on the destination PIN code, product, shipment
-        size, courier network, and applicable legal or transport restrictions.
+        This Shipping &amp; Delivery Policy explains the fulfilment methods
+        available for products purchased through <strong>Pride Circuit</strong>,
+        operated by <strong>Pride Automation</strong>.
       </p>
       <p>
-        Enter a complete delivery address during checkout. Acceptance of an
-        order does not guarantee that every courier can serve every PIN code.
-        We will contact you if the selected address cannot be serviced.
+        The methods available for an order, applicable charges, GST, and any
+        order-specific estimate are displayed during checkout or communicated
+        during fulfilment. Customers should review those details before placing
+        an order.
       </p>
     </>,
   ],
   [
-    '2. Order Processing',
+    '2. Office Pickup (Free)',
     <>
       <p>
-        Orders are generally processed within 1–2 business days after successful
-        payment verification and order confirmation. Cash on Delivery orders,
-        where offered, may require additional confirmation.
+        Customers may collect an eligible order without a delivery charge from:
       </p>
       <p>
-        Processing includes payment review, inventory confirmation, quality
-        checks, packing, and handover preparation. Processing may take longer
-        during public holidays, promotions, high-demand periods, inventory
-        checks, or exceptional operational disruption.
+        <strong>Office No. 237, 2nd Floor, XION Mall, Hinjewadi, Pune, Maharashtra – 411057</strong>
+      </p>
+      <p>
+        Select <strong>Collect From Office</strong> during checkout. After the
+        order is confirmed, Pride Circuit will process the items and notify you
+        when the order is ready. Do not travel to collect the order until you
+        have received readiness confirmation.
+      </p>
+      <p>
+        At collection, provide the order number and any reasonable order-holder
+        verification requested to prevent an unauthorised handover. If another
+        person will collect the order, contact support in advance with the
+        relevant details. The customer is responsible for collecting the order
+        and safely transporting it after handover.
       </p>
     </>,
   ],
   [
-    '3. Estimated Delivery Time',
+    '3. Porter (Customer Arranged)',
     <>
       <p>
-        Standard delivery is generally estimated at 3–7 business days after
-        dispatch. If express delivery is offered for the order and destination,
-        its separate estimate and charge will be shown during checkout.
+        Select <strong>Through Porter</strong> during checkout if you want to
+        arrange a Porter pickup. The customer independently books Porter and
+        pays all Porter charges directly to Porter. <strong>Pride Circuit does
+        not charge or collect a Porter delivery fee.</strong>
       </p>
       <p>
-        The order summary may show an estimated delivery date based on the
-        selected service. Estimates are not guarantees and begin after dispatch,
-        not when the order is placed.
+        Wait until Pride Circuit confirms that the order is ready before booking
+        the pickup. Coordinate the pickup time with support and give Porter the
+        correct pickup location, order reference, recipient details, and any
+        instructions necessary for handover.
+      </p>
+      <p>
+        The customer is responsible for selecting the Porter service, entering
+        accurate booking information, monitoring the booking, paying Porter,
+        and ensuring that the selected vehicle and handling method are suitable
+        for the products. Porter&apos;s service terms and charges are separate
+        from Pride Circuit&apos;s order.
       </p>
     </>,
   ],
   [
-    '4. Shipping Charges',
+    '4. Express Delivery',
     <>
       <p>
-        Applicable shipping charges and any free-shipping eligibility are shown
-        before order confirmation. Charges may depend on order value, delivery
-        speed, product size or weight, destination, or a promotional offer.
+        Select <strong>Delivery Express</strong> during checkout for express
+        delivery arranged by Pride Circuit where fulfilment is available for the
+        selected order and address.
       </p>
       <p>
-        Additional charges will not be added after confirmation without your
-        agreement. Refund treatment for shipping charges is described in our
-        Refund &amp; Cancellation Policy.
+        The Express Delivery charge is <strong>₹100 excluding applicable GST</strong>.
+        Under the currently implemented checkout calculation, delivery GST is
+        charged at <strong>18% (₹18)</strong> and displayed separately, making
+        the current delivery total <strong>₹118</strong>. The checkout order
+        summary displays the delivery charge, delivery GST, and final payable
+        amount before payment.
+      </p>
+      <p>
+        Express Delivery is subject to product readiness, order acceptance,
+        address accuracy, fulfilment capacity, and practical serviceability.
+        Pride Circuit may contact you if the address cannot reasonably be served
+        or if coordination is required before dispatch.
       </p>
     </>,
   ],
   [
-    '5. Delivery Address and Contact Information',
+    '5. Order Confirmation and Processing',
     <>
-      <p>Please provide:</p>
-      <ul>
-        <li>The recipient's full name and reachable phone number.</li>
-        <li>House, flat, building, street, locality, city, state, and six-digit PIN code.</li>
-        <li>A useful landmark where needed for successful delivery.</li>
-      </ul>
       <p>
-        Review the address before placing the order. Contact support immediately
-        if a correction is needed. We cannot guarantee an address change after
-        packing or dispatch, and a change may affect serviceability or delivery
-        time.
+        An order enters fulfilment only after the website has completed the
+        applicable order checks, including product availability, authoritative
+        pricing, GST, delivery selection, customer information, and successful
+        payment verification where required.
+      </p>
+      <p>
+        Processing may include inventory confirmation, payment review, product
+        verification, picking, packing, and preparation for pickup or dispatch.
+        If a product or selected variant becomes unavailable, or a material
+        order issue is identified, we will contact you with the available
+        resolution under the applicable customer policies.
       </p>
     </>,
   ],
@@ -84,146 +116,167 @@ const sections = [
     '6. Dispatch and Tracking',
     <>
       <p>
-        When tracking is available, the courier name, tracking number, or
-        tracking link may be provided through your account, registered email,
-        phone number, or another order communication channel.
+        For a delivery arranged by Pride Circuit, dispatch occurs when the
+        prepared order is handed over for delivery. For Office Pickup or Porter,
+        handover is coordinated after order-readiness confirmation.
       </p>
       <p>
-        Tracking information can take time to appear after the shipping label is
-        created. A label or tracking number does not always mean the parcel has
-        already been collected by the courier.
+        When tracking information is available, the courier or delivery status,
+        tracking number, or tracking link may be shown in the customer account
+        or communicated using the registered email address or phone number.
+        Tracking can take time to update after a label or delivery booking is
+        created.
+      </p>
+      <p>
+        Porter tracking and delivery updates are provided through the Porter
+        booking arranged by the customer and are not generated by Pride
+        Circuit&apos;s checkout.
       </p>
     </>,
   ],
   [
-    '7. Delivery Attempts',
+    '7. Processing and Delivery Timelines',
     <>
       <p>
-        The courier may contact the recipient or make more than one delivery
-        attempt according to its operating policy. Please ensure that someone is
-        available to receive the parcel and provide any permitted delivery
-        confirmation.
+        Pride Circuit does not currently publish a fixed processing or delivery
+        guarantee for every order. Timing depends on payment confirmation,
+        inventory, product preparation, the selected fulfilment method,
+        destination, coordination, and delivery-provider availability.
       </p>
       <p>
-        If delivery fails because the address or phone number is incorrect, the
-        recipient is unavailable, or delivery is refused, the parcel may be
-        returned to us. Re-dispatch may require payment of an additional
-        shipping charge. Any refund will be handled under our Refund &amp;
-        Cancellation Policy.
+        Any readiness date, delivery date, or duration displayed at checkout or
+        communicated for an order is an estimate unless expressly confirmed as
+        a binding commitment. We will use reasonable efforts to provide updated
+        information when a material delay becomes known.
       </p>
     </>,
   ],
   [
-    '8. Delivery Verification',
+    '8. Customer Responsibilities',
     <>
-      <p>
-        A courier may request a signature, delivery code, identity confirmation,
-        or other proof of receipt. Share a delivery code only when you are ready
-        to receive the parcel from the courier. Do not share payment PINs,
-        banking passwords, or one-time passwords with a courier or our staff.
-      </p>
-    </>,
-  ],
-  [
-    '9. Damaged or Tampered Packages',
-    <>
-      <p>
-        Inspect the outer package before accepting it where reasonably possible.
-        If it is visibly open, severely damaged, or tampered with, note the
-        condition with the courier, take clear photos, and contact us promptly.
-      </p>
-      <p>
-        Report transit damage within 48 hours of delivery. Preserve the product,
-        packaging, shipping label, accessories, and any available unboxing
-        evidence until the review is complete.
-      </p>
-    </>,
-  ],
-  [
-    '10. Missing or Incorrect Items',
-    <p>
-      Report a missing item, incorrect product, or incorrect quantity within 48
-      hours of delivery. Include your order number and clear photos or video of
-      the parcel, shipping label, packaging, and contents where requested. We
-      will review the fulfilment and shipment records before offering a
-      resolution.
-    </p>,
-  ],
-  [
-    '11. Delivery Delays',
-    <>
-      <p>Delivery may be delayed by circumstances including:</p>
+      <p>Customers are responsible for:</p>
       <ul>
-        <li>Remote-area routing or courier-capacity limitations.</li>
-        <li>Public holidays, severe weather, natural disasters, or transport disruption.</li>
-        <li>Government restrictions, security checks, strikes, or local emergencies.</li>
-        <li>Incorrect addresses, failed delivery attempts, or recipient unavailability.</li>
-        <li>Inventory verification, high demand, or unexpected technical issues.</li>
+        <li>Providing a correct recipient name, reachable phone number, complete address, landmark where helpful, city, state, and six-digit PIN code.</li>
+        <li>Reviewing the selected fulfilment method, delivery charges, GST, and order summary before payment.</li>
+        <li>Responding to reasonable pickup or delivery coordination requests.</li>
+        <li>Waiting for readiness confirmation before Office Pickup or arranging Porter.</li>
+        <li>Providing correct booking and recipient details when arranging Porter.</li>
+        <li>Ensuring that an authorised person is available to collect or receive the order.</li>
+        <li>Inspecting the outer package at handover where reasonably possible and keeping the product, packaging, shipping label, and accessories if an issue is reported.</li>
       </ul>
       <p>
-        If a material delay occurs, contact support with your order number. We
-        will review the latest available courier information and the options
-        applicable to the order.
+        Contact support promptly if an address correction is needed. A change
+        may not be possible after preparation or dispatch and may affect
+        fulfilment availability or timing.
       </p>
     </>,
   ],
   [
-    '12. Split Shipments',
-    <p>
-      Products in one order may be shipped separately because of inventory,
-      packaging, safety, or courier requirements. Separate parcels may have
-      different tracking numbers and delivery dates. Unless disclosed at
-      checkout, you will not be charged an additional shipping fee solely
-      because we split an order.
-    </p>,
-  ],
-  [
-    '13. Order Pickup',
-    <p>
-      Store or fulfilment-centre pickup is available only when it is expressly
-      offered during checkout or confirmed by our support team. Do not travel to
-      a pickup location until you receive confirmation that the order is ready,
-      together with pickup instructions and any required verification details.
-    </p>,
-  ],
-  [
-    '14. Undeliverable or Lost Shipments',
+    '9. Delayed, Failed, or Incorrect Delivery',
     <>
       <p>
-        If tracking indicates that a parcel is lost, returned, or delivered but
-        you have not received it, contact us promptly. We may ask you to confirm
-        the address, check with household members or building staff, and provide
-        a written statement for the courier investigation.
+        If an arranged delivery is delayed, unsuccessful, sent to an incorrect
+        location, or shown as delivered but not received, contact support with
+        the order number and available delivery or tracking information.
       </p>
       <p>
-        A replacement or refund for a verified lost shipment is subject to the
-        investigation outcome and product availability. We will not require you
-        to pay again for a verified loss attributable to us or the authorized
-        courier.
+        We may ask you to confirm the address, contact the recipient or building
+        staff, review tracking events, or provide information needed for a
+        delivery-provider investigation. Re-dispatch, cancellation, or refund
+        treatment depends on the cause, product status, delivery-provider
+        findings, and the published Refund &amp; Cancellation Policy.
+      </p>
+      <p>
+        For customer-arranged Porter delivery, the customer should also raise
+        the delivery issue through the Porter booking because Pride Circuit does
+        not control that booking or collect its fee.
       </p>
     </>,
   ],
   [
-    '15. Contact Us',
+    '10. Damaged, Missing, or Incorrect Products',
     <>
-      <p><strong>Pride Electronics</strong></p>
-      <p>Website: pridecircuit.in</p>
-      <p>Email: support@pridecircuit.in</p>
       <p>
-        Use the subject &quot;Shipping&quot; or &quot;Delivery&quot; and include your order
-        number and tracking number, if available. Never send passwords, PINs,
-        one-time passwords, or complete card details.
+        Report a damaged package, damaged or defective product, missing item,
+        incorrect product, or incorrect quantity within <strong>48 hours of
+        delivery or collection</strong>.
+      </p>
+      <p>Include, where relevant:</p>
+      <ul>
+        <li>The order number and affected product.</li>
+        <li>A clear description of the issue.</li>
+        <li>Photographs or video of the package, shipping label, product, serial or model label, and contents.</li>
+        <li>The delivery or Porter reference and available tracking information.</li>
+      </ul>
+      <p>
+        Keep the product, packaging, accessories, and labels until the review is
+        complete. Do not return a product without receiving return instructions.
+        Eligibility and resolution are governed by the{' '}
+        <a href="/#refund-and-cancellation-policy">Refund &amp; Cancellation Policy</a>.
+      </p>
+    </>,
+  ],
+  [
+    '11. Delivery Charges and Refunds',
+    <>
+      <p>
+        Office Pickup has no delivery charge. Porter charges are paid by the
+        customer directly to Porter and are not collected by Pride Circuit.
+        Express Delivery is charged and taxed as described above and itemised in
+        the checkout total.
+      </p>
+      <p>
+        Whether an outbound delivery charge or delivery GST is refundable
+        depends on the reason for cancellation, return, failed delivery, or
+        order issue and the applicable legal requirements. See the{' '}
+        <a href="/#refund-and-cancellation-policy">Refund &amp; Cancellation Policy</a>{' '}
+        for the applicable treatment.
+      </p>
+    </>,
+  ],
+  [
+    '12. Support and Policy Updates',
+    <>
+      <p><strong>Effective date:</strong> October 22, 2026</p>
+      <p>
+        For pickup, dispatch, tracking, or delivery assistance, email{' '}
+        <a href="mailto:Support@pridecircuit.in">Support@pridecircuit.in</a>{' '}
+        or call <a href="tel:8574859658">8574859658</a>. Include the order
+        number and relevant delivery details.
+      </p>
+      <p>
+        We may update this policy when fulfilment methods, charges, tax rules,
+        service arrangements, or legal requirements change. The revised policy
+        will be published on this page with an updated effective date. The
+        fulfilment terms confirmed for an existing order will continue to apply
+        unless a change is required by law or agreed with the customer.
       </p>
     </>,
   ],
 ]
 
 export default function ShippingAndDeliveryPolicy({ onBack }) {
+  useEffect(() => {
+    const previousTitle = document.title
+    const descriptionMeta = document.querySelector('meta[name="description"]')
+    const previousDescription = descriptionMeta?.getAttribute('content')
+
+    document.title = pageTitle
+    descriptionMeta?.setAttribute('content', pageDescription)
+
+    return () => {
+      document.title = previousTitle
+      if (descriptionMeta && previousDescription !== null) {
+        descriptionMeta.setAttribute('content', previousDescription)
+      }
+    }
+  }, [])
+
   return (
     <LegalPageLayout
       title="Shipping & Delivery Policy"
-      description="Processing, dispatch, tracking, delivery estimates, failed deliveries, and shipment issue reporting for pridecircuit.in orders."
-      updatedAt="October 15, 2026"
+      description="Office pickup, customer-arranged Porter pickup, Express Delivery charges, fulfilment, tracking, and delivery support for Pride Circuit orders."
+      updatedAt="October 22, 2026"
       sections={sections}
       onBack={onBack}
       icon={Truck}

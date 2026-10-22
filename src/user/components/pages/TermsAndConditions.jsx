@@ -1,170 +1,193 @@
+import { useEffect } from 'react'
 import { ScrollText } from 'lucide-react'
 import LegalPageLayout from './LegalPageLayout'
 
+const pageTitle = 'Terms & Conditions | Pride Circuit'
+const pageDescription = 'Read the terms governing accounts, orders, pricing, GST, payments, delivery, cancellations, returns, refunds, and use of pridecircuit.in.'
+
 const sections = [
   {
-    title: '1. About These Terms',
+    title: '1. Introduction',
     content: (
       <>
         <p>
-          These Terms &amp; Conditions govern your access to pridecircuit.in and
-          your purchase of products from Pride Electronics. References to
-          &quot;we&quot;, &quot;us&quot;, and &quot;our&quot; mean Pride Electronics. References to
-          &quot;you&quot; and &quot;your&quot; mean the customer or website visitor.
+          These Terms &amp; Conditions govern access to pridecircuit.in and
+          purchases made through <strong>Pride Circuit</strong>, an e-commerce
+          platform operated by <strong>Pride Automation</strong> for the online
+          sale of electronic components, modules, and related products.
         </p>
         <p>
-          By creating an account, placing an order, or otherwise using the
-          website, you agree to these terms and acknowledge our Privacy Policy,
-          Shipping &amp; Delivery Policy, and Refund &amp; Cancellation Policy. If you
-          do not agree, please do not use the website or place an order.
+          References to &quot;Pride Circuit&quot;, &quot;we&quot;,
+          &quot;us&quot;, or &quot;our&quot; mean the store operated by Pride
+          Automation. References to &quot;you&quot; or &quot;your&quot; mean a
+          customer or website visitor.
+        </p>
+        <p>
+          By creating an account, placing an order, or using the website, you
+          agree to these terms and the policies linked from them. If you do not
+          agree, do not place an order or continue using account-based services.
         </p>
       </>
     ),
   },
   {
-    title: '2. Eligibility and Customer Accounts',
+    title: '2. Customer Eligibility and Accounts',
     content: (
       <>
         <p>
           You must be legally capable of entering into a purchase transaction
-          under applicable law. A parent or legal guardian must supervise use
-          by a person who is not independently eligible to contract.
+          under applicable law. A person who is not independently eligible to
+          contract must use the website with the involvement of a parent or
+          lawful guardian.
         </p>
-        <p>When creating or using an account, you agree to:</p>
+        <p>You are responsible for:</p>
         <ul>
-          <li>Provide accurate, current, and complete information.</li>
-          <li>Keep your contact, billing, and delivery information updated.</li>
-          <li>Protect your password and account access.</li>
-          <li>Notify us promptly if you suspect unauthorized account activity.</li>
-          <li>Accept responsibility for activity performed through your account, except where applicable law provides otherwise.</li>
+          <li>Providing accurate, current, and complete account, billing, delivery, and contact information.</li>
+          <li>Keeping your password, devices, and account access secure.</li>
+          <li>Notifying us promptly if you suspect unauthorised account activity.</li>
+          <li>Using the website and purchasing products only for lawful purposes.</li>
+          <li>Reviewing product compatibility and order information before checkout.</li>
         </ul>
         <p>
-          We may restrict or suspend an account where reasonably necessary to
-          investigate fraud, misuse, security risks, or a violation of these
-          terms. Please contact customer support if you believe a restriction
-          was applied incorrectly.
+          We may temporarily restrict an account or transaction when reasonably
+          necessary to investigate suspected fraud, abuse, security risk, or a
+          material violation of these terms, subject to applicable law.
         </p>
       </>
     ),
   },
   {
-    title: '3. Acceptable Use',
-    content: (
-      <>
-        <p>You must not:</p>
-        <ul>
-          <li>Use the website for fraudulent, illegal, or unauthorized activity.</li>
-          <li>Provide false identity, payment, billing, or delivery information.</li>
-          <li>Attempt to gain unauthorized access to accounts, systems, or data.</li>
-          <li>Interfere with the security, availability, or operation of the website.</li>
-          <li>Use automated tools to scrape, overload, or misuse the website without permission.</li>
-          <li>Copy or commercially exploit website content except as permitted by law or with our written authorization.</li>
-        </ul>
-      </>
-    ),
-  },
-  {
-    title: '4. Products and Product Information',
+    title: '3. Products and Product Information',
     content: (
       <>
         <p>
-          We make reasonable efforts to present accurate product names,
-          descriptions, images, specifications, model numbers, compatibility,
-          prices, taxes, warranty information, and availability.
+          We make reasonable efforts to display accurate product names,
+          descriptions, images, specifications, model or variant details,
+          prices, tax rates, stock status, and applicable warranty information.
         </p>
-        <ul>
-          <li>Colours and appearance may vary because of lighting or device-display settings.</li>
-          <li>Manufacturers may update specifications, packaging, or included accessories.</li>
-          <li>Compatibility information should be checked before purchase.</li>
-          <li>Availability may change before an order is confirmed.</li>
-        </ul>
         <p>
-          If a material listing error affects your order, we will contact you
-          with available options, which may include correction, replacement, or
-          cancellation with an applicable refund.
+          Product appearance may vary slightly because of screen settings,
+          lighting, packaging revisions, or manufacturer updates that do not
+          materially change the product. Customers should verify voltage,
+          dimensions, model, interface, compatibility, and intended use before
+          ordering electronic components or modules.
+        </p>
+        <p>
+          Stock status can change before checkout is completed. If a material
+          listing or specification error affects an order, we will provide the
+          available lawful resolution, which may include clarification,
+          correction, replacement, cancellation, or an applicable refund.
         </p>
       </>
     ),
   },
   {
-    title: '5. Prices, Taxes, Discounts, and Charges',
+    title: '4. Minimum Order Value',
     content: (
       <>
         <p>
-          Product prices are displayed in Indian Rupees (INR). The product page
-          or checkout will indicate whether taxes are included or calculated
-          separately. Before payment, checkout displays the applicable product
-          subtotal, discounts, shipping charges, taxes, and final payable amount.
+          The minimum order value is a <strong>₹100 product subtotal</strong>,
+          excluding GST and delivery charges. The checkout validates this
+          minimum against the eligible product subtotal after applicable
+          discounts.
         </p>
         <p>
-          Coupons, promotional prices, bulk prices, and free-shipping offers are
-          subject to their stated validity, product eligibility, minimum-order,
-          usage, and account limits. Unless stated otherwise, offers cannot be
-          exchanged for cash or combined with another offer.
-        </p>
-        <p>
-          If a clear pricing or calculation error is discovered before
-          fulfilment, we may place the order on hold and ask you to confirm the
-          corrected amount, or cancel the affected item and process an
-          applicable refund.
+          GST, delivery charges, or amounts payable directly to a third-party
+          delivery provider do not count toward the ₹100 minimum. The website
+          will not permit order placement when the applicable product subtotal
+          is below the minimum.
         </p>
       </>
     ),
   },
   {
-    title: '6. Orders and Order Acceptance',
+    title: '5. Pricing, Discounts, GST, and Charges',
     content: (
       <>
         <p>
-          Submitting an order is an offer to purchase the selected products. An
-          acknowledgement of your request or payment attempt does not by itself
-          mean that the order has been accepted. Acceptance occurs when we
-          confirm the order after validating payment, product availability,
-          pricing, and delivery information.
+          Prices are displayed in Indian Rupees. Under the currently implemented
+          pricing model, product prices are taxable values and applicable GST is
+          calculated separately. Before order confirmation, checkout displays
+          the product subtotal, eligible discounts, taxable subtotal, applicable
+          GST, delivery charges and delivery-related GST, and the final payable
+          amount.
+        </p>
+        <p>
+          The applicable GST rate may vary by product. Intra-state supplies may
+          show CGST and SGST, while inter-state supplies may show IGST, according
+          to the billing or supply information and applicable tax rules.
+        </p>
+        <p>
+          Coupons and promotions are subject to the eligibility, validity,
+          usage, minimum-order, product, account, and maximum-discount conditions
+          displayed for the offer. If a material calculation or pricing error is
+          identified before fulfilment, we may pause the order and seek your
+          confirmation of the corrected amount or cancel the affected item and
+          issue an applicable refund.
+        </p>
+      </>
+    ),
+  },
+  {
+    title: '6. Orders and Acceptance',
+    content: (
+      <>
+        <p>
+          Placing an order is your request to purchase the selected products at
+          the checkout amount. A payment attempt, payment authorisation, or
+          automated acknowledgement does not by itself constitute final order
+          acceptance.
+        </p>
+        <p>
+          An order is accepted after the system validates the authoritative
+          price, minimum order value, tax, discount, selected delivery method,
+          inventory, customer information, and successful payment where
+          required, and creates the confirmed order record.
         </p>
         <p>We may refuse, hold, or cancel an order for reasons including:</p>
         <ul>
           <li>Insufficient stock or an unavailable product or variant.</li>
-          <li>Incorrect product, price, tax, discount, or shipping information.</li>
-          <li>Failed, incomplete, reversed, unauthorized, or suspicious payment.</li>
-          <li>Incomplete, invalid, or unserviceable delivery information.</li>
-          <li>Suspected fraud, resale abuse, or violation of purchase limits.</li>
+          <li>A material product, price, tax, discount, delivery, or calculation error.</li>
+          <li>A failed, incomplete, reversed, unauthorised, mismatched, or suspicious payment.</li>
+          <li>Incomplete, invalid, or unusable customer or delivery information.</li>
+          <li>Suspected fraud, misuse, unlawful activity, or a security risk.</li>
           <li>A legal, regulatory, safety, or technical restriction.</li>
         </ul>
         <p>
-          If we cancel an accepted prepaid order, the eligible amount will be
-          returned through the original payment method in accordance with our
-          Refund &amp; Cancellation Policy.
+          If we cancel an accepted prepaid order, any eligible refund will be
+          handled under the published Refund &amp; Cancellation Policy.
         </p>
       </>
     ),
   },
   {
-    title: '7. Payments',
+    title: '7. Online Payments',
     content: (
       <>
         <p>
-          Online payments may be processed by Cashfree Payments and its banking
-          or payment-network partners. Available payment methods are displayed
-          during checkout and may change according to provider availability,
-          transaction risk, or account eligibility.
+          The website&apos;s currently integrated online payment gateway is
+          <strong> Razorpay</strong>. Available payment methods are shown during
+          checkout and may depend on configured options, provider availability,
+          authentication requirements, transaction limits, and risk checks.
         </p>
         <p>
-          You authorize the applicable payment provider to process the amount
-          shown at checkout. Payment processing is also subject to the
-          provider&apos;s terms, privacy policy, authentication requirements, and
-          transaction limits.
+          By proceeding with payment, you authorise the payment provider and
+          relevant bank, card network, UPI service, wallet, or other payment
+          participant to process the final amount displayed at checkout. Their
+          terms and privacy practices also apply to information processed on
+          their systems.
         </p>
         <p>
-          We do not ask you to disclose card security codes, UPI PINs,
-          online-banking passwords, or one-time passwords to our staff. Never
-          share these credentials by phone, email, message, or support request.
+          Pride Circuit verifies payment status before completing a prepaid
+          order. A bank debit or payment authorisation does not necessarily mean
+          the website has received a successful, verified payment. Contact
+          support with the available transaction reference if a payment is
+          pending, failed, duplicated, or debited without an order confirmation.
         </p>
         <p>
-          An amount appearing as debited does not always mean we received a
-          successful payment confirmation. If payment status is pending or an
-          order is not created, contact us with the order or gateway reference
-          so the transaction can be investigated.
+          Never disclose a card security code, UPI PIN, online-banking password,
+          or one-time password to Pride Circuit staff or through a support
+          message.
         </p>
       </>
     ),
@@ -174,224 +197,181 @@ const sections = [
     content: (
       <>
         <p>
-          You are responsible for entering accurate billing and GST details
-          before placing an order. Where GST invoicing is available, the GSTIN
-          and registered legal name must be valid and consistent with the
-          billing information.
+          If you request a GST invoice, you are responsible for providing a
+          valid GSTIN, registered name, billing address, and other required tax
+          information before placing the order.
         </p>
         <p>
-          Changes to tax invoices after an order is placed may be restricted by
-          applicable tax requirements. We may request supporting information
-          before correcting an invoice.
-        </p>
-      </>
-    ),
-  },
-  {
-    title: '9. Shipping and Delivery',
-    content: (
-      <>
-        <p>
-          We deliver to serviceable locations in India. Available shipping
-          options, charges, and estimated delivery dates are displayed before
-          order confirmation.
-        </p>
-        <p>
-          Orders are generally processed within 1–2 business days and delivered
-          within 3–7 business days after dispatch. These are estimates, not
-          guarantees. Remote locations, public holidays, adverse weather,
-          courier disruption, government restrictions, or other circumstances
-          outside our reasonable control may cause delays.
-        </p>
-        <p>
-          You are responsible for providing a complete and accurate delivery
-          address and a reachable phone number. Please review our Shipping &amp;
-          Delivery Policy for tracking, failed-delivery, damaged-package, and
-          other fulfilment terms.
+          Invoice corrections after order placement may be limited by applicable
+          tax requirements. We may request supporting information before making
+          an available correction.
         </p>
       </>
     ),
   },
   {
-    title: '10. Order Cancellation',
+    title: '9. Shipping, Delivery, and Pickup',
     content: (
       <>
+        <p>The checkout currently offers these fulfilment methods:</p>
+        <ul>
+          <li><strong>Office Pickup (Collect From Office):</strong> collect the order from the displayed Pride Circuit pickup location only after we confirm that it is ready.</li>
+          <li><strong>Porter (Through Porter):</strong> you arrange and pay Porter directly. Pride Circuit does not collect the Porter delivery charge.</li>
+          <li><strong>Express Delivery (Delivery Express):</strong> Pride Circuit arranges delivery to the selected address, subject to the charge, GST, availability, and details shown during checkout.</li>
+        </ul>
         <p>
-          You may request cancellation while an order is pending, confirmed, or
-          being processed and before it has been shipped. Cancellation cannot
-          be guaranteed after packing or dispatch has begun.
+          Available methods, serviceability, delivery charges, and estimates are
+          those displayed for the order at checkout. Delivery estimates are not
+          guarantees and may be affected by readiness, destination,
+          availability, weather, traffic, public restrictions, or events beyond
+          reasonable control.
         </p>
         <p>
-          Once an order has shipped, you may need to receive it and use the
-          applicable return process. Approved refunds for prepaid cancellations
-          are sent to the original payment method; cash refunds are not provided
-          except where required by applicable law.
+          You must provide accurate contact and delivery information. Review the{' '}
+          <a href="/#shipping-and-delivery-policy">Shipping &amp; Delivery Policy</a>{' '}
+          for processing, pickup, dispatch, tracking, delivery, failed-delivery,
+          and shipment-issue terms.
         </p>
       </>
     ),
   },
   {
-    title: '11. Returns, Replacements, and Refunds',
+    title: '10. Cancellations, Returns, and Refunds',
     content: (
       <>
         <p>
-          Eligible products may be returned within seven days of delivery,
-          subject to the conditions, exclusions, and request procedure in our
-          Refund &amp; Cancellation Policy. Product-specific terms displayed on the
-          product page also apply.
+          Cancellation eligibility depends on the order status and whether
+          packing or dispatch has begun. Return eligibility depends on the
+          product, condition, issue, timing, supporting information, and any
+          product-specific terms displayed before purchase.
         </p>
         <p>
-          Damaged, defective, incorrect, or missing products should be reported
-          within 48 hours of delivery with the order number and requested photos
-          or other supporting information.
+          Approved refunds for prepaid orders are generally routed through the
+          original payment method. Processing and bank-credit timing may depend
+          on the circumstances and the payment provider.
         </p>
         <p>
-          Returned products may be inspected before a replacement or refund is
-          approved. Approved refunds are generally initiated within 5–7 business
-          days and routed to the original payment method. Your bank or payment
-          provider may require additional time to credit the amount.
+          Full eligibility, exclusions, request steps, inspection requirements,
+          refund treatment, and expected processing information are stated in
+          the{' '}
+          <a href="/#refund-and-cancellation-policy">Refund &amp; Cancellation Policy</a>,
+          which covers cancellations, returns, replacements, and refunds.
         </p>
       </>
     ),
   },
   {
-    title: '12. Manufacturer Warranty and Service',
+    title: '11. Warranty and Service',
     content: (
       <>
         <p>
-          Warranty coverage, duration, exclusions, and service arrangements vary
-          by product and manufacturer. Any applicable warranty information is
+          Warranty availability, duration, exclusions, and service arrangements
+          depend on the product and manufacturer. Applicable information may be
           shown on the product page, packaging, invoice, or manufacturer
           documentation.
         </p>
         <p>
-          Warranty claims may require the original invoice, serial number,
-          packaging, accessories, or inspection by an authorized service centre.
-          A manufacturer warranty does not automatically make every product
-          eligible for return or refund.
+          A warranty request may require an invoice, serial or model number,
+          accessories, packaging, troubleshooting, or inspection. Warranty
+          coverage does not automatically make a product eligible for return,
+          and nothing in these terms limits a mandatory consumer remedy.
         </p>
       </>
     ),
   },
   {
-    title: '13. Reviews and Customer Content',
+    title: '12. Acceptable Website Use',
+    content: (
+      <>
+        <p>You must not:</p>
+        <ul>
+          <li>Use the website for fraudulent, illegal, or unauthorised activity.</li>
+          <li>Provide false identity, payment, billing, tax, pickup, or delivery information.</li>
+          <li>Attempt to access another customer&apos;s account, protected systems, or restricted data.</li>
+          <li>Interfere with website security, availability, checkout, inventory, pricing, or payment verification.</li>
+          <li>Use automated tools to scrape, overload, or misuse the website without permission.</li>
+          <li>Submit unlawful, misleading, abusive, infringing, confidential, or unrelated reviews or content.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    title: '13. Intellectual Property and Third-Party Services',
     content: (
       <>
         <p>
-          If you submit a review, rating, image, or other content, you confirm
-          that it is truthful, relevant, lawful, and does not violate another
-          person&apos;s privacy or intellectual-property rights.
+          Pride Circuit&apos;s original website software, design, text, graphics,
+          and branding are owned by or licensed to Pride Automation and are
+          protected by applicable law. Product names, manufacturer marks, and
+          third-party material belong to their respective owners.
         </p>
         <p>
-          We may moderate, reject, or remove content that is fraudulent,
-          abusive, unlawful, unrelated to the product, or contains personal,
-          confidential, or promotional information.
+          Payment providers, delivery providers, manufacturers, service centres,
+          and linked websites may apply their own terms and privacy practices.
+          We do not control their independent systems, but this does not remove
+          any responsibility that Pride Circuit cannot lawfully exclude.
         </p>
       </>
     ),
   },
   {
-    title: '14. Intellectual Property',
-    content: (
-      <p>
-        The website design, software, text, graphics, branding, and original
-        content are owned by or licensed to Pride Electronics and are protected
-        by applicable intellectual-property laws. Manufacturer names, product
-        marks, and third-party content belong to their respective owners. You
-        may use the website only for personal, lawful shopping purposes unless
-        we authorize another use in writing.
-      </p>
-    ),
-  },
-  {
-    title: '15. Third-Party Services and Links',
-    content: (
-      <p>
-        Payment providers, couriers, manufacturers, service centres, and linked
-        websites operate independently and may apply their own terms and privacy
-        policies. We remain responsible for our obligations to you under
-        applicable law, but we do not control an independent third party&apos;s
-        website, network, or service availability.
-      </p>
-    ),
-  },
-  {
-    title: '16. Privacy and Electronic Communications',
+    title: '14. Privacy, Communications, and Website Availability',
     content: (
       <>
         <p>
-          Our collection and use of personal information is described in our
-          Privacy Policy. By providing your email address or phone number, you
-          agree that we may send transactional communications concerning your
-          account, payment, order, shipment, return, refund, or support request.
+          Personal-data handling is described in the{' '}
+          <a href="/#privacy-policy">Privacy Policy</a>. We may send service
+          communications needed for authentication, account security, payments,
+          orders, pickup, delivery, cancellations, returns, refunds, or support.
         </p>
         <p>
-          Promotional communications are subject to your preferences and
-          applicable law. Transactional or security messages may still be sent
-          when necessary to provide the service you requested.
+          We use reasonable care to operate the website, but temporary outages,
+          maintenance, network failures, provider disruption, or technical
+          errors may occur. Nothing in these terms excludes liability or limits
+          a right or remedy that cannot lawfully be excluded under Indian law.
         </p>
       </>
     ),
   },
   {
-    title: '17. Availability and Limitation of Liability',
+    title: '15. Governing Law and Complaints',
     content: (
       <>
         <p>
-          We use reasonable care to operate the website and fulfil accepted
-          orders, but uninterrupted or error-free availability cannot be
-          guaranteed. To the extent permitted by applicable law, we are not
-          responsible for indirect or consequential loss caused solely by
-          events outside our reasonable control.
+          These terms are governed by the laws of India, including applicable
+          consumer-protection and e-commerce requirements. Mandatory rights and
+          access to a legally competent consumer commission, court, or other
+          authority are not restricted by these terms.
         </p>
         <p>
-          Nothing in these terms excludes or limits liability that cannot
-          lawfully be excluded, or restricts any mandatory right or remedy
-          available to a consumer under applicable law.
+          Please contact customer support first with sufficient information and
+          the relevant order number so the concern can be reviewed. This does
+          not prevent you from using any remedy available under applicable law.
         </p>
       </>
     ),
   },
   {
-    title: '18. Changes to These Terms',
-    content: (
-      <p>
-        We may update these terms to reflect changes to our services, business,
-        providers, or legal obligations. The revised version will be published
-        on this page with an updated date. Terms applicable when your order was
-        placed will continue to govern that order unless a change is required by
-        law or agreed with you.
-      </p>
-    ),
-  },
-  {
-    title: '19. Governing Law and Dispute Resolution',
+    title: '16. Updates and Contact',
     content: (
       <>
+        <p><strong>Effective date:</strong> October 22, 2026</p>
         <p>
-          These terms are governed by the laws of India. We encourage you to
-          contact customer support first so that we can try to resolve a concern
-          promptly.
+          We may update these terms when the website, products, providers,
+          fulfilment methods, business operations, or legal requirements change.
+          The revised terms will be published on this page with a new effective
+          date. The terms in effect when an order was accepted will ordinarily
+          continue to govern that order unless a change is required by law or
+          agreed with you.
         </p>
         <p>
-          Subject to mandatory consumer-protection rights and any forum provided
-          by applicable law, disputes will be submitted to a court or other
-          competent authority having lawful jurisdiction.
+          Pride Circuit is operated by <strong>Pride Automation</strong>.
         </p>
-      </>
-    ),
-  },
-  {
-    title: '20. Contact Us',
-    content: (
-      <>
-        <p><strong>Pride Electronics</strong></p>
-        <p>Website: pridecircuit.in</p>
-        <p>Email: support@pridecircuit.in</p>
         <p>
-          Include your order number when contacting us about an existing order.
-          Never send passwords, PINs, one-time passwords, or complete card
-          details.
+          For questions, complaints, or order support, email{' '}
+          <a href="mailto:Support@pridecircuit.in">Support@pridecircuit.in</a>.
+          Include the order number for an order-related request, but do not send
+          passwords, PINs, one-time passwords, or complete payment-card details.
         </p>
       </>
     ),
@@ -399,15 +379,34 @@ const sections = [
 ]
 
 export default function TermsAndConditions({ onBack }) {
+  useEffect(() => {
+    const previousTitle = document.title
+    const descriptionMeta = document.querySelector('meta[name="description"]')
+    const previousDescription = descriptionMeta?.getAttribute('content')
+
+    document.title = pageTitle
+    descriptionMeta?.setAttribute('content', pageDescription)
+
+    return () => {
+      document.title = previousTitle
+      if (descriptionMeta && previousDescription !== null) {
+        descriptionMeta.setAttribute('content', previousDescription)
+      }
+    }
+  }, [])
+
   return (
     <LegalPageLayout
       title="Terms & Conditions"
-      description="The terms governing accounts, purchases, payments, shipping, cancellations, returns, and use of pridecircuit.in."
-      updatedAt="October 15, 2026"
+      description="The terms governing accounts, orders, pricing, GST, payments, delivery, cancellations, returns, refunds, and use of pridecircuit.in."
+      updatedAt="October 22, 2026"
       sections={sections}
       onBack={onBack}
       icon={ScrollText}
       eyebrow="Store terms"
+      hideIntro
+      hideSectionNavigation
+      breadcrumbLabel="Terms & Conditions"
     />
   )
 }
