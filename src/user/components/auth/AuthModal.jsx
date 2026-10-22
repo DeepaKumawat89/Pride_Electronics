@@ -195,11 +195,14 @@ export default function AuthModal({ initialMode = 'login', open, onClose, onSucc
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-end bg-slate-950/60 p-0 backdrop-blur-sm md:place-items-center md:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
       onMouseDown={(event) => event.target === event.currentTarget && closeModal()}
     >
       <div
         aria-busy={submitting}
-        className={`relative max-h-[96vh] w-full overflow-y-auto rounded-t-[30px] bg-[#f7f8f5] shadow-2xl transition-[max-width] duration-300 md:rounded-[32px] ${
+        className={`storefront-modal-surface relative max-h-[96dvh] w-full overflow-y-auto overscroll-contain rounded-t-[30px] bg-[#f7f8f5] shadow-2xl transition-[max-width] duration-300 md:rounded-[32px] ${
           isSignup
             ? 'md:max-w-5xl'
             : isForgotPassword

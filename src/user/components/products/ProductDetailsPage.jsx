@@ -191,7 +191,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
   }
 
   return (
-    <div className="min-h-[calc(100vh-8rem)] bg-[#f7f8f5]">
+    <div className="min-h-[calc(100dvh-8rem)] bg-[#f7f8f5]">
       <div className="mx-auto max-w-[1440px] px-4 py-5 sm:px-6 sm:py-7 lg:px-10 lg:py-10">
         <nav className="mb-5 flex items-center gap-2 overflow-hidden text-[11px] font-bold text-slate-400 sm:mb-7" aria-label="Breadcrumb">
           <button type="button" onClick={onBack} className="flex shrink-0 items-center gap-2 rounded-full bg-white px-3.5 py-2 text-slate-700 shadow-sm transition hover:bg-slate-950 hover:text-white">
@@ -208,7 +208,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
           <div className="grid lg:grid-cols-[1.08fr_.92fr]">
             <div className="bg-[#eef4ed] p-4 sm:p-6 lg:p-7">
               <div className="relative overflow-hidden rounded-[22px] bg-white sm:rounded-[26px]">
-                <img src={activeImage} alt={product.name} className="aspect-[4/3] size-full object-cover transition duration-500 lg:aspect-[11/10]" />
+                <img src={activeImage} alt={product.name} decoding="async" className="aspect-[4/3] size-full object-cover transition duration-500 lg:aspect-[11/10]" />
                 <span className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-slate-800 shadow-sm backdrop-blur">{product.badge}</span>
                 <div className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full bg-white/90 p-1.5 shadow-lg backdrop-blur">
                   <button type="button" onClick={() => onLike(product.id)} className={`grid size-9 place-items-center rounded-full transition ${liked ? 'bg-[#ff5c35] text-white' : 'text-slate-600 hover:bg-[#ffe9e2] hover:text-[#ff5c35]'}`} aria-label={liked ? 'Remove from wishlist' : 'Add to wishlist'} title={liked ? 'Remove from wishlist' : 'Add to wishlist'}>
@@ -225,7 +225,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                   <div className="absolute bottom-3 left-1/2 flex max-w-[58%] -translate-x-1/2 gap-1.5 rounded-2xl bg-white/85 p-1.5 shadow-xl backdrop-blur-md sm:bottom-4 sm:gap-2 sm:p-2">
                   {images.map((image, index) => (
                     <button key={`${image}-${index}`} type="button" onClick={() => setActiveImageIndex(index)} className={`size-10 shrink-0 overflow-hidden rounded-xl border-2 bg-white p-0.5 transition hover:-translate-y-0.5 sm:size-12 ${activeImageIndex === index ? 'border-[#ff5c35] shadow-md' : 'border-transparent opacity-75 hover:border-slate-200 hover:opacity-100'}`} aria-label={`View product image ${index + 1}`}>
-                      <img src={image} alt={`${product.name} view ${index + 1}`} className="size-full rounded-lg object-cover" />
+                      <img src={image} alt={`${product.name} view ${index + 1}`} loading="lazy" decoding="async" className="size-full rounded-lg object-cover" />
                     </button>
                   ))}
                   </div>

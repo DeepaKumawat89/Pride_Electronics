@@ -117,7 +117,7 @@ export default function LegalPageLayout({
             </p>
             <nav
               aria-label={`${title} sections`}
-              className="mt-2 grid max-h-[calc(100vh-11rem)] gap-0.5 overflow-y-auto pr-2"
+              className="mt-2 grid max-h-[calc(100dvh-11rem)] gap-0.5 overflow-y-auto pr-2"
             >
               {sectionLinks.map((section, index) => (
                 <button

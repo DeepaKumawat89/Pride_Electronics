@@ -206,7 +206,7 @@ export default function ProductCatalog({
       )}
 
       {visibleProducts.length ? (
-        <div className="mt-8 grid grid-cols-2 gap-x-3 gap-y-10 sm:gap-x-5 md:grid-cols-3 xl:grid-cols-4">
+        <div className="storefront-product-grid mt-8 grid grid-cols-2 gap-x-3 gap-y-10 sm:gap-x-5 md:grid-cols-3 xl:grid-cols-4">
           {visibleProducts.map((product, index) => (
             <div
               key={product.id}
@@ -325,7 +325,7 @@ export default function ProductCatalog({
                   View all
                 </button>
               </div>
-              <div className="mt-6 grid grid-cols-2 gap-x-3 gap-y-10 sm:gap-x-5 md:grid-cols-3 xl:grid-cols-4">
+              <div className="storefront-product-grid mt-6 grid grid-cols-2 gap-x-3 gap-y-10 sm:gap-x-5 md:grid-cols-3 xl:grid-cols-4">
                 {suggestedProducts.map((product) => (
                   <ProductCard
                     key={product.id}
@@ -408,9 +408,11 @@ function CatalogFilters({
           <div
             ref={panelRef}
             role="dialog"
+            aria-modal="true"
             aria-label="Filter products"
+            data-storefront-overlay="filters"
             style={position}
-            className="fixed z-[100] flex h-[min(600px,calc(100vh-24px))] flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.2)]"
+            className="fixed z-[100] flex h-[min(600px,calc(100dvh-24px))] flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.2)]"
           >
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
               <div>

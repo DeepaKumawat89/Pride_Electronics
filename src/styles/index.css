@@ -4,3 +4,83 @@
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
+
+/* Customer storefront responsive safeguards. Deliberately scoped so the admin
+   application keeps its existing layout and component sizing. */
+.customer-shell {
+  min-width: 0;
+  min-height: 100dvh;
+  overflow-wrap: anywhere;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+.customer-shell img,
+.customer-shell video,
+.customer-shell svg {
+  max-width: 100%;
+}
+
+.customer-shell :where(input, select, textarea) {
+  max-width: 100%;
+}
+
+.customer-shell :where(button, a, input, select, textarea):focus-visible,
+[data-storefront-overlay] :where(button, input, select):focus-visible {
+  outline: 2px solid #ff5c35;
+  outline-offset: 2px;
+}
+
+.customer-shell :where([class*="overflow-x-auto"], [class*="overflow-y-auto"]),
+[data-storefront-overlay] {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+@media (max-width: 639px) {
+  .customer-shell :where(input, select, textarea) {
+    font-size: 16px;
+  }
+
+  .customer-shell .storefront-modal-surface {
+    max-height: calc(100dvh - env(safe-area-inset-top));
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+    overscroll-behavior: contain;
+  }
+
+  [data-storefront-overlay="filters"] {
+    inset: auto 0 0 !important;
+    width: 100% !important;
+    height: min(82dvh, 42rem) !important;
+    max-height: calc(100dvh - env(safe-area-inset-top) - 0.75rem);
+    border-radius: 1.5rem 1.5rem 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@media (max-width: 359px) {
+  .customer-shell .storefront-product-grid,
+  .customer-shell .storefront-category-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (pointer: coarse) {
+  .customer-shell :where(button, a[href], input[type="button"], input[type="submit"]),
+  [data-storefront-overlay] button {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .customer-shell *,
+  .customer-shell *::before,
+  .customer-shell *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

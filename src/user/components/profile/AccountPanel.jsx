@@ -370,11 +370,11 @@ export default function AccountPanel({
     section === 'profile' && !mobileProfileDetailsOpen
 
   return (
-    <div className="fixed inset-0 z-50 isolate overflow-hidden bg-[#f7f8f5] sm:bg-[#dcebdd]">
+    <div className="fixed inset-0 z-50 isolate overflow-hidden bg-[#f7f8f5] sm:bg-[#dcebdd]" role="dialog" aria-modal="true" aria-label="Customer account">
       <div className="pointer-events-none absolute -right-32 -top-48 -z-10 hidden size-[600px] rounded-full bg-[#9bcaa6]/35 blur-3xl sm:block" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 hidden h-[62%] bg-gradient-to-t from-[#aacfb3]/45 to-transparent sm:block" />
 
-      <div className="relative z-10 flex h-full flex-col gap-0 p-0 sm:gap-4 sm:p-4 md:flex-row md:gap-5 md:p-5 lg:gap-7 lg:px-8 lg:py-7 xl:px-10 xl:py-8">
+      <div className="relative z-10 flex h-full min-h-0 flex-col gap-0 p-0 sm:gap-4 sm:p-4 md:flex-row md:gap-5 md:p-5 lg:gap-7 lg:px-8 lg:py-7 xl:px-10 xl:py-8">
         <AccountNavigation
           section={section}
           user={user}

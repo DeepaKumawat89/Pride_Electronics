@@ -710,7 +710,7 @@ export default function CheckoutPage({
   }
 
   return (
-    <div className="min-h-[calc(100vh-8rem)] bg-[#f8faf7] text-slate-800">
+    <div className="min-h-[calc(100dvh-8rem)] bg-[#f8faf7] text-slate-800">
       <div className="mx-auto max-w-[960px] px-4 py-6 sm:px-6 sm:py-8">
 
         {/* Top Header Bar */}
@@ -1300,6 +1300,8 @@ export default function CheckoutPage({
                         <img
                           src={product.image}
                           alt={product.name}
+                          loading="lazy"
+                          decoding="async"
                           className="size-14 shrink-0 rounded-lg border border-slate-200/60 object-cover bg-white"
                         />
                         <div className="min-w-0 flex-1">
@@ -1336,7 +1338,7 @@ export default function CheckoutPage({
                                 removeCheckoutItem(key)
                               }
                             }}
-                            className="grid size-6 place-items-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200"
+                            className="grid size-11 place-items-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 sm:size-9"
                             title={quantity === 1 ? 'Remove item' : 'Decrease quantity'}
                           >
                             {quantity === 1 ? <Trash2 size={12} className="text-red-600" /> : <Minus size={12} />}
@@ -1348,7 +1350,7 @@ export default function CheckoutPage({
                             type="button"
                             disabled={quantity >= stock}
                             onClick={() => updateCheckoutQuantity(key, 1)}
-                            className="grid size-6 place-items-center rounded-full bg-[#253329] text-white transition hover:bg-[#397a4a] disabled:opacity-30"
+                            className="grid size-11 place-items-center rounded-full bg-[#253329] text-white transition hover:bg-[#397a4a] disabled:opacity-30 sm:size-9"
                             title="Increase quantity"
                           >
                             <Plus size={12} />

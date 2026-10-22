@@ -121,7 +121,7 @@ export default function ProductSearch({
       {open && normalizedQuery && (
         <div
           id={resultsId}
-          className={`absolute top-[calc(100%+10px)] z-[70] max-h-[min(28rem,calc(100vh-7rem))] overflow-y-auto overscroll-contain rounded-[24px] border border-slate-200 bg-white p-2 shadow-[0_24px_70px_rgba(15,23,42,0.2)] ${mobile ? '-right-12 w-[calc(100vw-1.5rem)] sm:w-[32rem]' : 'left-0 w-full'}`}
+          className={`absolute top-[calc(100%+10px)] z-[70] max-h-[min(28rem,calc(100dvh-7rem))] overflow-y-auto overscroll-contain rounded-[24px] border border-slate-200 bg-white p-2 shadow-[0_24px_70px_rgba(15,23,42,0.2)] ${mobile ? '-right-12 w-[calc(100vw-1.5rem)] sm:w-[32rem]' : 'left-0 w-full'}`}
         >
           {results.length ? (
             <section aria-labelledby={`${resultsId}-products`}>

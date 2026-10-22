@@ -1823,7 +1823,7 @@ export default function UserApp({
     (accountError || (catalogDataRequired ? productsError : ''))
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-[#f7f8f5] pb-20 sm:pb-16 lg:pb-0">
+    <div className="customer-shell min-h-screen overflow-x-clip bg-[#f7f8f5] pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-16 lg:pb-0">
       <AnnouncementBar shippingSettings={shippingSettings} />
       <Header
         products={products}

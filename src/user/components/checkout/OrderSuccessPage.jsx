@@ -11,8 +11,8 @@ export default function OrderSuccessPage({
   if (verificationState) {
     const failed = verificationState.status === 'error'
     return (
-      <div className="min-h-[calc(100vh-8rem)] bg-[#f7f8f5]">
-        <div className="mx-auto grid min-h-[calc(100vh-8rem)] max-w-[1120px] place-items-center px-4 py-7 sm:px-6 sm:py-10 lg:px-10 lg:py-14">
+      <div className="min-h-[calc(100dvh-8rem)] bg-[#f7f8f5]">
+        <div className="mx-auto grid min-h-[calc(100dvh-8rem)] max-w-[1120px] place-items-center px-4 py-7 sm:px-6 sm:py-10 lg:px-10 lg:py-14">
           <section className="w-full max-w-xl rounded-[32px] bg-white px-6 py-12 text-center shadow-sm sm:px-10 sm:py-16" aria-live="polite" aria-busy={!failed}>
             <span className={`mx-auto grid size-16 place-items-center rounded-full ${failed ? 'bg-red-50 text-red-600' : 'bg-[#e4f1e7] text-[#397a4a]'}`}>
               {failed ? <AlertTriangle size={27} /> : <LoaderCircle size={28} className="animate-spin" />}
@@ -39,7 +39,7 @@ export default function OrderSuccessPage({
   const isCod = /cash|cod/i.test(order.paymentMethod || '')
   const orderDisplayId = getOrderDisplayId(order)
   return (
-    <div className="min-h-[calc(100vh-8rem)] bg-[#f7f8f5]">
+    <div className="min-h-[calc(100dvh-8rem)] bg-[#f7f8f5]">
       <div className="mx-auto max-w-[1120px] px-4 py-7 sm:px-6 sm:py-10 lg:px-10 lg:py-14">
         <section className="relative isolate overflow-hidden rounded-[32px] bg-[#dcebdd] px-5 py-8 text-center shadow-sm sm:px-8 sm:py-11">
           <div className="absolute -right-16 -top-24 -z-10 size-72 rounded-full bg-[#9bcaa6]/45 blur-3xl" />

@@ -63,7 +63,7 @@ export default function PasswordResetModal({
 
   return (
     <div className="fixed inset-0 z-[70] grid place-items-end bg-slate-950/60 p-0 backdrop-blur-sm sm:place-items-center sm:p-4">
-      <section aria-busy={status === 'checking' || submitting} className="w-full rounded-t-[30px] bg-[#f7f8f5] p-6 shadow-2xl sm:max-w-md sm:rounded-[30px] sm:p-8">
+      <section role="dialog" aria-modal="true" aria-label="Reset password" aria-busy={status === 'checking' || submitting} className="storefront-modal-surface max-h-[100dvh] w-full overflow-y-auto overscroll-contain rounded-t-[30px] bg-[#f7f8f5] p-6 shadow-2xl sm:max-w-md sm:rounded-[30px] sm:p-8">
         <Brand />
         {status === 'checking' ? (
           <div className="grid min-h-72 place-items-center text-center">

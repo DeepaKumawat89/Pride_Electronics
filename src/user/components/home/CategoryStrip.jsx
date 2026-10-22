@@ -32,7 +32,7 @@ export default function CategoryStrip({ onSelect, promotions = [], managedCatego
         <div><p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#ff5c35]">Browse the store</p><h2 className="mt-2 text-2xl font-extrabold tracking-[-0.04em] sm:text-3xl">Shop by category</h2></div>
         <button type="button" onClick={() => onSelect('All')} className="hidden text-xs font-bold text-slate-500 underline decoration-slate-300 underline-offset-4 sm:block">View all products</button>
       </div>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+      <div className="storefront-category-grid grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
         {categories.map(({ name, label, icon: Icon, color }) => (
           <button key={name} type="button" onClick={() => onSelect(name)} className={`${color} group flex min-h-36 flex-col items-start justify-between overflow-hidden rounded-3xl p-5 text-left transition duration-300 hover:-translate-y-1 hover:shadow-xl`}>
             <span className="grid size-11 place-items-center rounded-2xl bg-white/75 text-slate-800 transition group-hover:rotate-[-5deg] group-hover:scale-110"><Icon size={22} /></span>

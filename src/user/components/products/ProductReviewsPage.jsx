@@ -3,7 +3,7 @@ import ProductReviews, { RatingSummary } from './ProductReviews'
 
 export default function ProductReviewsPage({ product, reviews = [], onBack }) {
   return (
-    <div className="min-h-[calc(100vh-8rem)] bg-[#f7f8f5]">
+    <div className="min-h-[calc(100dvh-8rem)] bg-[#f7f8f5]">
       <div className="mx-auto max-w-[1220px] px-4 py-5 sm:px-6 sm:py-8 lg:px-10 lg:py-10">
         <nav className="mb-5 flex items-center gap-2 overflow-hidden text-[11px] font-bold text-slate-400 sm:mb-7" aria-label="Breadcrumb">
           <button type="button" onClick={onBack} className="flex shrink-0 items-center gap-2 rounded-full bg-white px-3.5 py-2 text-slate-700 shadow-sm transition hover:bg-slate-950 hover:text-white"><ArrowLeft size={14} /> Product details</button>

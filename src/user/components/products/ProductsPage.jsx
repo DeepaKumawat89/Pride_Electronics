@@ -118,7 +118,7 @@ export default function ProductsPage({
           </button>
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 lg:gap-4">
+        <div className="storefront-category-grid mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 lg:gap-4">
           {availableCategories.map((category) => {
             const presentation =
               categoryPresentation[category.name] || fallbackPresentation
