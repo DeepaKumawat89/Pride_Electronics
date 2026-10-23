@@ -39,6 +39,11 @@ import {
   isValidHsnCode,
   roundToTwoDecimals,
 } from '../../utils/productValidation'
+import {
+  CUSTOMER_RIGHTS_NOTICE,
+  RETURN_POLICY_OPTIONS,
+  RETURN_POLICY_TYPES,
+} from '../../utils/productReturnPolicy'
 
 const blankProduct = {
   name: '',
@@ -65,6 +70,9 @@ const blankProduct = {
   weight: '',
   dimensions: '',
   deliveryInformation: '',
+  returnPolicyType: RETURN_POLICY_TYPES.RETURN,
+  returnPolicyDays: 7,
+  returnPolicyConditions: '',
 }
 
 const parseList = (value) =>
@@ -114,7 +122,7 @@ const convertProductToGstExclusive = (product = {}) => {
 
 const createDuplicateProduct = (product) => {
   const duplicateId = Date.now()
-  return {
+  const duplicate = {
     ...convertProductToGstExclusive(product),
     id: duplicateId,
     name: `${product.name} Copy`,
@@ -128,6 +136,14 @@ const createDuplicateProduct = (product) => {
     featured: false,
     enabled: false,
   }
+  if (
+    !duplicate.returnPolicy ||
+    typeof duplicate.returnPolicy !== 'object' ||
+    !RETURN_POLICY_OPTIONS.some((option) => option.value === duplicate.returnPolicy.type)
+  ) {
+    delete duplicate.returnPolicy
+  }
+  return duplicate
 }
 
 export default function ProductsPage({
@@ -281,6 +297,11 @@ export default function ProductsPage({
     setForm({
       ...blankProduct,
       ...exclusiveProduct,
+      returnPolicyType: product.returnPolicy?.type || blankProduct.returnPolicyType,
+      returnPolicyDays: product.returnPolicy?.type === RETURN_POLICY_TYPES.NON_RETURNABLE
+        ? 0
+        : product.returnPolicy?.days ?? blankProduct.returnPolicyDays,
+      returnPolicyConditions: product.returnPolicy?.conditions || '',
       price: exclusiveProduct.price || '',
       enableBulkPricing: Boolean(product.enableBulkPricing),
       pricingTiers: Array.isArray(product.pricingTiers)
@@ -339,6 +360,19 @@ export default function ProductsPage({
         'Threshold must be a non-negative whole number.'
     if (!isValidDecimalInput(form.taxRate) || Number(form.taxRate) > 100)
       errors.taxRate = 'Tax must be between 0 and 100 with no more than 2 decimal places.'
+    if (!RETURN_POLICY_OPTIONS.some((option) => option.value === form.returnPolicyType))
+      errors.returnPolicyType = 'Select a valid return or replacement policy.'
+    if (
+      form.returnPolicyType !== RETURN_POLICY_TYPES.NON_RETURNABLE &&
+      (!Number.isInteger(Number(form.returnPolicyDays)) ||
+        Number(form.returnPolicyDays) < 1 ||
+        Number(form.returnPolicyDays) > 365)
+    )
+      errors.returnPolicyDays = 'Enter a policy period between 1 and 365 days.'
+    if (!form.returnPolicyConditions.trim())
+      errors.returnPolicyConditions = 'Enter the applicable policy conditions.'
+    else if (form.returnPolicyConditions.trim().length > 2000)
+      errors.returnPolicyConditions = 'Policy conditions must be 2,000 characters or fewer.'
     if (selectedImages.length + existingImages.length < MIN_PRODUCT_IMAGES)
       errors.images = 'Select at least one product image.'
     if (selectedImages.length + existingImages.length > MAX_PRODUCT_IMAGES)
@@ -396,6 +430,14 @@ export default function ProductsPage({
         ? normalizePricingTiers(form.pricingTiers)
         : [],
       taxRate: Number(form.taxRate),
+      returnPolicy: {
+        type: form.returnPolicyType,
+        days: form.returnPolicyType === RETURN_POLICY_TYPES.NON_RETURNABLE
+          ? 0
+          : Number(form.returnPolicyDays),
+        conditions: form.returnPolicyConditions.trim(),
+        customerRights: CUSTOMER_RIGHTS_NOTICE,
+      },
       rating: editingProduct?.rating ?? 0,
       reviewsCount: editingProduct?.reviewsCount ?? 0,
       sku: form.sku.trim() || undefined,
@@ -409,6 +451,9 @@ export default function ProductsPage({
       featured: editingProduct?.featured ?? true,
       enabled: form.enabled !== false,
     }
+    delete nextProduct.returnPolicyType
+    delete nextProduct.returnPolicyDays
+    delete nextProduct.returnPolicyConditions
     delete nextProduct.originalPrice
     delete nextProduct.discount
     setSaving(true)
@@ -997,6 +1042,45 @@ export default function ProductsPage({
             <FormSectionTitle title="Warranty" />
             <FormField label="Warranty details" wide>
               <input {...field('warranty')} className={inputClass} />
+            </FormField>
+            <FormSectionTitle title="Return & Replacement Policy" />
+            <FormField label="Policy" required error={formErrors.returnPolicyType}>
+              <SelectMenu
+                value={form.returnPolicyType}
+                onChange={(returnPolicyType) => setForm((current) => ({
+                  ...current,
+                  returnPolicyType,
+                  returnPolicyDays: returnPolicyType === RETURN_POLICY_TYPES.NON_RETURNABLE
+                    ? 0
+                    : current.returnPolicyDays || 7,
+                }))}
+                options={RETURN_POLICY_OPTIONS}
+                required
+                ariaLabel="Return and replacement policy"
+                buttonClassName={inputClass}
+              />
+            </FormField>
+            <FormField label="Applicable period (days)" required={form.returnPolicyType !== RETURN_POLICY_TYPES.NON_RETURNABLE} error={formErrors.returnPolicyDays}>
+              <input
+                type="number"
+                min="1"
+                max="365"
+                step="1"
+                disabled={form.returnPolicyType === RETURN_POLICY_TYPES.NON_RETURNABLE}
+                {...field('returnPolicyDays')}
+                className={inputClass}
+              />
+            </FormField>
+            <FormField label="Conditions" required error={formErrors.returnPolicyConditions} wide>
+              <textarea
+                required
+                maxLength={2000}
+                {...field('returnPolicyConditions')}
+                className={`${inputClass} min-h-20 py-3`}
+              />
+              <span className="mt-1.5 block text-[8px] font-bold text-slate-400">
+                {CUSTOMER_RIGHTS_NOTICE}
+              </span>
             </FormField>
             <button
               type="submit"

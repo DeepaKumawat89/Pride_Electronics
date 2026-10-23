@@ -25,6 +25,7 @@ import {
 import ProductCard from './ProductCard'
 import ProductReviews from './ProductReviews'
 import { getDisplaySpecifications } from '../../../utils/productSpecifications'
+import { getProductReturnPolicyDisplay } from '../../../utils/productReturnPolicy'
 import {
   getProductVariants,
   productForVariant,
@@ -154,6 +155,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
 
   const liked = likedIds.includes(product.id)
   const detailInformation = getProductDetailInformation(displayProduct)
+  const returnPolicy = getProductReturnPolicyDisplay(displayProduct.returnPolicy)
   const displaySpecifications = getDisplaySpecifications(displayProduct)
   const deliveryEstimate = getDeliveryEstimate(stock)
   const deliveryAvailable = stock > 0
@@ -172,7 +174,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
     displaySpecifications.length > 0 ||
     detailInformation.includedItems.length > 0 ||
     productInformation.length > 0 ||
-    Boolean(detailInformation.warranty || detailInformation.returnPolicy)
+    Boolean(detailInformation.warranty || returnPolicy)
 
   const updateQuantity = (amount) => {
     setQuantity((current) =>
@@ -407,7 +409,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                       : 'Delivery available',
                   ],
                   [ShieldCheck, 'Secure'],
-                  [RotateCcw, 'Easy returns'],
+                  [RotateCcw, returnPolicy.label],
                 ].map(([Icon, label]) => (
                   <div key={label} className="rounded-2xl bg-slate-50 px-2 py-3 text-center text-[9px] font-extrabold text-slate-600 sm:flex sm:items-center sm:justify-center sm:gap-2 sm:text-[10px]">
                     <Icon size={16} className="mx-auto mb-1 text-[#4f8a5d] sm:mx-0 sm:mb-0" /> {label}
@@ -486,7 +488,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
             </div>
             )}
 
-            {(detailInformation.warranty || detailInformation.returnPolicy) && (
+            {(detailInformation.warranty || returnPolicy) && (
             <div className="mt-7 grid gap-6 border-t border-slate-100 pt-7 md:grid-cols-2">
               {detailInformation.warranty && <section>
                 <h3 className="text-sm font-extrabold text-slate-900">
@@ -496,12 +498,17 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                   {detailInformation.warranty}
                 </p>
               </section>}
-              {detailInformation.returnPolicy && <section>
+              {returnPolicy && <section>
                 <h3 className="text-sm font-extrabold text-slate-900">
                   Return / Replacement Policy
                 </h3>
                 <p className="mt-2 text-xs font-medium leading-6 text-slate-500">
-                  {detailInformation.returnPolicy}
+                  <strong className="text-slate-700">{returnPolicy.label}</strong>
+                  {returnPolicy.days > 0 ? ` · ${returnPolicy.days} days` : ''}
+                  <br />
+                  {returnPolicy.conditions}
+                  <br />
+                  {returnPolicy.customerRights}
                 </p>
               </section>}
             </div>

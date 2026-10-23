@@ -24,6 +24,38 @@ const normalizedHsnCode = (value) => {
   return /^[0-9]{8}$/.test(hsnCode) ? hsnCode : ''
 }
 
+const CUSTOMER_RIGHTS_NOTICE =
+  'Defective, damaged, or incorrect products remain covered by applicable customer rights.'
+const RETURN_POLICY_TYPES = ['return', 'replacement', 'non-returnable']
+
+const returnPolicySnapshotFor = (product = {}) => {
+  const source = product.returnPolicy
+  const type = RETURN_POLICY_TYPES.includes(source?.type)
+    ? source.type
+    : 'unspecified'
+  const days = type === 'non-returnable' || type === 'unspecified'
+    ? 0
+    : Math.max(1, Math.min(365, Math.floor(Number(source?.days) || 0)))
+  const labels = {
+    return: 'Return Available',
+    replacement: 'Replacement Only',
+    'non-returnable': 'Non-Returnable / Non-Replaceable',
+    unspecified: 'Return / replacement policy not specified',
+  }
+  return {
+    type,
+    label: labels[type],
+    days,
+    conditions: String(
+      (typeof source === 'string' ? source : source?.conditions) ||
+        'Contact Pride Circuit support for eligibility details.',
+    ).trim().slice(0, 2000),
+    customerRights: String(source?.customerRights || CUSTOMER_RIGHTS_NOTICE)
+      .trim()
+      .slice(0, 500),
+  }
+}
+
 const taxRateFor = (product = {}, fallbackRate = 18) => {
   const value = Number(product.taxRate ?? fallbackRate)
   return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0
@@ -236,6 +268,7 @@ function calculateOrderQuote({
       unitGst: price.gstAmount,
       appliedTier,
       taxRate: price.taxRate,
+      returnPolicy: returnPolicySnapshotFor(product),
     }
   })
 

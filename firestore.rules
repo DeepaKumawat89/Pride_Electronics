@@ -6,7 +6,8 @@ rules_version = '2';
 // products/{productId}: publicly readable catalog documents. Admin-only full
 // writes require name/category metadata, positive GST-exclusive price,
 // pricingModel "gst-exclusive-v1", priceIncludesTax false, GST rate 0..100,
-// inventory, specifications, and 1..3 product images scoped to productId.
+// inventory, specifications, 1..3 product images scoped to productId, and an
+// optional admin-managed return/replacement policy for legacy compatibility.
 // users/{uid}: private customer profile, address, cart, and preference data.
 // orders, returns: owner/admin-readable commerce records; trusted backend
 // writes authoritative order, payment, tax, and embedded invoice snapshots.
@@ -114,6 +115,32 @@ service cloud.firestore {
           isValidProductImagePath(data.imageStoragePaths[2], productId));
     }
 
+    function hasValidReturnPolicy(data) {
+      return !data.keys().hasAny(['returnPolicy']) ||
+        (data.returnPolicy is map &&
+          data.returnPolicy.keys().hasOnly([
+            'type', 'days', 'conditions', 'customerRights'
+          ]) &&
+          data.returnPolicy.keys().hasAll([
+            'type', 'days', 'conditions', 'customerRights'
+          ]) &&
+          data.returnPolicy.type in [
+            'return', 'replacement', 'non-returnable'
+          ] &&
+          data.returnPolicy.days is int &&
+          ((data.returnPolicy.type == 'non-returnable' &&
+              data.returnPolicy.days == 0) ||
+            (data.returnPolicy.type != 'non-returnable' &&
+              data.returnPolicy.days >= 1 &&
+              data.returnPolicy.days <= 365)) &&
+          data.returnPolicy.conditions is string &&
+          data.returnPolicy.conditions.size() > 0 &&
+          data.returnPolicy.conditions.size() <= 2000 &&
+          data.returnPolicy.customerRights is string &&
+          data.returnPolicy.customerRights.size() > 0 &&
+          data.returnPolicy.customerRights.size() <= 500);
+    }
+
     function isValidProduct(data, productId) {
       return data.keys().hasAll([
           'name', 'brand', 'description', 'categoryId', 'category',
@@ -136,6 +163,7 @@ service cloud.firestore {
         data.modelNumber is string && data.modelNumber.size() > 0 && data.modelNumber.size() <= 200 &&
         hasValidHsnCode(data) &&
         hasValidProductImages(data, productId) &&
+        hasValidReturnPolicy(data) &&
         data.specs is list && data.specs.size() > 0 && data.specs.size() <= 100 &&
         (!data.keys().hasAny(['sku']) ||
           (data.sku is string && data.sku.size() > 0 && data.sku.size() <= 100)) &&

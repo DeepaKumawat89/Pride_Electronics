@@ -1,5 +1,6 @@
 const DECIMAL_INPUT_PATTERN = /^\d+(?:\.\d{1,2})?$/
 const HSN_CODE_PATTERN = /^\d{8}$/
+const RETURN_POLICY_TYPES = ['return', 'replacement', 'non-returnable']
 
 const cleanText = (value) => String(value ?? '').trim()
 
@@ -67,6 +68,21 @@ export function validateProductForCreate(product = {}) {
   }
   if (!isValidDecimalInput(product.taxRate) || Number(product.taxRate) > 100) {
     errors.push('GST must be between 0 and 100 with no more than 2 decimal places.')
+  }
+  const returnPolicy = product.returnPolicy
+  if (returnPolicy && (
+    typeof returnPolicy !== 'object' ||
+    !RETURN_POLICY_TYPES.includes(returnPolicy.type) ||
+    !cleanText(returnPolicy.conditions) ||
+    cleanText(returnPolicy.conditions).length > 2000 ||
+    !cleanText(returnPolicy.customerRights) ||
+    cleanText(returnPolicy.customerRights).length > 500 ||
+    !Number.isInteger(Number(returnPolicy.days)) ||
+    (returnPolicy.type === 'non-returnable'
+      ? Number(returnPolicy.days) !== 0
+      : Number(returnPolicy.days) < 1 || Number(returnPolicy.days) > 365)
+  )) {
+    errors.push('Select a valid return policy, period, and conditions.')
   }
 
   return errors

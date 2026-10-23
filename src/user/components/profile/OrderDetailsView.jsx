@@ -21,7 +21,12 @@ import { initialInvoiceSettings } from '../../../data/invoice'
 import { getCustomerOrderInvoice } from '../../../firebase/customerData'
 import { getOrderDeliverySnapshot } from '../../../utils/orderDelivery'
 import { getOrderDisplayId } from '../../../utils/orderIdentifiers'
-import { getOrderPlacedMoment, getStatusMoment } from '../../../utils/orderTimestamps'
+import {
+  formatOrderDate,
+  getOrderPlacedMoment,
+  getStatusMoment,
+} from '../../../utils/orderTimestamps'
+import { getProductReturnPolicyDisplay } from '../../../utils/productReturnPolicy'
 
 const RETURN_REASONS = [
   'Product is damaged',
@@ -31,6 +36,24 @@ const RETURN_REASONS = [
   'No longer needed',
 ]
 const NOW = Date.now()
+
+const deliveredDateFor = (order) => {
+  const deliveredEvent = [...(order.statusHistory || [])]
+    .reverse()
+    .find((event) => event.status === 'Delivered')
+  const value = deliveredEvent?.timestamp || deliveredEvent?.date || order.deliveryDate
+  const date = value?.toDate ? value.toDate() : new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+const policyDeadlineFor = (order, policy) => {
+  const deliveredDate = deliveredDateFor(order)
+  if (!deliveredDate || policy.days <= 0) return null
+  const deadline = new Date(deliveredDate)
+  deadline.setDate(deadline.getDate() + policy.days)
+  deadline.setHours(23, 59, 59, 999)
+  return deadline
+}
 
 const getFinancials = (order, taxSettings) => {
   if (order.invoice?.generatedBy === 'server') {
@@ -187,6 +210,9 @@ export default function OrderDetailsView({
     : null
   const progress = getProgress(order)
   const delivered = order.status === 'Delivered'
+  const actualDeliveredDate = deliveredDateFor(order)
+  const showItemPolicies = Boolean(actualDeliveredDate) &&
+    ['Delivered', 'Returned', 'Refunded'].includes(order.status)
   const deliveredAt = new Date(order.deliveryDate).getTime()
   const daysSinceDelivery = Number.isNaN(deliveredAt)
     ? Infinity
@@ -318,6 +344,8 @@ export default function OrderDetailsView({
               const quantity = Number(item.qty || 1)
               const unitPrice = parsePrice(item.price)
               const total = Math.max(0, unitPrice * quantity)
+              const returnPolicy = getProductReturnPolicyDisplay(item.returnPolicy)
+              const policyDeadline = policyDeadlineFor(order, returnPolicy)
               return (
                 <div key={`${item.productName}-${index}`} className="grid gap-4 py-5 first:pt-1 sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:items-center">
                   <img src={item.image} alt={item.productName} className="size-19 rounded-xl object-cover" />
@@ -335,6 +363,18 @@ export default function OrderDetailsView({
                         </span>
                       )}
                     </div>
+                    {showItemPolicies && (
+                      <div className="mt-2 text-[9px] leading-4 text-slate-500">
+                        <strong className="text-slate-700">{returnPolicy.label}</strong>
+                        {returnPolicy.days > 0 && policyDeadline && (
+                          <span>
+                            {' '}· {returnPolicy.days} days · {policyDeadline && policyDeadline.getTime() >= NOW ? 'Eligible until' : 'Eligibility ended'} {formatOrderDate(policyDeadline)}
+                          </span>
+                        )}
+                        <span className="block">{returnPolicy.conditions}</span>
+                        <span className="block">{returnPolicy.customerRights}</span>
+                      </div>
+                    )}
                   </div>
                   <div className="sm:text-right">
                     <span className="block text-[8px] font-bold uppercase tracking-wider text-slate-400">Total price{pricesExcludeTax ? ' (Excl. GST)' : ''}</span>
