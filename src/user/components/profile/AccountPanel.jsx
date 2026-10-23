@@ -1449,9 +1449,6 @@ function CartSection({
           <p className="text-xs font-extrabold text-slate-700">
             {items.length} {items.length === 1 ? 'product' : 'products'}
           </p>
-          <p className="text-[10px] font-semibold text-slate-400">
-            Free delivery over {formatCurrency(shippingSettings.freeShippingThreshold)}
-          </p>
         </div>
         <div className="space-y-3">
           {items.map(({ key, product, quantity, priceChanged, quantityAdjusted }, itemIndex) => (
@@ -1592,17 +1589,6 @@ function CartSection({
             />
           )}
           <CartSummaryRow label="Product GST" value={formatCurrency(pricing.productTax)} />
-          <CartSummaryRow
-            label="Shipping Charges"
-            value={pricing.shipping ? formatCurrency(pricing.shipping) : 'Free'}
-            accent={!pricing.shipping}
-          />
-          {pricing.shipping > 0 && pricing.shippingTax > 0 && (
-            <CartSummaryRow
-              label="Shipping GST (18%)"
-              value={formatCurrency(pricing.shippingTax)}
-            />
-          )}
         </div>
         <div className="my-5 h-px bg-[#253329]/10" />
         <div className="flex items-end justify-between">

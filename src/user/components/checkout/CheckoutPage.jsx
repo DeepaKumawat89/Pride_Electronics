@@ -1510,11 +1510,12 @@ export default function CheckoutPage({
                   <SummaryRow label="Coupon Discount" value={`−${formatCurrency(checkoutPricing.couponDiscount)}`} accent />
                 )}
 
-                <SummaryRow
-                  label="Delivery Charges"
-                  value={checkoutPricing.shipping ? formatCurrency(checkoutPricing.shipping) : 'FREE'}
-                  accent={!checkoutPricing.shipping}
-                />
+                {deliveryId === 'delivery_express' && (
+                  <SummaryRow
+                    label="Delivery Charges"
+                    value={formatCurrency(checkoutPricing.shipping)}
+                  />
+                )}
 
                 <SummaryRow
                   label="Product GST"

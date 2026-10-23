@@ -41,7 +41,7 @@ const supplyTypeFor = (taxSettings = {}, shippingAddress = {}) => {
   return placeOfSupplyStateCode === sellerStateCode ? 'intra-state' : 'inter-state'
 }
 
-const requireActiveCustomer = async (request) => {
+const requireActiveCustomer = async (request, { includeAuthUser = false } = {}) => {
   const uid = requireUser(request)
   const [authUser, profileDocument] = await Promise.all([
     adminAuth.getUser(uid),
@@ -57,7 +57,7 @@ const requireActiveCustomer = async (request) => {
       'This customer account is disabled. Contact support for assistance.',
     )
   }
-  return uid
+  return includeAuthUser ? { uid, authUser } : uid
 }
 
 const region = 'asia-south1'
@@ -65,10 +65,6 @@ const callableOptions = { region, invoker: 'public' }
 const razorpayKeyId = defineSecret('RAZORPAY_KEY_ID')
 const razorpayKeySecret = defineSecret('RAZORPAY_KEY_SECRET')
 const razorpayWebhookSecret = defineSecret('RAZORPAY_WEBHOOK_SECRET')
-const paymentCallableOptions = {
-  ...callableOptions,
-  secrets: [razorpayKeyId, razorpayKeySecret],
-}
 const razorpayCallableOptions = {
   ...callableOptions,
   secrets: [razorpayKeyId, razorpayKeySecret],
@@ -209,6 +205,12 @@ const syncVariantReservedStock = (product) => {
   return product
 }
 
+const inventoryUpdateFor = (product, updatedAt) => (
+  Array.isArray(product.variants) && product.variants.length
+    ? { variants: product.variants, reservedStock: product.reservedStock, updatedAt }
+    : { reservedStock: product.reservedStock, updatedAt }
+)
+
 const timestampMillis = (value) => {
   if (value && typeof value.toMillis === 'function') return value.toMillis()
   const parsed = new Date(value || 0).getTime()
@@ -328,7 +330,7 @@ const validateProfile = (data = {}) => {
   }
 }
 
-exports.updateUserProfile = onCall(paymentCallableOptions, async (request) => {
+exports.updateUserProfile = onCall(razorpayCallableOptions, async (request) => {
   const operation = String(request.data?.operation || '')
   const operationRequest = operation
     ? { ...request, data: request.data?.payload || {} }
@@ -358,9 +360,10 @@ exports.updateUserProfile = onCall(paymentCallableOptions, async (request) => {
   if (operation) {
     throw new HttpsError('invalid-argument', 'Unsupported account operation.')
   }
-  const uid = await requireActiveCustomer(request)
+  const { uid, authUser } = await requireActiveCustomer(request, {
+    includeAuthUser: true,
+  })
   const profile = validateProfile(request.data)
-  const authUser = await adminAuth.getUser(uid)
   const userReference = db.doc(`users/${uid}`)
   const nextPhoneReference = db.doc(`_authPhoneIndex/${profile.phone}`)
 
@@ -576,12 +579,10 @@ async function reserveCheckoutStock({
     })
 
     inventoryUpdates.forEach((product, productId) => {
-      transaction.update(db.doc(`products/${productId}`), {
-        ...(Array.isArray(product.variants) && product.variants.length
-          ? { variants: product.variants, reservedStock: product.reservedStock }
-          : { reservedStock: product.reservedStock }),
-        updatedAt: now,
-      })
+      transaction.update(
+        db.doc(`products/${productId}`),
+        inventoryUpdateFor(product, now),
+      )
     })
 
     const checkoutOrder = {
@@ -732,12 +733,10 @@ async function releaseStockReservation({
     })
 
     inventoryUpdates.forEach((product, productId) => {
-      transaction.update(db.doc(`products/${productId}`), {
-        ...(Array.isArray(product.variants) && product.variants.length
-          ? { variants: product.variants, reservedStock: product.reservedStock }
-          : { reservedStock: product.reservedStock }),
-        updatedAt: now,
-      })
+      transaction.update(
+        db.doc(`products/${productId}`),
+        inventoryUpdateFor(product, now),
+      )
     })
     transaction.update(reservationReference, {
       status: expired ? 'expired' : 'released',
@@ -772,10 +771,6 @@ async function releaseRazorpayReservationHandler(request) {
 
 async function createRazorpayOrderHandler(request) {
   const uid = await requireActiveCustomer(request)
-  const authUser = await adminAuth.getUser(uid)
-  if (authUser.disabled) {
-    throw new HttpsError('permission-denied', 'This customer account is suspended.')
-  }
   const requestId = String(request.data?.requestId || '').trim()
   const checkoutMode = request.data?.checkoutMode === 'buy-now'
     ? 'buy-now'
@@ -1514,10 +1509,12 @@ exports.releaseExpiredStockReservations = onSchedule(
 )
 
 async function placeOrderHandler(request) {
-  const uid = request.allowDisabledCustomer === true
-    ? requireUser(request)
-    : await requireActiveCustomer(request)
-  const authUser = await adminAuth.getUser(uid)
+  const allowDisabledCustomer = request.allowDisabledCustomer === true
+  const activeCustomer = allowDisabledCustomer
+    ? null
+    : await requireActiveCustomer(request, { includeAuthUser: true })
+  const uid = activeCustomer?.uid || requireUser(request)
+  const authUser = activeCustomer?.authUser || await adminAuth.getUser(uid)
   const submittedOrder = cleanObject(request.data?.order)
   if (
     authUser.disabled &&
@@ -1825,12 +1822,10 @@ async function placeOrderHandler(request) {
         })
       })
       inventoryUpdates.forEach((product, productId) => {
-        transaction.update(db.doc(`products/${productId}`), {
-          ...(Array.isArray(product.variants) && product.variants.length
-            ? { variants: product.variants, reservedStock: product.reservedStock }
-            : { reservedStock: product.reservedStock }),
-          updatedAt: now,
-        })
+        transaction.update(
+          db.doc(`products/${productId}`),
+          inventoryUpdateFor(product, now),
+        )
       })
     }
 
@@ -2336,12 +2331,7 @@ async function cancelOrderHandler(request) {
         const reservedBefore = Number(inventory.reservedStock || 0)
         const reservedAfter = Math.max(0, reservedBefore - item.qty)
         inventory.reservedStock = reservedAfter
-        if (Array.isArray(product.variants) && product.variants.length) {
-          product.reservedStock = product.variants.reduce(
-            (total, variant) => total + Number(variant.reservedStock || 0),
-            0,
-          )
-        }
+        syncVariantReservedStock(product)
         inventoryUpdates.set(productDocument.id, product)
         const historyReference = db.collection('inventoryHistory').doc()
         transaction.create(historyReference, {
@@ -2367,12 +2357,10 @@ async function cancelOrderHandler(request) {
       }
     })
     inventoryUpdates.forEach((product, productId) => {
-      transaction.update(db.doc(`products/${productId}`), {
-        ...(Array.isArray(product.variants) && product.variants.length
-          ? { variants: product.variants, reservedStock: product.reservedStock }
-          : { reservedStock: product.reservedStock }),
-        updatedAt: now,
-      })
+      transaction.update(
+        db.doc(`products/${productId}`),
+        inventoryUpdateFor(product, now),
+      )
     })
     const paymentStatus = /cash|cod/i.test(order.paymentMethod || '')
       ? 'Cancelled'
