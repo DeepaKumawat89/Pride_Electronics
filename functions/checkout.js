@@ -333,13 +333,17 @@ function calculateOrderQuote({
   const productTax = roundMoney(
     quotedItems.reduce((sum, item) => sum + item.lineTax, 0),
   )
+  const configuredShippingTaxTreatment = ['fixed', 'product-rates', 'exempt']
+    .includes(taxSettings.shippingTaxTreatment)
+    ? taxSettings.shippingTaxTreatment
+    : 'product-rates'
   const shippingTaxTreatment = shipping > 0
-    ? 'fixed'
+    ? configuredShippingTaxTreatment
     : 'exempt'
   let shippingTaxBreakdown = []
   if (shipping > 0 && shippingTaxTreatment === 'fixed') {
     const rate = taxRateFor(
-      { taxRate: 18 },
+      { taxRate: taxSettings.shippingTaxRate },
       18,
     )
     const components = taxComponentsFor(shipping, rate, normalizedSupplyType)
@@ -477,6 +481,31 @@ function payableAmountPaiseForQuote(quote = {}) {
   const shippingBreakdownTaxable = roundMoney(
     shippingBreakdown.reduce((sum, item) => sum + Number(item.taxableValue || 0), 0),
   )
+  const invalidShippingTaxLine = shippingBreakdown.some((item, index) => {
+    const taxableValue = roundMoney(item.taxableValue)
+    const rate = taxRateFor({ taxRate: item.gstRate }, 0)
+    const matchingItem = items[index]
+    return (
+      !Number.isFinite(taxableValue) ||
+      taxableValue < 0 ||
+      roundMoney(item.gstAmount) !== roundMoney(taxableValue * rate / 100) ||
+      (quote.shippingTaxTreatment === 'product-rates' && (
+        !matchingItem ||
+        String(item.productId || '') !== String(matchingItem.productId || '') ||
+        String(item.variantId || '') !== String(matchingItem.variantId || '') ||
+        rate !== taxRateFor({ taxRate: matchingItem.taxRate }, 0)
+      ))
+    )
+  })
+  const validShippingTaxTreatment = ['fixed', 'product-rates', 'exempt']
+    .includes(quote.shippingTaxTreatment)
+  const invalidFixedShippingTax = quote.shippingTaxTreatment === 'fixed' && (
+    shippingBreakdown.length !== 1 ||
+    taxRateFor({ taxRate: shippingBreakdown[0]?.gstRate }, 0) !==
+      taxRateFor({ taxRate: quote.shippingTaxRate }, 0)
+  )
+  const invalidProductRateShippingTax = quote.shippingTaxTreatment === 'product-rates' &&
+    shippingBreakdown.length !== items.length
   const values = [
     sellingSubtotal,
     couponDiscount,
@@ -495,6 +524,10 @@ function payableAmountPaiseForQuote(quote = {}) {
     invalidItem ||
     itemTaxableSubtotal !== taxableSubtotal ||
     itemTaxTotal !== productTax ||
+    !validShippingTaxTreatment ||
+    invalidShippingTaxLine ||
+    invalidFixedShippingTax ||
+    invalidProductRateShippingTax ||
     shippingBreakdownTax !== shippingTax ||
     (quote.shippingTaxTreatment === 'exempt'
       ? shippingBreakdown.length !== 0 || shippingTax !== 0

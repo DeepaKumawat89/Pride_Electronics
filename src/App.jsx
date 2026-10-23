@@ -47,7 +47,10 @@ import {
   placeCustomerOrder,
   submitCustomerOrderFeedback,
 } from './firebase/customerData'
-import { updateCustomerAccountStatus } from './firebase/adminData'
+import {
+  updateCustomerAccountStatus,
+  updateInvoiceSettings as saveInvoiceSettings,
+} from './firebase/adminData'
 import {
   categoryForProduct,
   legacySubcategoriesForProducts,
@@ -167,6 +170,8 @@ function App() {
   const [marketingSettings, setMarketingSettings] = useState(initialMarketingSettings)
   const [shippingSettings, setShippingSettings] = useState(initialShippingSettings)
   const [invoiceSettings, setInvoiceSettings] = useState(initialInvoiceSettings)
+  const [invoiceSettingsLoading, setInvoiceSettingsLoading] = useState(true)
+  const [invoiceSettingsError, setInvoiceSettingsError] = useState('')
   const [adminSettings, setAdminSettings] = useState(initialAdminSettings)
   const taxonomyMigrationKey = useRef('')
 
@@ -214,7 +219,12 @@ function App() {
           ...settings,
           tax: { ...settings.tax, gstEnabled: true, pricesIncludeTax: false },
         })
-      }, reportError),
+        setInvoiceSettingsError('')
+        setInvoiceSettingsLoading(false)
+      }, (error) => {
+        setInvoiceSettingsError(error.message || 'Unable to load tax and business details.')
+        setInvoiceSettingsLoading(false)
+      }),
       subscribeToSetting('storefront', (value) =>
         setAdminSettings((current) => ({
           ...current,
@@ -370,10 +380,11 @@ function App() {
     setMarketingSettings,
     'marketing',
   )
-  const updateInvoiceSettings = persistSettings(
-    setInvoiceSettings,
-    'invoice',
-  )
+  const updateInvoiceSettings = async (settings) => {
+    const saved = await saveInvoiceSettings(settings)
+    if (saved) setInvoiceSettings(mergeSetting(initialInvoiceSettings, saved))
+    return saved
+  }
   const handleCustomerAuthenticated = () => {}
 
   // Handlers for Admin actions on Products
@@ -1008,6 +1019,8 @@ function App() {
           marketingSettings={marketingSettings}
           shippingSettings={shippingSettings}
           invoiceSettings={invoiceSettings}
+          invoiceSettingsLoading={invoiceSettingsLoading}
+          invoiceSettingsError={invoiceSettingsError}
           adminSettings={adminSettings}
           onAddProduct={handleAddProduct}
           onUpdateProduct={handleUpdateProduct}

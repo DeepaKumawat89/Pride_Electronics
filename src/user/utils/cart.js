@@ -92,10 +92,72 @@ export function authoritativePricingFromQuote(quote = {}, gatewayAmount) {
     pricing.taxableSubtotal + pricing.shipping + pricing.tax,
   )
   const expectedTotalPaise = toRazorpayAmount(expectedTotal)
+  const lineTaxTotal = roundMoney(
+    pricing.lineTaxes.reduce((sum, item) => sum + Number(item.lineTax || 0), 0),
+  )
+  const invalidLineTax = pricing.lineTaxes.some((item) => {
+    const taxableValue = roundMoney(item.taxableValue)
+    const gstRate = normalizeTaxRate(item.taxRate, 0)
+    const expectedLineTax = roundMoney(taxableValue * gstRate / 100)
+    return (
+      !Number.isFinite(taxableValue) ||
+      taxableValue < 0 ||
+      roundMoney(item.lineTax) !== expectedLineTax ||
+      roundMoney(item.lineTotal) !== roundMoney(taxableValue + expectedLineTax)
+    )
+  })
+  const shippingBreakdownTax = roundMoney(
+    pricing.shippingTaxBreakdown.reduce(
+      (sum, item) => sum + Number(item.gstAmount || 0),
+      0,
+    ),
+  )
+  const shippingBreakdownTaxable = roundMoney(
+    pricing.shippingTaxBreakdown.reduce(
+      (sum, item) => sum + Number(item.taxableValue || 0),
+      0,
+    ),
+  )
+  const invalidShippingTax = pricing.shippingTaxBreakdown.some((item, index) => {
+    const taxableValue = roundMoney(item.taxableValue)
+    const gstRate = normalizeTaxRate(item.gstRate, 0)
+    const matchingItem = pricing.lineTaxes[index]
+    return (
+      !Number.isFinite(taxableValue) ||
+      taxableValue < 0 ||
+      roundMoney(item.gstAmount) !== roundMoney(taxableValue * gstRate / 100) ||
+      (pricing.shippingTaxTreatment === 'product-rates' && (
+        !matchingItem ||
+        String(item.productId || '') !== String(matchingItem.productId || '') ||
+        String(item.variantId || '') !== String(matchingItem.variantId || '') ||
+        gstRate !== normalizeTaxRate(matchingItem.taxRate, 0)
+      ))
+    )
+  })
+  const validShippingTaxTreatment = ['fixed', 'product-rates', 'exempt']
+    .includes(pricing.shippingTaxTreatment)
+  const invalidFixedShippingTax = pricing.shippingTaxTreatment === 'fixed' && (
+    pricing.shippingTaxBreakdown.length !== 1 ||
+    normalizeTaxRate(pricing.shippingTaxBreakdown[0]?.gstRate, 0) !==
+      normalizeTaxRate(pricing.shippingTaxRate, 0)
+  )
+  const invalidProductRateShippingTax = pricing.shippingTaxTreatment === 'product-rates' &&
+    pricing.shippingTaxBreakdown.length !== pricing.lineTaxes.length
 
   if (
     monetaryValues.some((value) => !Number.isFinite(value) || value < 0) ||
     pricing.taxableSubtotal < MINIMUM_ORDER_VALUE ||
+    pricing.lineTaxes.length < 1 ||
+    invalidLineTax ||
+    lineTaxTotal !== pricing.productTax ||
+    !validShippingTaxTreatment ||
+    invalidShippingTax ||
+    invalidFixedShippingTax ||
+    invalidProductRateShippingTax ||
+    shippingBreakdownTax !== pricing.shippingTax ||
+    (pricing.shippingTaxTreatment === 'exempt'
+      ? pricing.shippingTaxBreakdown.length !== 0 || pricing.shippingTax !== 0
+      : shippingBreakdownTaxable !== pricing.shipping) ||
     pricing.taxableSubtotal !== expectedTaxableSubtotal ||
     pricing.tax !== expectedTax ||
     pricing.tax !== expectedSplitTax ||
@@ -245,13 +307,17 @@ export function calculateCartPricing(
   const productTax = roundMoney(
     lineTaxes.reduce((sum, item) => sum + item.gstAmount, 0),
   )
+  const configuredShippingTaxTreatment = ['fixed', 'product-rates', 'exempt']
+    .includes(taxSettings.shippingTaxTreatment)
+    ? taxSettings.shippingTaxTreatment
+    : 'product-rates'
   const shippingTaxTreatment = shipping > 0
-    ? 'fixed'
+    ? configuredShippingTaxTreatment
     : 'exempt'
   let shippingTaxBreakdown = []
   if (shipping > 0 && shippingTaxTreatment === 'fixed') {
     const rate = normalizeTaxRate(
-      18,
+      taxSettings.shippingTaxRate,
       18,
     )
     shippingTaxBreakdown = [{

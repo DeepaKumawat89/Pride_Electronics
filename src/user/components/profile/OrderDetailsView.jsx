@@ -50,18 +50,17 @@ const getFinancials = (order, taxSettings) => {
   )
   const discount = parsePrice(order.discount || 0)
   const delivery = parsePrice(order.deliveryCharges || 0)
-  const taxRate = taxSettings.gstEnabled === false
-    ? 0
-    : Number(taxSettings.defaultRate || 0)
-  const taxableValue = Math.max(0, itemTotal - discount)
+  const calculatedProductTax = (order.items || []).reduce((sum, item) => {
+    const gross = parsePrice(item.price) * Number(item.qty || 1)
+    const allocatedDiscount = itemTotal > 0 ? discount * gross / itemTotal : 0
+    const lineTaxableValue = Math.max(0, gross - allocatedDiscount)
+    const rate = Math.max(0, Math.min(100, Number(item.taxRate || 0)))
+    return sum + lineTaxableValue * rate / 100
+  }, 0)
   const tax = taxSettings.gstEnabled === false
     ? 0
     : parsePrice(order.taxAmount || 0) ||
-      Math.round(
-        taxSettings.pricesIncludeTax
-          ? (taxableValue * taxRate) / (100 + taxRate || 100)
-          : (taxableValue * taxRate) / 100,
-      )
+      Math.round(calculatedProductTax)
   const total = parsePrice(order.total) || Math.max(
     0,
     itemTotal - discount + delivery + (taxSettings.pricesIncludeTax ? 0 : tax),

@@ -1,24 +1,24 @@
 const { isValidGstin, normalizeGstin, stateCodeFor } = require('./gst')
 
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100
+const DELIVERY_GST_TREATMENTS = Object.freeze(['fixed', 'product-rates', 'exempt'])
 
 const DEFAULT_INVOICE_SETTINGS = {
   business: {
-    legalName: 'PRIDE ELECTRONICS',
-    displayName: 'Pride Electronics',
-    address: '42 Silicon Avenue, Hinjawadi, Pune, Maharashtra 411057',
-    phone: '+91 98765 43210',
-    email: 'support@prideelectronics.in',
-    website: 'www.prideelectronics.in',
-    pan: 'AABCP1234F',
+    legalName: '',
+    displayName: '',
+    address: '',
+    phone: '',
+    email: '',
+    website: '',
+    pan: '',
   },
   tax: {
     gstEnabled: true,
-    gstin: '27AABCP1234F1Z5',
+    gstin: '',
     registrationType: 'Regular',
-    state: 'Maharashtra',
-    stateCode: '27',
-    defaultRate: 18,
+    state: '',
+    stateCode: '',
     shippingTaxTreatment: 'product-rates',
     shippingTaxRate: 18,
     pricesIncludeTax: false,
@@ -53,8 +53,18 @@ const invoiceNumberFor = (numbering = {}, dateValue = new Date()) => {
 }
 
 const normalizeInvoiceSettings = (settings = {}) => {
-  const tax = { ...DEFAULT_INVOICE_SETTINGS.tax, ...(settings.tax || {}) }
-  if (!['fixed', 'product-rates', 'exempt'].includes(tax.shippingTaxTreatment)) {
+  const sourceTax = settings.tax || {}
+  const tax = {
+    gstEnabled: true,
+    gstin: text(sourceTax.gstin, 15).toUpperCase(),
+    registrationType: text(sourceTax.registrationType, 50),
+    state: text(sourceTax.state, 100),
+    stateCode: text(sourceTax.stateCode, 2),
+    shippingTaxTreatment: sourceTax.shippingTaxTreatment,
+    shippingTaxRate: sourceTax.shippingTaxRate,
+    pricesIncludeTax: false,
+  }
+  if (!DELIVERY_GST_TREATMENTS.includes(tax.shippingTaxTreatment)) {
     tax.shippingTaxTreatment = 'product-rates'
   }
   const shippingTaxRate = Number(tax.shippingTaxRate ?? 18)
@@ -62,14 +72,66 @@ const normalizeInvoiceSettings = (settings = {}) => {
     ? Math.max(0, Math.min(100, shippingTaxRate))
     : 18
   return {
-    business: { ...DEFAULT_INVOICE_SETTINGS.business, ...(settings.business || {}) },
+    business: {
+      legalName: text(settings.business?.legalName, 200),
+      displayName: text(settings.business?.displayName, 200),
+      address: text(settings.business?.address, 500),
+      phone: text(settings.business?.phone, 30),
+      email: text(settings.business?.email, 320).toLowerCase(),
+      website: text(settings.business?.website, 200),
+      pan: text(settings.business?.pan, 10).toUpperCase(),
+    },
     tax: {
       ...tax,
       gstEnabled: true,
       pricesIncludeTax: false,
     },
-    numbering: { ...DEFAULT_INVOICE_SETTINGS.numbering, ...(settings.numbering || {}) },
+    numbering: {
+      prefix: text(settings.numbering?.prefix ?? DEFAULT_INVOICE_SETTINGS.numbering.prefix, 20),
+      nextNumber: Math.max(1, Math.floor(Number(
+        settings.numbering?.nextNumber ?? DEFAULT_INVOICE_SETTINGS.numbering.nextNumber,
+      ) || 1)),
+      padding: Number(settings.numbering?.padding ?? DEFAULT_INVOICE_SETTINGS.numbering.padding),
+      includeFinancialYear: settings.numbering?.includeFinancialYear ??
+        DEFAULT_INVOICE_SETTINGS.numbering.includeFinancialYear,
+      suffix: text(settings.numbering?.suffix, 20),
+    },
   }
+}
+
+const validateInvoiceSettings = (settings = {}) => {
+  const requestedTreatment = settings.tax?.shippingTaxTreatment
+  const requestedShippingRate = Number(settings.tax?.shippingTaxRate)
+  if (!DELIVERY_GST_TREATMENTS.includes(requestedTreatment)) {
+    throw new Error('Select a valid delivery GST treatment.')
+  }
+  if (
+    !Number.isFinite(requestedShippingRate) ||
+    requestedShippingRate < 0 ||
+    requestedShippingRate > 100
+  ) {
+    throw new Error('Enter a delivery GST rate between 0 and 100.')
+  }
+  const normalized = normalizeInvoiceSettings(settings)
+  const { business, tax, numbering } = normalized
+  const validEmail = /^\S+@\S+\.\S+$/.test(business.email)
+  const validPan = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(business.pan)
+  const validStateCode = /^[0-9]{2}$/.test(tax.stateCode) && tax.stateCode !== '00'
+  if (
+    !business.legalName || !business.displayName || !business.address ||
+    !business.phone || !validEmail || !validPan ||
+    !isValidGstin(tax.gstin) || tax.gstin.slice(0, 2) !== tax.stateCode ||
+    tax.gstin.slice(2, 12) !== business.pan || !tax.state || !validStateCode ||
+    !['Regular', 'Composition', 'Unregistered'].includes(tax.registrationType) ||
+    !DELIVERY_GST_TREATMENTS.includes(tax.shippingTaxTreatment) ||
+    !numbering.prefix || numbering.prefix.length > 20 ||
+    !Number.isSafeInteger(numbering.nextNumber) || numbering.nextNumber > 999999999999 ||
+    !Number.isInteger(Number(numbering.padding)) || Number(numbering.padding) < 1 ||
+    Number(numbering.padding) > 12 || typeof numbering.includeFinancialYear !== 'boolean'
+  ) {
+    throw new Error('Enter valid business contact details, GST registration, PAN, state, and invoice numbering.')
+  }
+  return normalized
 }
 
 const partyAddress = (value = {}) =>
@@ -283,7 +345,6 @@ function createInvoiceSnapshot({
   )
   const tax = {
     pricesIncludeTax,
-    defaultRate: Math.max(0, Math.min(100, Number(settings.tax.defaultRate || 0))),
     taxableValue: roundMoney(
       lineItems.reduce((sum, item) => sum + item.taxableValue, 0) + shippingTaxableValue,
     ),
@@ -296,7 +357,7 @@ function createInvoiceSnapshot({
     shippingSgst,
     shippingIgst,
     shippingGstRate: Math.max(0, Math.min(100, Number(quote.shippingTaxRate || 0))),
-    shippingTaxTreatment: ['fixed', 'product-rates', 'exempt'].includes(quote.shippingTaxTreatment)
+    shippingTaxTreatment: DELIVERY_GST_TREATMENTS.includes(quote.shippingTaxTreatment)
       ? quote.shippingTaxTreatment
       : settings.tax.shippingTaxTreatment,
     shippingTaxBreakdown,
@@ -553,5 +614,6 @@ module.exports = {
   createInvoiceSnapshot,
   invoiceNumberFor,
   normalizeInvoiceSettings,
+  validateInvoiceSettings,
   validateInvoiceSnapshot,
 }

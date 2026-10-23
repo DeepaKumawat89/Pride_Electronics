@@ -11,7 +11,9 @@ rules_version = '2';
 // orders, returns: owner/admin-readable commerce records; trusted backend
 // writes authoritative order, payment, tax, and embedded invoice snapshots.
 // categories, subcategories, coupons, settings, reviews: storefront/config
-// data with collection-specific public-read and admin-write restrictions.
+// data with collection-specific read restrictions and admin/backend writes.
+// settings/invoice: public seller/tax information used for checkout display;
+// writes are backend-only after callable admin authorization and validation.
 // refunds, inventoryHistory: admin-only operational records.
 // invoices, paymentIntents, stockReservations, couponUsages, _authPhoneIndex:
 // trusted-backend-only records (default denied to clients).
@@ -246,11 +248,11 @@ service cloud.firestore {
         'invoice',
         'storefront'
       ];
-      allow write: if
+      allow write: if settingId != 'invoice' && (
         (settingId == 'admin' && isAdmin()) ||
-        (settingId == 'invoice' && isAdmin()) ||
         (settingId == 'marketing' && isAdmin()) ||
-        (settingId == 'storefront' && isAdmin());
+        (settingId == 'storefront' && isAdmin())
+      );
     }
 
     match /reviews/{reviewId} {

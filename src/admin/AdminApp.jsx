@@ -36,6 +36,8 @@ export default function AdminApp({
   marketingSettings = initialMarketingSettings,
   shippingSettings = initialShippingSettings,
   invoiceSettings = initialInvoiceSettings,
+  invoiceSettingsLoading = false,
+  invoiceSettingsError = '',
   adminSettings = initialAdminSettings,
   onAddProduct,
   onUpdateProduct,
@@ -271,6 +273,8 @@ export default function AdminApp({
       {permittedTab === 'tax-invoice' && (
         <TaxInvoicePage
           settings={invoiceSettings}
+          loading={invoiceSettingsLoading}
+          loadError={invoiceSettingsError}
           onUpdate={onUpdateInvoiceSettings}
         />
       )}

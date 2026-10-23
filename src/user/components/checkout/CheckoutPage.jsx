@@ -59,6 +59,14 @@ const createEstimatedDeliveryDate = (days) => {
   return date.toISOString().slice(0, 10)
 }
 
+const formatCheckoutCurrency = (value) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value) || 0)
+
 const PORTER_NOTICE = 'Please book Porter yourself and pay the delivery charges directly to Porter. No delivery charges will be collected by Pride Circuit.'
 const OFFICE_PICKUP_ADDRESS = 'Office No. 237, 2nd Floor, XION Mall, Hinjewadi, Pune, MH 411057'
 
@@ -1504,29 +1512,20 @@ export default function CheckoutPage({
 
               {/* Complete Price Breakdown (Indian Rupees ₹) */}
               <div className="mt-4 space-y-2.5 text-xs text-slate-600">
-                <SummaryRow label="Item Subtotal (excluding GST)" value={formatCurrency(checkoutPricing.sellingSubtotal)} />
+                <SummaryRow label="Item Subtotal (excluding GST)" value={formatCheckoutCurrency(checkoutPricing.sellingSubtotal)} />
 
                 {checkoutPricing.couponDiscount > 0 && (
-                  <SummaryRow label="Coupon Discount" value={`−${formatCurrency(checkoutPricing.couponDiscount)}`} accent />
+                  <SummaryRow label="Coupon Discount" value={`−${formatCheckoutCurrency(checkoutPricing.couponDiscount)}`} accent />
                 )}
 
                 {deliveryId === 'delivery_express' && (
                   <SummaryRow
                     label="Delivery Charges"
-                    value={formatCurrency(checkoutPricing.shipping)}
+                    value={formatCheckoutCurrency(checkoutPricing.shipping)}
                   />
                 )}
 
-                <SummaryRow
-                  label="Product GST"
-                  value={formatCurrency(checkoutPricing.productTax)}
-                />
-                {checkoutPricing.shipping > 0 && checkoutPricing.shippingTax > 0 && (
-                  <SummaryRow
-                    label={`Delivery GST (${checkoutPricing.shippingTaxRate}%)`}
-                    value={formatCurrency(checkoutPricing.shippingTax)}
-                  />
-                )}
+                <SummaryRow label="GST" value={formatCheckoutCurrency(checkoutPricing.tax)} />
               </div>
 
               <div className="my-4 h-px bg-slate-100" />
@@ -1538,7 +1537,7 @@ export default function CheckoutPage({
                   <p className="text-[10px] font-bold text-slate-400">Includes taxes & charges</p>
                 </div>
                 <strong className="text-2xl font-black tracking-tight text-slate-950">
-                  {formatCurrency(checkoutTotal)}
+                  {formatCheckoutCurrency(checkoutTotal)}
                 </strong>
               </div>
 

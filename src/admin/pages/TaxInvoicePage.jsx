@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Building2, Hash, Pencil, ReceiptText, Save, X } from 'lucide-react'
 import { PageHeader } from '../components/ui/AdminUI'
+import { DELIVERY_GST_TREATMENTS } from '../../data/invoice'
 
 const inputClass =
   'mt-1.5 h-11 w-full rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs text-black outline-none transition disabled:cursor-default disabled:text-black disabled:opacity-100 focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10'
@@ -14,30 +15,51 @@ function Section({ icon: Icon, title, description, children }) {
   return <section className="rounded-[26px] border border-slate-100 bg-white p-5 shadow-sm sm:p-6"><div className="flex items-center gap-3 border-b border-slate-100 pb-4"><span className="grid size-10 place-items-center rounded-2xl bg-[#e4f1e7] text-[#397a4a]"><Icon size={18} /></span><div><h3 className="text-sm font-extrabold text-slate-900">{title}</h3><p className="mt-0.5 text-[9px] text-slate-400">{description}</p></div></div><div className="mt-5">{children}</div></section>
 }
 
-export default function TaxInvoicePage({ settings, onUpdate }) {
+export default function TaxInvoicePage({ settings, loading = false, loadError = '', onUpdate }) {
   const [form, setForm] = useState(() => copySettings(settings))
   const [isEditing, setIsEditing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState({ tone: '', text: '' })
+  const saveInFlight = useRef(false)
 
   useEffect(() => {
     if (!isEditing) setForm(copySettings(settings))
   }, [isEditing, settings])
 
   const update = (section, patch) => setForm((current) => ({ ...current, [section]: { ...current[section], ...patch } }))
-  const save = () => {
-    onUpdate({
-      ...copySettings(form),
-      tax: { ...form.tax, gstEnabled: true, pricesIncludeTax: false },
-    })
-    setIsEditing(false)
+  const save = async () => {
+    if (saveInFlight.current) return
+    saveInFlight.current = true
+    setIsSaving(true)
+    setSaveMessage({ tone: '', text: '' })
+    try {
+      await onUpdate({
+        ...copySettings(form),
+        tax: { ...form.tax, gstEnabled: true, pricesIncludeTax: false },
+      })
+      setIsEditing(false)
+      setSaveMessage({ tone: 'success', text: 'Tax and business details saved successfully.' })
+    } catch (error) {
+      setSaveMessage({
+        tone: 'error',
+        text: error.message || 'Unable to save changes. Please try again.',
+      })
+    } finally {
+      saveInFlight.current = false
+      setIsSaving(false)
+    }
   }
   const cancel = () => {
     setForm(copySettings(settings))
     setIsEditing(false)
+    setSaveMessage({ tone: '', text: '' })
   }
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Finance settings" title="Tax & invoice" description="Configure GST, business identity, and invoice numbering used for newly placed orders and customer PDFs." actions={isEditing ? <div className="flex items-center gap-2"><button type="button" onClick={cancel} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-3 text-xs font-extrabold text-slate-600 transition hover:bg-slate-50"><X size={15} /> Cancel</button><button type="button" onClick={save} className="inline-flex items-center gap-2 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white transition hover:bg-[#ff5c35]"><Save size={15} /> Save Changes</button></div> : <button type="button" onClick={() => setIsEditing(true)} className="inline-flex items-center gap-2 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white transition hover:bg-[#397a4a]"><Pencil size={15} /> Edit Details</button>} />
+      <PageHeader eyebrow="Finance settings" title="Tax & invoice" description="Configure GST, business identity, and invoice numbering used for newly placed orders and customer PDFs." actions={isEditing ? <div className="flex items-center gap-2"><button type="button" onClick={cancel} disabled={isSaving} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-3 text-xs font-extrabold text-slate-600 transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><X size={15} /> Cancel</button><button type="button" onClick={save} disabled={isSaving} aria-busy={isSaving} className="inline-flex items-center gap-2 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-wait disabled:opacity-60"><Save size={15} /> {isSaving ? 'Saving...' : 'Save Changes'}</button></div> : <button type="button" onClick={() => { setSaveMessage({ tone: '', text: '' }); setIsEditing(true) }} disabled={loading || Boolean(loadError)} className="inline-flex items-center gap-2 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white transition hover:bg-[#397a4a] disabled:cursor-wait disabled:opacity-60"><Pencil size={15} /> {loading ? 'Loading...' : 'Edit Details'}</button>} />
+
+      {(loadError || saveMessage.text) && <p role="status" className={`text-[10px] font-bold ${loadError || saveMessage.tone === 'error' ? 'text-red-600' : 'text-emerald-700'}`}>{loadError || saveMessage.text}</p>}
 
       <div className="grid gap-5 xl:grid-cols-2">
         <Section icon={ReceiptText} title="Tax configuration" description="GST calculation and registration information.">
@@ -49,9 +71,9 @@ export default function TaxInvoicePage({ settings, onUpdate }) {
             <Field label="State code"><input readOnly={!isEditing} maxLength="2" className={inputClass} value={form.tax.stateCode} onChange={(e) => update('tax', { stateCode: e.target.value.replace(/\D/g, '').slice(0, 2) })} /></Field>
             <Field label="Delivery GST treatment">
               <select disabled={!isEditing} className={inputClass} value={form.tax.shippingTaxTreatment || 'product-rates'} onChange={(e) => update('tax', { shippingTaxTreatment: e.target.value })}>
-                <option value="fixed">Configured delivery GST rate</option>
-                <option value="product-rates">Follow product GST rates</option>
-                <option value="exempt">No GST on delivery charges</option>
+                {DELIVERY_GST_TREATMENTS.map((treatment) => (
+                  <option key={treatment.value} value={treatment.value}>{treatment.label}</option>
+                ))}
               </select>
             </Field>
             {(form.tax.shippingTaxTreatment || 'product-rates') === 'fixed' && (

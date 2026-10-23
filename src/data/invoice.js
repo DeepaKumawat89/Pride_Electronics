@@ -1,20 +1,25 @@
+export const DELIVERY_GST_TREATMENTS = Object.freeze([
+  { value: 'fixed', label: 'Configured delivery GST rate' },
+  { value: 'product-rates', label: 'Follow product GST rates' },
+  { value: 'exempt', label: 'No GST on delivery charges' },
+])
+
 export const initialInvoiceSettings = {
   business: {
-    legalName: 'PRIDE ELECTRONICS',
-    displayName: 'Pride Electronics',
-    address: '42 Silicon Avenue, Hinjawadi, Pune, Maharashtra 411057',
-    phone: '+91 98765 43210',
-    email: 'support@prideelectronics.in',
-    website: 'www.prideelectronics.in',
-    pan: 'AABCP1234F',
+    legalName: '',
+    displayName: '',
+    address: '',
+    phone: '',
+    email: '',
+    website: '',
+    pan: '',
   },
   tax: {
     gstEnabled: true,
-    gstin: '27AABCP1234F1Z5',
+    gstin: '',
     registrationType: 'Regular',
-    state: 'Maharashtra',
-    stateCode: '27',
-    defaultRate: 18,
+    state: '',
+    stateCode: '',
     shippingTaxTreatment: 'product-rates',
     shippingTaxRate: 18,
     pricesIncludeTax: false,

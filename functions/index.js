@@ -22,6 +22,7 @@ const {
 const {
   createInvoiceSnapshot,
   normalizeInvoiceSettings,
+  validateInvoiceSettings,
   validateInvoiceSnapshot,
 } = require('./invoice')
 const { normalizeGstProfile, stateCodeFor } = require('./gst')
@@ -2528,6 +2529,26 @@ async function updateCustomerStatusHandler(request) {
   )
   return { success: true, status }
 }
+
+async function updateInvoiceSettingsHandler(request) {
+  await requireAdmin(request)
+  let settings
+  try {
+    settings = validateInvoiceSettings(request.data?.settings)
+  } catch (error) {
+    throw new HttpsError('invalid-argument', error.message)
+  }
+  await db.doc('settings/invoice').set({
+    ...cleanObject(settings),
+    updatedAt: FieldValue.serverTimestamp(),
+  })
+  return { settings }
+}
+
+exports.updateInvoiceSettings = onCall(
+  callableOptions,
+  updateInvoiceSettingsHandler,
+)
 
 exports.updateCustomerStatus = onCall(
   callableOptions,

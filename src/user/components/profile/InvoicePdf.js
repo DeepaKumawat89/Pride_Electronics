@@ -13,14 +13,6 @@ const INVOICE_LOGO_URL = new URL(
   import.meta.url,
 )
 
-const INVOICE_HEADER_BUSINESS = {
-  legalName: 'PRIDE AUTOMATION',
-  addressLines: ['237, 2nd Floor, Xion Mall Hinjewadi,', 'Pune MH 411057'],
-  phone: '09876543210',
-  email: 'support@pridecircuit.in',
-  gstin: '27AFUPB6009F2ZG',
-}
-
 const loadInvoiceLogo = async () => {
   try {
     const response = await fetch(INVOICE_LOGO_URL)
@@ -124,6 +116,13 @@ export async function createInvoicePdfDocument(
   const invoiceNumber = serverInvoice.invoiceNumber
   const orderNumber = serverInvoice.orderId || order.orderNumber || order.id
   const invoiceDate = serverInvoice.invoiceDate
+  const invoiceBusiness = {
+    legalName: String(serverInvoice.seller?.legalName || 'Business name unavailable'),
+    addressLines: String(serverInvoice.seller?.address || 'Address unavailable'),
+    phone: String(serverInvoice.seller?.phone || 'Phone unavailable'),
+    email: String(serverInvoice.seller?.email || 'Email unavailable'),
+    gstin: String(serverInvoice.seller?.gstin || 'Not available'),
+  }
   const billing = {
     name: serverInvoice.buyer?.gst?.legalName || serverInvoice.buyer?.billing?.fullName || serverInvoice.buyer?.name,
     phone: serverInvoice.buyer?.billing?.phone || serverInvoice.buyer?.phone || 'Not available',
@@ -210,14 +209,15 @@ export async function createInvoicePdfDocument(
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(11)
     pdf.setTextColor(0, 0, 0)
-    pdf.text(INVOICE_HEADER_BUSINESS.legalName, businessX, detailsTop + 3)
+    pdf.text(invoiceBusiness.legalName, businessX, detailsTop + 3)
 
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(6.8)
     pdf.setTextColor(...COLORS.muted)
-    pdf.text(INVOICE_HEADER_BUSINESS.addressLines, contactTextX, detailsTop + 8)
-    pdf.text(INVOICE_HEADER_BUSINESS.phone, contactTextX, detailsTop + 16.5)
-    pdf.text(INVOICE_HEADER_BUSINESS.email, contactTextX, detailsTop + 21)
+    const addressLines = pdf.splitTextToSize(invoiceBusiness.addressLines, 49).slice(0, 2)
+    pdf.text(addressLines, contactTextX, detailsTop + 8)
+    pdf.text(invoiceBusiness.phone, contactTextX, detailsTop + 16.5)
+    pdf.text(invoiceBusiness.email, contactTextX, detailsTop + 21)
 
     pdf.setDrawColor(0, 0, 0)
     pdf.setLineWidth(0.35)
@@ -235,7 +235,7 @@ export async function createInvoicePdfDocument(
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(6.9)
     pdf.setTextColor(0, 0, 0)
-    pdf.text(`GSTIN: ${INVOICE_HEADER_BUSINESS.gstin}`, businessX, detailsTop + 25.5)
+    pdf.text(`GSTIN: ${invoiceBusiness.gstin}`, businessX, detailsTop + 25.5)
 
     y = 46.5
     pdf.setDrawColor(...COLORS.line)
@@ -469,11 +469,48 @@ export async function createInvoicePdfDocument(
       ),
       0,
     )
+    const deliveryIdentifier = String(
+      serverInvoice.delivery?.id
+      || serverInvoice.delivery?.code
+      || order.deliveryId
+      || order.deliveryMethodId
+      || order.deliveryMethod
+      || order.deliveryOption
+      || serverInvoice.delivery?.method
+      || ''
+    ).trim().toLowerCase()
+
+    let deliveryMethod = serverInvoice.delivery?.method || order.deliveryMethod || order.deliveryOption || 'Delivery'
+    let showDeliveryCharges = Number(data.delivery) > 0
+
+    if (deliveryIdentifier === 'porter' || deliveryIdentifier.includes('through porter')) {
+      deliveryMethod = 'Through Porter'
+      showDeliveryCharges = false
+    } else if (
+      deliveryIdentifier === 'office_pickup'
+      || deliveryIdentifier === 'office-pickup'
+      || deliveryIdentifier.includes('collect from office')
+    ) {
+      deliveryMethod = 'Collect from Office'
+      showDeliveryCharges = false
+    } else if (
+      deliveryIdentifier === 'delivery_express'
+      || deliveryIdentifier === 'delivery-express'
+      || deliveryIdentifier.includes('delivery express')
+      || deliveryIdentifier.includes('express delivery')
+    ) {
+      deliveryMethod = 'Express Delivery'
+      showDeliveryCharges = true
+    }
+
     const rows = [
       ['Subtotal (excluding GST)', moneyValue(taxableSubtotal)],
-      ['Delivery Method', serverInvoice.delivery?.method || order.deliveryMethod || order.deliveryOption || 'Delivery'],
-      ['Delivery Charges (excluding GST)', data.delivery ? moneyValue(data.delivery) : 'FREE'],
+      ['Delivery Method', deliveryMethod],
     ]
+
+    if (showDeliveryCharges) {
+      rows.push(['Delivery Charges (excluding GST)', moneyValue(data.delivery)])
+    }
     if (data.taxDetails.supplyType === 'intra-state') {
       rows.push(
         ['Total CGST', moneyValue(data.taxDetails.cgst)],
@@ -566,11 +603,11 @@ export async function createInvoicePdfDocument(
   }
 
   pdf.setProperties({
-    title: `${invoiceNumber} - Pride Automation Tax Invoice`,
+    title: `${invoiceNumber} - ${invoiceBusiness.legalName} Tax Invoice`,
     subject: `Tax invoice for order ${orderNumber}`,
-    author: INVOICE_HEADER_BUSINESS.legalName,
-    creator: INVOICE_HEADER_BUSINESS.legalName,
-    keywords: 'tax invoice, electronics, GST, Pride Automation',
+    author: invoiceBusiness.legalName,
+    creator: invoiceBusiness.legalName,
+    keywords: `tax invoice, electronics, GST, ${invoiceBusiness.legalName}`,
   })
   return { pdf, invoiceNumber }
 }
