@@ -6,7 +6,7 @@ import {
   onSnapshot,
   setDoc,
 } from 'firebase/firestore'
-import { db } from './firebase'
+import { db, FIREBASE_STORAGE_BUCKET } from './firebase'
 import {
   assertValidHsnCode,
   assertValidProductForCreate,
@@ -14,7 +14,69 @@ import {
 
 const productsCollection = collection(db, 'products')
 
+const productImageFields = ['image', 'images', 'imageStoragePaths']
+
+const parseFirebaseStorageDownloadUrl = (value) => {
+  try {
+    const url = new URL(value)
+    const match = url.pathname.match(/^\/v0\/b\/([^/]+)\/o\/(.+)$/)
+    if (
+      url.protocol !== 'https:' ||
+      url.hostname !== 'firebasestorage.googleapis.com' ||
+      !match
+    ) {
+      return null
+    }
+    return {
+      bucket: decodeURIComponent(match[1]),
+      path: decodeURIComponent(match[2]),
+    }
+  } catch {
+    return null
+  }
+}
+
+const assertCurrentStorageImageReferences = (value, label) => {
+  const presentFields = productImageFields.filter((field) =>
+    Object.prototype.hasOwnProperty.call(value || {}, field),
+  )
+  if (!presentFields.length) return
+  if (presentFields.length !== productImageFields.length) {
+    throw new Error(`${label} image URL and Storage path fields must be saved together.`)
+  }
+
+  const images = Array.isArray(value.images) ? value.images : []
+  const paths = Array.isArray(value.imageStoragePaths) ? value.imageStoragePaths : []
+  if (images.length !== paths.length) {
+    throw new Error(`${label} image URLs and Storage paths are not aligned.`)
+  }
+
+  images.forEach((imageUrl, index) => {
+    const storagePath = paths[index]
+    if (!storagePath) return
+    const reference = parseFirebaseStorageDownloadUrl(imageUrl)
+    if (
+      !reference ||
+      reference.bucket !== FIREBASE_STORAGE_BUCKET ||
+      reference.path !== storagePath
+    ) {
+      throw new Error(
+        `${label} image ${index + 1} must reference ${FIREBASE_STORAGE_BUCKET} at its aligned Storage path.`,
+      )
+    }
+  })
+}
+
+export const assertCurrentProductImageReferences = (product) => {
+  assertCurrentStorageImageReferences(product, 'Product')
+  if (!Array.isArray(product?.variants)) return
+  product.variants.forEach((variant, index) =>
+    assertCurrentStorageImageReferences(variant, `Variant ${index + 1}`),
+  )
+}
+
 const serializeProduct = (product) => {
+  assertCurrentProductImageReferences(product)
   const serialized = JSON.parse(JSON.stringify(product))
   delete serialized.id
   if (Object.prototype.hasOwnProperty.call(serialized, 'hsnCode')) {

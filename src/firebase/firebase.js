@@ -19,6 +19,8 @@ const firebaseConfig = {
   measurementId: 'G-KV5GF131X3',
 }
 
+export const FIREBASE_STORAGE_BUCKET = firebaseConfig.storageBucket
+
 const app = getApps().some((firebaseApp) => firebaseApp.name === '[DEFAULT]')
   ? getApp()
   : initializeApp(firebaseConfig)
