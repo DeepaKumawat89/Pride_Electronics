@@ -64,7 +64,7 @@ export default function AdminLoginPage({
   }
 
   return (
-    <div className="relative isolate min-h-screen overflow-hidden bg-[#f7f8f5] p-4 sm:p-6 lg:grid lg:place-items-center lg:p-10">
+    <div className="admin-shell relative isolate min-h-screen overflow-hidden bg-[#f7f8f5] p-4 sm:p-6 lg:grid lg:place-items-center lg:p-10">
       <div className="absolute -left-24 top-1/3 -z-10 size-80 rounded-full bg-[#aacfb3]/35 blur-3xl" />
       <div className="absolute -right-20 top-0 -z-10 size-80 rounded-full bg-[#ff5c35]/8 blur-3xl" />
       <div className="mx-auto grid w-full max-w-6xl overflow-hidden rounded-[34px] bg-white shadow-[0_30px_90px_rgba(15,23,42,0.14)] lg:grid-cols-[1.1fr_.9fr]">
@@ -174,7 +174,7 @@ export default function AdminLoginPage({
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     placeholder="admin@pride.com"
-                    className="h-13 w-full rounded-2xl border border-slate-200 bg-[#fafbfa] pl-11 pr-4 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10"
+                    className="h-13 w-full rounded-2xl border border-slate-200 bg-[#fafbfa] pl-11 pr-4 text-xs outline-none transition"
                   />
                 </span>
               </label>
@@ -193,7 +193,7 @@ export default function AdminLoginPage({
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="••••••••"
-                    className="h-13 w-full rounded-2xl border border-slate-200 bg-[#fafbfa] pl-11 pr-12 text-xs outline-none transition focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10"
+                    className="h-13 w-full rounded-2xl border border-slate-200 bg-[#fafbfa] pl-11 pr-12 text-xs outline-none transition"
                   />
                   <button
                     type="button"

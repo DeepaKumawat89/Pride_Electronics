@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
+  AlertTriangle,
   Check,
   ChevronDown,
   ChevronRight,
@@ -9,7 +10,6 @@ import {
   Plus,
   RotateCcw,
   Share2,
-  ShieldCheck,
   ShoppingBag,
   Sparkles,
   Star,
@@ -112,6 +112,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
   const [quantity, setQuantity] = useState(1)
   const [selectedVariantId, setSelectedVariantId] = useState('')
   const [showBulkPopover, setShowBulkPopover] = useState(false)
+  const [bulkTierError, setBulkTierError] = useState(null)
   const [mobileDescriptionExpanded, setMobileDescriptionExpanded] = useState(false)
   const popoverRef = useRef(null)
 
@@ -142,6 +143,10 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
   const activeImage = images[activeImageIndex] || images[0]
   const stock = Math.max(0, Number(displayProduct.stock) || 0)
   const purchaseLimit = Math.min(stock, 100)
+
+  useEffect(() => {
+    setBulkTierError(null)
+  }, [stock])
   
   const applicableTier = getApplicablePricingTier(displayProduct, quantity)
   const applicableUnitPrice = applicableTier.unitPrice
@@ -278,15 +283,11 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                 </div>
               )}
 
-              {product.reviewsCount > 0 ? (
+              {product.reviewsCount > 0 && (
                 <div className="mt-4 flex items-center gap-2 text-[11px] font-bold text-slate-600">
                   <span className="flex items-center gap-0.5">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} className={star <= Math.round(Number(product.rating || 0)) ? 'fill-[#ffb000] text-[#ffb000]' : 'fill-slate-200 text-slate-200'} />)}</span>
                   <strong className="text-slate-900">{Number(product.rating || 0).toFixed(1)}</strong>
                   <span className="text-slate-400">{product.reviewsCount} {product.reviewsCount === 1 ? 'rating & review' : 'ratings & reviews'}</span>
-                </div>
-              ) : (
-                <div className="mt-4 flex items-center gap-2">
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-extrabold text-slate-500">No reviews yet</span>
                 </div>
               )}
 
@@ -308,9 +309,9 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                 {showBulkPopover && hasBulkPricing && (
                   <div
                     ref={popoverRef}
-                    className="absolute left-0 top-full z-30 mt-2 w-full max-w-xs rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:max-w-sm"
+                    className="absolute left-0 top-full z-30 mt-2 flex h-72 max-h-[calc(100dvh-2rem)] w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl"
                   >
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-4 pb-2 pt-4">
                       <div>
                         <strong className="block text-xs font-extrabold text-slate-900">
                           Bulk Pricing
@@ -329,50 +330,71 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                       </button>
                     </div>
 
-                    <div className="mt-3 overflow-hidden rounded-xl border border-slate-100">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-[#f3f7f2] text-[9px] font-extrabold uppercase text-slate-500">
-                          <tr>
-                            <th className="px-3 py-2">Quantity</th>
-                            <th className="px-3 py-2 text-right">Selling Price (Excl. GST)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {pricingTiers.map((tier, idx) => {
-                            const isActive = applicableTier?.minQty === tier.minQty
-                            return (
-                              <tr
-                                key={idx}
-                                onClick={() => {
-                                  setQuantity(tier.minQty)
-                                  setShowBulkPopover(false)
-                                }}
-                                className={`cursor-pointer transition ${
-                                  isActive
-                                    ? 'bg-[#e4f1e7]/80 font-bold text-[#2b5936]'
-                                    : 'hover:bg-slate-50 text-slate-700'
-                                }`}
-                              >
-                                <td className="px-3 py-2">
-                                  {tier.minQty.toLocaleString('en-IN')}+
-                                  {isActive && (
-                                    <span className="ml-1.5 inline-block rounded-full bg-[#397a4a] px-1.5 py-0.2 text-[8px] font-extrabold text-white">
-                                      Active
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="px-3 py-2 text-right font-extrabold">
-                                  {formatCurrency(tier.unitPrice)}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
+                    <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-4 [scrollbar-color:#9bcaa6_#f1f5f9] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#9bcaa6] [&::-webkit-scrollbar-track]:bg-slate-100 [&::-webkit-scrollbar]:w-1.5">
+                      <div className="mt-3 overflow-hidden rounded-xl border border-slate-100">
+                        <table className="w-full text-left text-xs">
+                          <thead className="sticky top-0 bg-[#f3f7f2] text-[9px] font-extrabold uppercase text-slate-500">
+                            <tr>
+                              <th className="px-3 py-2">Quantity</th>
+                              <th className="px-3 py-2 text-right">Selling Price (Excl. GST)</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {pricingTiers.map((tier, idx) => {
+                              const isActive = applicableTier?.minQty === tier.minQty
+                              const tierHasError = bulkTierError?.minQty === tier.minQty
+                              return [
+                                <tr
+                                  key={idx}
+                                  onClick={() => {
+                                    if (tier.minQty > stock) {
+                                      setBulkTierError({
+                                        minQty: tier.minQty,
+                                        message: `Only ${stock} units are available. You cannot select a quantity of ${tier.minQty}. Please choose a lower quantity.`,
+                                      })
+                                      return
+                                    }
+                                    setBulkTierError(null)
+                                    setQuantity(tier.minQty)
+                                    setShowBulkPopover(false)
+                                  }}
+                                  className={`cursor-pointer transition ${
+                                    isActive
+                                      ? 'bg-[#e4f1e7]/80 font-bold text-[#2b5936]'
+                                      : 'hover:bg-slate-50 text-slate-700'
+                                  }`}
+                                >
+                                  <td className="px-3 py-2">
+                                    {tier.minQty.toLocaleString('en-IN')}+
+                                    {isActive && (
+                                      <span className="ml-1.5 inline-block rounded-full bg-[#397a4a] px-1.5 py-0.2 text-[8px] font-extrabold text-white">
+                                        Active
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-extrabold">
+                                    {formatCurrency(tier.unitPrice)}
+                                  </td>
+                                </tr>,
+                                tierHasError ? (
+                                  <tr key={`${idx}-stock-error`}>
+                                    <td colSpan={2} className="bg-red-50 px-3 py-2.5">
+                                      <p role="alert" className="flex items-start gap-2 text-[9px] font-semibold leading-4 text-red-600 sm:text-[10px]">
+                                        <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                                        <span>{bulkTierError.message}</span>
+                                      </p>
+                                    </td>
+                                  </tr>
+                                ) : null,
+                              ]
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="mt-2 text-center text-[9px] font-medium text-slate-400">
+                        Click any row to auto-select that quantity
+                      </p>
                     </div>
-                    <p className="mt-2 text-center text-[9px] font-medium text-slate-400">
-                      Click any row to auto-select that quantity
-                    </p>
                   </div>
                 )}
               </div>
@@ -400,7 +422,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                 </button>
               </div>
 
-              <div className="mt-5 grid grid-cols-3 gap-2 border-t border-slate-100 pt-4">
+              <div className="mt-5 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4">
                 {[
                   [
                     Truck,
@@ -408,11 +430,10 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                       ? 'Delivery unavailable'
                       : 'Delivery available',
                   ],
-                  [ShieldCheck, 'Secure'],
                   [RotateCcw, returnPolicy.label],
                 ].map(([Icon, label]) => (
-                  <div key={label} className="rounded-2xl bg-slate-50 px-2 py-3 text-center text-[9px] font-extrabold text-slate-600 sm:flex sm:items-center sm:justify-center sm:gap-2 sm:text-[10px]">
-                    <Icon size={16} className="mx-auto mb-1 text-[#4f8a5d] sm:mx-0 sm:mb-0" /> {label}
+                  <div key={label} className="flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-slate-50 px-3 py-3 text-center text-[9px] font-extrabold leading-4 text-slate-600 sm:px-4 sm:text-[10px]">
+                    <Icon size={16} className="shrink-0 text-[#4f8a5d]" /> {label}
                   </div>
                 ))}
               </div>

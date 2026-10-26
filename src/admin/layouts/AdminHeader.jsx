@@ -42,7 +42,7 @@ export default function AdminHeader({
           </h1>
           <p className="text-[9px] font-semibold text-slate-400">{subtitle}</p>
         </div>
-        <label className="relative ml-auto flex h-11 w-full max-w-md items-center rounded-full border border-slate-200 bg-white shadow-sm transition focus-within:border-[#75916f] focus-within:ring-4 focus-within:ring-[#75916f]/10">
+        <label className="form-control-shell relative ml-auto flex h-11 w-full max-w-md items-center rounded-full border border-slate-200 bg-white shadow-sm transition">
           <Search size={15} className="absolute left-4 text-slate-400" />
           <input
             value={searchQuery}

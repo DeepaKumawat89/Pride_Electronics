@@ -26,10 +26,48 @@
   max-width: 100%;
 }
 
-.customer-shell :where(button, a, input, select, textarea):focus-visible,
-[data-storefront-overlay] :where(button, input, select):focus-visible {
-  outline: 2px solid #ff5c35;
+/* Form controls keep their resting appearance for pointer/touch focus. Keyboard
+   focus uses a single border-color change—never a browser outline or ring. */
+.customer-shell :where(input, select, textarea):focus,
+.admin-shell :where(input, select, textarea):focus,
+[data-storefront-overlay] :where(input, select, textarea):focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.customer-shell :where(input, select, textarea):focus-visible,
+.admin-shell :where(input, select, textarea):focus-visible,
+[data-storefront-overlay] :where(input, select, textarea):focus-visible {
+  border-color: #75916f;
+  outline: none;
+  box-shadow: none;
+}
+
+.customer-shell :where(button, a):focus-visible,
+.admin-shell :where(button, a):focus-visible,
+[data-storefront-overlay] button:focus-visible {
+  outline: 2px solid rgb(117 145 111 / 72%);
   outline-offset: 2px;
+}
+
+[data-select-trigger]:focus,
+[data-select-menu] button:focus {
+  outline: none;
+}
+
+[data-select-trigger]:focus-visible,
+[data-select-menu] button:focus-visible {
+  border-color: #75916f;
+  outline: none;
+}
+
+.form-control-shell:focus-within {
+  outline: none;
+  box-shadow: none;
+}
+
+.form-control-shell:has(:focus-visible) {
+  border-color: #75916f;
 }
 
 .customer-shell :where([class*="overflow-x-auto"], [class*="overflow-y-auto"]),

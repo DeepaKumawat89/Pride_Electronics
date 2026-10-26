@@ -20,7 +20,7 @@ const emptyCoupon = {
 }
 
 const fieldClass =
-  'mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold normal-case tracking-normal text-slate-700 outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#9bcaa6]/20'
+  'mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold normal-case tracking-normal text-slate-700 outline-none transition'
 
 const parseList = (value) =>
   String(value || '').split(',').map((item) => item.trim()).filter(Boolean)

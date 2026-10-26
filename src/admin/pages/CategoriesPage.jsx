@@ -14,7 +14,7 @@ const emptySubcategory = {
   categoryId: '',
 }
 const inputClass =
-  'h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-xs outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#75916f]/10'
+  'h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-xs outline-none transition'
 
 export default function CategoriesPage({
   categories = [],

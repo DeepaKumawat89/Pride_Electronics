@@ -101,7 +101,7 @@ export default function ProductSearch({
         aria-expanded={open && Boolean(normalizedQuery)}
         aria-controls={resultsId}
         autoComplete="off"
-        className={`w-full rounded-full border border-slate-200 bg-white text-sm outline-none transition placeholder:text-slate-400 focus:border-[#ff5c35] focus:ring-4 focus:ring-[#ff5c35]/10 ${mobile ? 'h-10 pl-9 pr-8 text-xs' : 'h-11 pl-11 pr-11'}`}
+        className={`w-full rounded-full border border-slate-200 bg-white text-sm outline-none transition placeholder:text-slate-400 ${mobile ? 'h-10 pl-9 pr-8 text-xs' : 'h-11 pl-11 pr-11'}`}
         placeholder={placeholder}
       />
       {value && (

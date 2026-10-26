@@ -820,7 +820,7 @@ export default function ProductsPage({
                       }
                     })
                   }}
-                  className="size-5 rounded border-slate-300 text-[#397a4a] focus:ring-[#397a4a]"
+                  className="size-5 rounded border-slate-300 text-[#397a4a]"
                 />
                 <div>
                   <strong className="block text-xs font-extrabold text-slate-900">
@@ -883,7 +883,7 @@ export default function ProductsPage({
                                     ),
                                   }))
                                 }}
-                                className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-[#75916f]"
+                                className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none"
                                 placeholder="Min quantity (e.g. 10)"
                               />
                             </td>
@@ -900,7 +900,7 @@ export default function ProductsPage({
                                     ),
                                   }))
                                 }}
-                                className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-[#75916f]"
+                                className="h-9 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none"
                                 placeholder="Unit price (e.g. 37.64)"
                               />
                             </td>
@@ -1139,13 +1139,13 @@ export default function ProductsPage({
 }
 
 const inputClass =
-  'h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-xs outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#75916f]/10'
+  'h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-xs outline-none transition'
 const affixedInputClass =
   'h-full min-w-0 flex-1 bg-transparent px-3 text-xs outline-none'
 
 function AffixedInput({ prefix, suffix, children }) {
   return (
-    <div className="flex h-12 w-full items-center overflow-hidden rounded-2xl border border-slate-200 bg-white transition focus-within:border-[#75916f] focus-within:ring-4 focus-within:ring-[#75916f]/10">
+    <div className="form-control-shell flex h-12 w-full items-center overflow-hidden rounded-2xl border border-slate-200 bg-white transition">
       {prefix && <span className="pl-4 text-xs font-extrabold text-slate-500">{prefix}</span>}
       {children}
       {suffix && <span className="pr-4 text-xs font-extrabold text-slate-500">{suffix}</span>}

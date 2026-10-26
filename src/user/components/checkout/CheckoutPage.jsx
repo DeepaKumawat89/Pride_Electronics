@@ -802,7 +802,7 @@ export default function CheckoutPage({
                                 setDeliveryAddressId(address.id)
                                 setPage1Error('')
                               }}
-                              className="mt-0.5 size-4 border-slate-300 text-[#397a4a] focus:ring-[#397a4a]"
+                              className="mt-0.5 size-4 border-slate-300 text-[#397a4a]"
                             />
                             <div>
                               <strong className="text-xs font-extrabold text-slate-900">{address.label === 'Office' ? 'Work' : address.label} — {address.fullName}</strong>
@@ -847,7 +847,7 @@ export default function CheckoutPage({
                       value={deliveryAddressForm.fullName}
                       onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, fullName: e.target.value })}
                       placeholder="e.g. Rahul Sharma"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none"
                     />
                   </div>
 
@@ -859,7 +859,7 @@ export default function CheckoutPage({
                       inputMode="tel"
                       pattern="[6-9][0-9]{9}"
                       placeholder="e.g. 9876543210"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none"
                     />
                   </div>
 
@@ -875,7 +875,7 @@ export default function CheckoutPage({
                       })}
                       placeholder="6-digit PIN code"
                       autoComplete="postal-code"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none"
                     />
                   </div>
 
@@ -886,7 +886,7 @@ export default function CheckoutPage({
                       onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, city: e.target.value })}
                       placeholder="City"
                       autoComplete="address-level2"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none"
                     />
                   </div>
 
@@ -897,7 +897,7 @@ export default function CheckoutPage({
                       onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, state: e.target.value })}
                       placeholder="State"
                       autoComplete="address-level1"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none"
                     />
                   </div>
 
@@ -914,7 +914,7 @@ export default function CheckoutPage({
                       })}
                       placeholder="Flat 102, Green Apartments, MG Road"
                       autoComplete="street-address"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none"
                     />
                   </div>
 
@@ -924,7 +924,7 @@ export default function CheckoutPage({
                       value={deliveryAddressForm.landmark}
                       onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, landmark: e.target.value })}
                       placeholder="Near a well-known place"
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none"
                     />
                   </div>
 
@@ -933,7 +933,7 @@ export default function CheckoutPage({
                     <select
                       value={deliveryAddressForm.label}
                       onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, label: e.target.value })}
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none focus:border-[#397a4a] focus:bg-white"
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold outline-none"
                     >
                       <option value="Home">Home</option>
                       <option value="Office">Work</option>
@@ -984,7 +984,7 @@ export default function CheckoutPage({
                       setBillingSameAsDelivery(e.target.checked)
                       setBillingAddressError('')
                     }}
-                    className="size-4 rounded border-slate-300 text-[#397a4a] focus:ring-[#397a4a]"
+                    className="size-4 rounded border-slate-300 text-[#397a4a]"
                   />
                   <div>
                     <strong className="text-xs font-bold text-slate-900">Billing address is same as delivery address</strong>
@@ -1029,7 +1029,7 @@ export default function CheckoutPage({
                                 value={address.id}
                                 checked={isSelected}
                                 onChange={() => setBillingAddressId(address.id)}
-                                className="size-4 border-slate-300 text-[#397a4a] focus:ring-[#397a4a]"
+                                className="size-4 border-slate-300 text-[#397a4a]"
                               />
                               <div>
                                 <strong className="text-xs font-bold text-slate-900">{address.label === 'Office' ? 'Work' : address.label} — {address.fullName}</strong>
@@ -1130,7 +1130,7 @@ export default function CheckoutPage({
                     setBusinessPurchase(event.target.checked)
                     setGstDetailsError('')
                   }}
-                  className="size-4 rounded border-slate-300 text-[#397a4a] focus:ring-[#397a4a]"
+                  className="size-4 rounded border-slate-300 text-[#397a4a]"
                 />
                 <div>
                   <strong className="text-xs font-bold text-slate-900">This is a business purchase</strong>
@@ -1152,7 +1152,7 @@ export default function CheckoutPage({
                       value={gstDetails.legalName}
                       onChange={(event) => setGstDetails((current) => ({ ...current, legalName: event.target.value }))}
                       placeholder="Business name as registered under GST"
-                      className="h-11 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-[#397a4a]"
+                      className="h-11 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold normal-case tracking-normal text-slate-900 outline-none"
                     />
                   </label>
                   <label className="grid gap-1.5 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
@@ -1165,7 +1165,7 @@ export default function CheckoutPage({
                       value={gstDetails.gstin}
                       onChange={(event) => setGstDetails((current) => ({ ...current, gstin: normalizeGstin(event.target.value) }))}
                       placeholder="27ABCDE1234F1Z5"
-                      className="h-11 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 font-mono text-xs font-bold uppercase tracking-wider text-slate-900 outline-none focus:border-[#397a4a]"
+                      className="h-11 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 font-mono text-xs font-bold uppercase tracking-wider text-slate-900 outline-none"
                     />
                   </label>
                   <label className="grid gap-1.5 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 sm:col-span-2">
@@ -1175,7 +1175,7 @@ export default function CheckoutPage({
                       value={gstDetails.tradeName}
                       onChange={(event) => setGstDetails((current) => ({ ...current, tradeName: event.target.value }))}
                       placeholder="Brand or trading name"
-                      className="h-11 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold normal-case tracking-normal text-slate-900 outline-none focus:border-[#397a4a]"
+                      className="h-11 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-semibold normal-case tracking-normal text-slate-900 outline-none"
                     />
                   </label>
                   <p className="text-[10px] leading-4 text-slate-500 sm:col-span-2">
@@ -1410,7 +1410,7 @@ export default function CheckoutPage({
                             setAuthoritativePricing(null)
                             setPaymentError('')
                           }}
-                          className="mt-1 size-4 border-slate-300 text-[#397a4a] focus:ring-[#397a4a]"
+                          className="mt-1 size-4 border-slate-300 text-[#397a4a]"
                         />
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center gap-2">
@@ -1483,7 +1483,7 @@ export default function CheckoutPage({
                   value={coupon}
                   onChange={(e) => setCoupon(e.target.value)}
                   placeholder="COUPON CODE"
-                  className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-bold uppercase tracking-wider outline-none focus:border-[#397a4a] focus:bg-white"
+                  className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-[#fafbfa] px-3 text-xs font-bold uppercase tracking-wider outline-none"
                 />
                 <button
                   type="button"

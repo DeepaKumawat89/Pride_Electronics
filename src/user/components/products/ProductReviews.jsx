@@ -15,17 +15,7 @@ export function RatingSummary({ product, reviews = [], showTitle = false }) {
     }
   })
 
-  if (!hasReviews) {
-    return (
-      <div className="flex h-full flex-col justify-center rounded-[24px] bg-[#183020] p-6 text-white sm:p-7">
-        {showTitle && <p className="mb-2 text-[9px] font-extrabold uppercase tracking-[0.18em] text-[#9bcaa6]">Product Rating</p>}
-        <h3 className="text-xl font-extrabold text-white">No reviews yet</h3>
-        <p className="mt-2 text-xs font-semibold text-white/70">
-          Be the first customer to share your thoughts and rate this product!
-        </p>
-      </div>
-    )
-  }
+  if (!hasReviews) return null
 
   return (
     <div className="flex h-full flex-col rounded-[24px] bg-[#183020] p-6 text-white sm:p-7">
@@ -60,6 +50,9 @@ function ReviewCard({ review }) {
 
 export default function ProductReviews({ product, reviews = [], showAll = false, reviewsOnly = false, onViewAll }) {
   const visibleReviews = showAll ? reviews : reviews.slice(0, 2)
+  const hasReviews = reviews.length > 0 || Number(product.reviewsCount || 0) > 0
+
+  if (!hasReviews) return null
 
   if (reviewsOnly) {
     return (
@@ -70,7 +63,6 @@ export default function ProductReviews({ product, reviews = [], showAll = false,
         </div>
         <div className="mt-7 grid gap-4 md:grid-cols-2">
           {visibleReviews.map((review) => <ReviewCard key={review.id || review.name} review={review} />)}
-          {!visibleReviews.length && <p className="col-span-full rounded-[22px] border border-dashed border-slate-200 px-5 py-10 text-center text-xs font-semibold text-slate-400">No published reviews yet.</p>}
         </div>
       </section>
     )
@@ -87,7 +79,6 @@ export default function ProductReviews({ product, reviews = [], showAll = false,
         <RatingSummary product={product} reviews={reviews} />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
           {visibleReviews.map((review) => <ReviewCard key={review.id || review.name} review={review} />)}
-          {!visibleReviews.length && <p className="rounded-[22px] border border-dashed border-slate-200 px-5 py-10 text-center text-xs font-semibold text-slate-400 sm:col-span-2 lg:col-span-1">No published reviews yet.</p>}
           {!showAll && (
             <button type="button" onClick={onViewAll} className="flex h-12 items-center justify-center gap-2 rounded-full border border-[#b9d4bf] bg-[#f2f8f3] text-xs font-extrabold text-[#397a4a] transition hover:border-[#397a4a] hover:bg-[#397a4a] hover:text-white sm:col-span-2 lg:col-span-1">
               View All Reviews <ArrowRight size={15} />

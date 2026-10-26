@@ -9,6 +9,7 @@ const methodAliases = {
   delivery_express: 'delivery_express',
   'delivery-express': 'delivery_express',
   'delivery express': 'delivery_express',
+  'express delivery': 'delivery_express',
 }
 
 const labels = {

@@ -192,7 +192,6 @@ export default function OrderDetailsView({
   const [returnSubmitted, setReturnSubmitted] = useState(false)
   const [returnImages, setReturnImages] = useState([])
   const [invoiceDownloading, setInvoiceDownloading] = useState(false)
-  const [invoiceMessage, setInvoiceMessage] = useState({ tone: '', text: '' })
   const financials = getFinancials(order, invoiceSettings.tax)
   const pricesExcludeTax = order.pricingModel === 'gst-exclusive-v1' || (
     Number(order.invoice?.schemaVersion || 0) >= 4 &&
@@ -242,17 +241,12 @@ export default function OrderDetailsView({
   }
 
   const downloadInvoice = async () => {
-    setInvoiceMessage({ tone: '', text: '' })
     setInvoiceDownloading(true)
     try {
       const invoice = await getCustomerOrderInvoice(order.id)
       await downloadInvoicePdf({ ...order, invoice })
-      setInvoiceMessage({ tone: 'success', text: 'Invoice downloaded successfully.' })
-    } catch (error) {
-      setInvoiceMessage({
-        tone: 'error',
-        text: error.message || 'Unable to generate the invoice. Please try again.',
-      })
+    } catch {
+      // Keep invoice download failures silent in this view.
     } finally {
       setInvoiceDownloading(false)
     }
@@ -357,11 +351,6 @@ export default function OrderDetailsView({
                     <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[9px] text-slate-500">
                       <span>Quantity: <strong className="text-slate-700">{quantity}</strong></span>
                       <span>Unit price: <strong className="text-slate-700">{formatCurrency(unitPrice)}{pricesExcludeTax ? ' (Excl. GST)' : ''}</strong></span>
-                      {(item.appliedTier || item.tierLabel) && (
-                        <span className="inline-flex rounded bg-[#e4f1e7] px-2 py-0.5 text-[8px] font-extrabold text-[#366643]">
-                          Bulk Tier: {item.tierLabel || `${item.appliedTier?.minQty}+ units`} (@ {formatCurrency(item.appliedTier?.unitPrice || unitPrice)})
-                        </span>
-                      )}
                     </div>
                     {showItemPolicies && (
                       <div className="mt-2 text-[9px] leading-4 text-slate-500">
@@ -396,29 +385,30 @@ export default function OrderDetailsView({
               </> : <div><dt className="text-slate-400">Delivery Method</dt><dd className="mt-0.5 font-semibold text-slate-500">Not recorded for this order</dd></div>}
               <div><dt className="text-slate-400">{delivered ? 'Delivered on' : 'Estimated delivery'}</dt><dd className="mt-0.5 font-bold text-slate-700">{order.deliveryDate || 'Being scheduled'}</dd></div>
             </dl>
+            <div className="mt-6 border-t border-slate-100 pt-6">
+              <SectionTitle icon={CreditCard}>Payment Details</SectionTitle>
+              <dl className="mt-4 space-y-3 text-[10px]">
+                <div><dt className="text-slate-400">Payment method</dt><dd className="mt-0.5 font-bold text-slate-700">{order.paymentMethod || 'Online payment'}</dd></div>
+                <div><dt className="text-slate-400">Payment status</dt><dd className="mt-0.5 font-bold text-emerald-700">{order.paymentStatus || 'Paid'}</dd></div>
+                {(order.razorpayPaymentId || order.transactionId) && (
+                  <div><dt className="text-slate-400">Transaction ID</dt><dd className="mt-0.5 break-all font-mono text-[9px] font-semibold text-slate-600">{order.razorpayPaymentId || order.transactionId}</dd></div>
+                )}
+                {order.trackingId && (
+                  <div><dt className="text-slate-400">Tracking ID</dt><dd className="mt-0.5 break-all font-mono text-[9px] font-semibold text-slate-600">{order.trackingId}</dd></div>
+                )}
+              </dl>
+            </div>
           </div>
-          <div>
-            <SectionTitle icon={CreditCard}>Payment</SectionTitle>
-            <dl className="mt-4 space-y-3 text-[10px]">
-              <div><dt className="text-slate-400">Payment method</dt><dd className="mt-0.5 font-bold text-slate-700">{order.paymentMethod || 'Online payment'}</dd></div>
-              <div><dt className="text-slate-400">Payment status</dt><dd className="mt-0.5 font-bold text-emerald-700">{order.paymentStatus || 'Paid'}</dd></div>
-              {(order.razorpayPaymentId || order.transactionId) && (
-                <div><dt className="text-slate-400">Transaction ID</dt><dd className="mt-0.5 break-all font-mono text-[9px] font-semibold text-slate-600">{order.razorpayPaymentId || order.transactionId}</dd></div>
-              )}
-              {order.trackingId && (
-                <div><dt className="text-slate-400">Tracking ID</dt><dd className="mt-0.5 break-all font-mono text-[9px] font-semibold text-slate-600">{order.trackingId}</dd></div>
-              )}
-            </dl>
-          </div>
-        </section>
-
-        <section className="border-t border-slate-100 py-6">
-          <div className="ml-auto max-w-md">
+          <div className="max-w-md md:ml-auto md:w-full">
             <SectionTitle icon={ReceiptText}>Order Summary</SectionTitle>
             <div className="mt-3">
               <SummaryRow label={`Item total${pricesExcludeTax ? ' (Excl. GST)' : ''}`} value={formatCurrency(financials.itemTotal)} />
-              <SummaryRow label="Coupon discount" value={`− ${formatCurrency(financials.discount)}`} muted />
-              <SummaryRow label="Delivery charges" value={financials.delivery ? formatCurrency(financials.delivery) : 'FREE'} muted={!financials.delivery} />
+              {financials.discount > 0 && (
+                <SummaryRow label="Coupon discount" value={`− ${formatCurrency(financials.discount)}`} muted />
+              )}
+              {deliveryMethod?.method === 'delivery_express' && financials.delivery > 0 && (
+                <SummaryRow label="Delivery charges" value={formatCurrency(financials.delivery)} />
+              )}
               {financials.gstBreakdown?.supplyType === 'intra-state' ? (
                 <>
                   <SummaryRow label="CGST" value={formatCurrency(financials.gstBreakdown.cgst)} />
@@ -485,7 +475,7 @@ export default function OrderDetailsView({
                   ))}
                 </div>
                 <label className="mt-4 block text-[9px] font-extrabold uppercase tracking-wider text-slate-500">Write your feedback</label>
-                <textarea required value={review} onChange={(event) => setReview(event.target.value)} rows={4} placeholder="Tell us about the product and delivery experience..." className="mt-2 w-full resize-y rounded-xl border border-slate-200 p-3 text-xs outline-none transition focus:border-[#ff5c35] focus:ring-4 focus:ring-[#ff5c35]/10" />
+                <textarea required value={review} onChange={(event) => setReview(event.target.value)} rows={4} placeholder="Tell us about the product and delivery experience..." className="mt-2 w-full resize-y rounded-xl border border-slate-200 p-3 text-xs outline-none transition" />
                 <div className="mt-3 flex items-center gap-2">
                   <button disabled={!rating || !review.trim()} className="rounded-full bg-[#253329] px-5 py-2.5 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-40">
                     {isEditingReview ? 'Update Review' : 'Submit Feedback'}
@@ -522,7 +512,7 @@ export default function OrderDetailsView({
               ) : (
                 <form onSubmit={async (event) => { event.preventDefault(); if (returnReason) { const request = await onSubmitReturn?.(order.id, { reason: returnReason, images: returnImages }); if (request) setReturnSubmitted(true) } }} className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
                   <label className="min-w-0 flex-1 text-[9px] font-extrabold uppercase tracking-wider text-slate-500">Return reason
-                    <select required value={returnReason} onChange={(event) => setReturnReason(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold normal-case tracking-normal text-slate-700 outline-none focus:border-[#75916f]">
+                    <select required value={returnReason} onChange={(event) => setReturnReason(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold normal-case tracking-normal text-slate-700 outline-none">
                       <option value="">Select a reason</option>
                       {RETURN_REASONS.map((reason) => <option key={reason}>{reason}</option>)}
                     </select>
@@ -568,7 +558,6 @@ export default function OrderDetailsView({
                 <span className="block text-emerald-800">{order.invoice.buyer.gst.address}</span>
               </div>
             )}
-            {invoiceMessage.text && <p className={`mt-2 text-[9px] font-bold ${invoiceMessage.tone === 'success' ? 'text-emerald-700' : 'text-red-600'}`}>{invoiceMessage.text}</p>}
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <button type="button" onClick={downloadInvoice} disabled={invoiceDownloading} aria-busy={invoiceDownloading} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#253329] px-5 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-wait disabled:opacity-60">

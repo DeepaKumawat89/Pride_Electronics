@@ -15,7 +15,7 @@ export default function AdminLayout({
   permissions,
 }) {
   return (
-    <div className="min-h-screen bg-[#f7f8f5] text-slate-950 lg:grid lg:grid-cols-[278px_minmax(0,1fr)]">
+    <div className="admin-shell min-h-screen bg-[#f7f8f5] text-slate-950 lg:grid lg:grid-cols-[278px_minmax(0,1fr)]">
       <AdminSidebar
         activeTab={activeTab}
         isOpen={sidebarOpen}

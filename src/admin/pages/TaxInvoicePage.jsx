@@ -4,7 +4,7 @@ import { PageHeader } from '../components/ui/AdminUI'
 import { DELIVERY_GST_TREATMENTS } from '../../data/invoice'
 
 const inputClass =
-  'mt-1.5 h-11 w-full rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs text-black outline-none transition disabled:cursor-default disabled:text-black disabled:opacity-100 focus:border-[#75916f] focus:bg-white focus:ring-4 focus:ring-[#75916f]/10'
+  'mt-1.5 h-11 w-full rounded-2xl border border-slate-200 bg-[#fafbfa] px-4 text-xs text-black outline-none transition disabled:cursor-default disabled:text-black disabled:opacity-100/10'
 const copySettings = (settings) => JSON.parse(JSON.stringify(settings))
 
 function Field({ label, children }) {

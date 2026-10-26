@@ -48,6 +48,7 @@ export default function SelectMenu({
     <div className={`relative ${className}`}>
       <button
         ref={triggerRef}
+        data-select-trigger
         type="button"
         disabled={disabled}
         aria-label={ariaLabel}
@@ -73,6 +74,7 @@ export default function SelectMenu({
           <div
             ref={menuRef}
             id={menuId}
+            data-select-menu
             role="listbox"
             aria-label={ariaLabel}
             style={position}

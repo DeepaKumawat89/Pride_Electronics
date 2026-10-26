@@ -89,7 +89,7 @@ const sectionMeta = {
 }
 
 const fieldClass =
-  'h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 outline-none transition focus:border-[#75916f] focus:ring-4 focus:ring-[#9bcaa6]/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500'
+  'h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 outline-none transition disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500'
 const orderFilterNow = Date.now()
 
 function Avatar({ user, size = 'size-12', textSize = 'text-sm' }) {
@@ -108,7 +108,7 @@ function Avatar({ user, size = 'size-12', textSize = 'text-sm' }) {
   )
 }
 
-function HeaderSearch({ value, onChange, placeholder, ariaLabel }) {
+function HeaderSearch({ value, onChange, placeholder, ariaLabel, focusClassName = '' }) {
   return (
     <div className="relative block min-w-0 flex-1 sm:w-56 sm:flex-none lg:w-64">
       <Search
@@ -122,7 +122,7 @@ function HeaderSearch({ value, onChange, placeholder, ariaLabel }) {
         placeholder={placeholder}
         aria-label={ariaLabel}
         autoComplete="off"
-        className="h-11 w-full rounded-full border border-slate-200 bg-white pl-11 pr-11 text-sm outline-none transition placeholder:text-slate-400 focus:border-[#ff5c35] focus:ring-4 focus:ring-[#ff5c35]/10"
+        className={`h-11 w-full rounded-full border border-slate-200 bg-white pl-11 pr-11 text-sm outline-none transition placeholder:text-slate-400 ${focusClassName}`}
       />
       {value && (
         <button
@@ -191,6 +191,7 @@ function OrderFilter({
         createPortal(
           <div
             ref={menuRef}
+            data-storefront-overlay="order-filters"
             role="dialog"
             aria-label="Filter orders"
             style={position}
@@ -214,8 +215,8 @@ function OrderFilter({
               </div>
               {dateRange === 'custom' && (
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                  <label className="text-[8px] font-bold uppercase tracking-wider text-slate-400">From<input type="date" value={customDateFrom} max={customDateTo || undefined} onChange={(event) => onCustomDateFromChange(event.target.value)} className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-2 text-[9px] font-bold text-slate-600 outline-none focus:border-[#75916f]" /></label>
-                  <label className="text-[8px] font-bold uppercase tracking-wider text-slate-400">To<input type="date" value={customDateTo} min={customDateFrom || undefined} onChange={(event) => onCustomDateToChange(event.target.value)} className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-2 text-[9px] font-bold text-slate-600 outline-none focus:border-[#75916f]" /></label>
+                  <label className="text-[8px] font-bold uppercase tracking-wider text-slate-400">From<input type="date" value={customDateFrom} max={customDateTo || undefined} onChange={(event) => onCustomDateFromChange(event.target.value)} className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-2 text-[9px] font-bold text-slate-600 outline-none" /></label>
+                  <label className="text-[8px] font-bold uppercase tracking-wider text-slate-400">To<input type="date" value={customDateTo} min={customDateFrom || undefined} onChange={(event) => onCustomDateToChange(event.target.value)} className="mt-1 h-9 w-full rounded-xl border border-slate-200 bg-white px-2 text-[9px] font-bold text-slate-600 outline-none" /></label>
                 </div>
               )}
             </div>
@@ -439,6 +440,7 @@ export default function AccountPanel({
                     onChange={setOrderQuery}
                     placeholder="Search orders"
                     ariaLabel="Search orders"
+                    focusClassName="orders-search-input"
                   />
                   <OrderFilter
                     dateRange={orderDateRange}
@@ -1561,7 +1563,7 @@ function CartSection({
               value={coupon}
               onChange={(event) => setCoupon(event.target.value)}
               placeholder="Enter code"
-              className="h-10 min-w-0 flex-1 rounded-xl border border-white bg-white px-3 text-xs font-bold uppercase outline-none focus:border-[#75916f]"
+              className="h-10 min-w-0 flex-1 rounded-xl border border-white bg-white px-3 text-xs font-bold uppercase outline-none"
             />
             <button
               type="button"

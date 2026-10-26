@@ -36,12 +36,10 @@ export default function ProductCard({
       <div className="flex flex-1 flex-col px-1 pt-4">
         <div className="flex min-w-0 items-start justify-between gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
           <span className="min-w-0 break-words">{product.category}</span>
-          {product.reviewsCount > 0 ? (
+          {product.reviewsCount > 0 && (
             <span className="flex items-center gap-1 text-slate-600">
               <Star size={11} className="fill-[#ffb000] text-[#ffb000]" /> {Number(product.rating || 0).toFixed(1)} <span className="font-medium text-slate-400">({product.reviewsCount})</span>
             </span>
-          ) : (
-            <span className="text-[9px] font-semibold text-slate-400">No reviews yet</span>
           )}
         </div>
         <button type="button" onClick={() => onView(product)} className="mt-2 min-h-12 text-left text-sm font-extrabold leading-6 text-slate-900 transition hover:text-[#ff5c35]">{product.name}</button>

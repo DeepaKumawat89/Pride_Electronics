@@ -104,7 +104,7 @@ export default function LegalPageLayout({
                 scrollToSection(event.target.value)
                 event.target.value = ''
               }}
-              className="h-12 w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 pr-11 text-sm font-bold text-slate-700 outline-none transition focus:border-[#397a4a] focus:ring-4 focus:ring-[#397a4a]/10"
+              className="h-12 w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 pr-11 text-sm font-bold text-slate-700 outline-none transition"
             >
               <option value="" disabled>
                 Jump to a section
