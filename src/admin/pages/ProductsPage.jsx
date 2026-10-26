@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
   Check,
@@ -44,6 +44,11 @@ import {
   RETURN_POLICY_OPTIONS,
   RETURN_POLICY_TYPES,
 } from '../../utils/productReturnPolicy'
+import {
+  clearAddProductDraft,
+  loadAddProductDraft,
+  saveAddProductDraft,
+} from '../utils/addProductDraft'
 
 const blankProduct = {
   name: '',
@@ -175,6 +180,22 @@ export default function ProductsPage({
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleteError, setDeleteError] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [draftReady, setDraftReady] = useState(true)
+  const [draftWarning, setDraftWarning] = useState('')
+  const submitInProgress = useRef(false)
+  const draftPersistenceDisabled = useRef(false)
+  const draftStateRef = useRef({
+    creatingProduct,
+    editingProduct,
+    form,
+    selectedImages,
+  })
+  draftStateRef.current = {
+    creatingProduct,
+    editingProduct,
+    form,
+    selectedImages,
+  }
   const selectedCategory = categoryForProduct(form, managedCategories)
   const selectedSubcategory = managedSubcategories.find(
     (subcategory) =>
@@ -216,6 +237,35 @@ export default function ProductsPage({
     () => () => imagePreviews.forEach((preview) => URL.revokeObjectURL(preview)),
     [imagePreviews],
   )
+
+  useEffect(
+    () => () => {
+      const draft = draftStateRef.current
+      if (
+        draft.creatingProduct &&
+        !draft.editingProduct &&
+        !draftPersistenceDisabled.current
+      ) {
+        void saveAddProductDraft(draft.form, draft.selectedImages)
+      }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (
+      !draftReady ||
+      !creatingProduct ||
+      editingProduct ||
+      draftPersistenceDisabled.current
+    ) return undefined
+    const timeout = window.setTimeout(() => {
+      saveAddProductDraft(form, selectedImages).catch(() => {
+        setDraftWarning('Draft saving is unavailable in this browser.')
+      })
+    }, 350)
+    return () => window.clearTimeout(timeout)
+  }, [draftReady, creatingProduct, editingProduct, form, selectedImages])
 
   const clearImageSelection = () => {
     setExistingImages([])
@@ -267,12 +317,29 @@ export default function ProductsPage({
   }
 
   const openAdd = () => {
+    draftPersistenceDisabled.current = false
+    setDraftReady(false)
     clearImageSelection()
     setEditingProduct(null)
     setForm(blankProduct)
     setFormErrors({})
     setSaveError('')
+    setDraftWarning('')
     setCreatingProduct(true)
+    loadAddProductDraft()
+      .then((draft) => {
+        if (!draft) return
+        setForm((current) => ({ ...current, ...draft.form }))
+        setSelectedImages(draft.files)
+        setImagePreviews(draft.files.map((file) => URL.createObjectURL(file)))
+        if (draft.imageRestoreError) setDraftWarning(draft.imageRestoreError)
+      })
+      .catch(() => {
+        setDraftWarning('The saved product draft could not be restored.')
+      })
+      .finally(() => {
+        setDraftReady(true)
+      })
   }
   const openEdit = (product) => {
     const normalizedProduct = normalizeProductTaxonomy(
@@ -321,11 +388,35 @@ export default function ProductsPage({
     setSaveError('')
   }
   const closeProductForm = () => {
+    if (
+      creatingProduct &&
+      !editingProduct &&
+      !draftPersistenceDisabled.current
+    ) {
+      void saveAddProductDraft(form, selectedImages).catch(() => {
+        setDraftWarning('Draft saving is unavailable in this browser.')
+      })
+    }
     clearImageSelection()
     setCreatingProduct(false)
     setEditingProduct(null)
     setFormErrors({})
     setSaveError('')
+  }
+  const discardDraft = async () => {
+    if (!window.confirm('Discard this unsaved product draft? This cannot be undone.')) return
+    draftPersistenceDisabled.current = true
+    try {
+      await clearAddProductDraft()
+      clearImageSelection()
+      setForm(blankProduct)
+      setFormErrors({})
+      setSaveError('')
+      setDraftWarning('')
+      setCreatingProduct(false)
+    } catch (error) {
+      setDraftWarning(error.message || 'Unable to discard the saved draft.')
+    }
   }
   const validateForm = () => {
     const errors = {}
@@ -404,6 +495,7 @@ export default function ProductsPage({
   }
   const submit = async (event) => {
     event.preventDefault()
+    if (saving || submitInProgress.current) return
     const nextErrors = validateForm()
     setFormErrors(nextErrors)
     setSaveError('')
@@ -457,17 +549,26 @@ export default function ProductsPage({
     delete nextProduct.originalPrice
     delete nextProduct.discount
     setSaving(true)
+    submitInProgress.current = true
     try {
       if (editingProduct) {
         await onUpdateProduct(nextProduct)
         closeProductForm()
       } else {
         await onAddProduct(nextProduct)
+        draftPersistenceDisabled.current = true
+        try {
+          await clearAddProductDraft()
+        } catch (error) {
+          setDraftWarning(error.message || 'The product was saved, but the local draft could not be cleared.')
+        }
+        setForm(blankProduct)
         closeProductForm()
       }
     } catch (error) {
       setSaveError(error.message || 'Unable to save the product to Firestore.')
     } finally {
+      submitInProgress.current = false
       setSaving(false)
     }
   }
@@ -577,7 +678,7 @@ export default function ProductsPage({
         })}
       </div>
 
-      {(saveError || loadError) && <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-[10px] font-bold text-red-700">{saveError || loadError}</p>}
+      {(saveError || loadError || draftWarning) && <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-[10px] font-bold text-red-700">{saveError || loadError || draftWarning}</p>}
 
       {loading ? (
         <EmptyState title="Loading products" text="Fetching the latest catalog from Firestore." />
@@ -1090,6 +1191,16 @@ export default function ProductsPage({
               <Check size={16} />{' '}
               {saving ? 'Saving to Firestore…' : editingProduct ? 'Save product changes' : 'Publish product'}
             </button>
+            {!editingProduct && (
+              <button
+                type="button"
+                onClick={discardDraft}
+                disabled={saving}
+                className="h-11 rounded-full border border-red-200 bg-white text-[10px] font-extrabold text-red-600 transition hover:bg-red-50 disabled:opacity-60 sm:col-span-2"
+              >
+                Discard Draft
+              </button>
+            )}
           </div>
         </form>
       </Modal>
