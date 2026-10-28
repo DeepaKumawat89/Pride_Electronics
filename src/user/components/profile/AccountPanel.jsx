@@ -33,6 +33,7 @@ import { useAnchoredPopover } from '../../../hooks/useAnchoredPopover'
 import { getInitials } from '../../../utils/text'
 import { formatCurrency, hasValidPrice } from '../../utils/currency'
 import { getApplicablePricingTier, getProductBasePrice } from '../../../utils/productPricing'
+import { getProductMinimumOrderQuantity } from '../../../utils/productMoq'
 import {
   calculateCartPricing,
   MINIMUM_ORDER_MESSAGE,
@@ -1479,6 +1480,7 @@ function CartSection({
                   )}
                   {(() => {
                     const applicableTier = getApplicablePricingTier(product, quantity)
+                    const minimumOrderQuantity = getProductMinimumOrderQuantity(product)
                     const unitPrice = applicableTier.unitPrice
                     const itemTax = pricing.lineTaxes[itemIndex]
                     const gstRate = Number(itemTax?.gstRate ?? applicableTier.taxRate ?? 0)
@@ -1500,10 +1502,13 @@ function CartSection({
                             <span className="text-slate-400"> after applicable discount</span>
                           )}
                         </p>
+                        <p className="mt-1 text-[9px] font-bold text-[#397a4a]">
+                          Minimum order quantity: {minimumOrderQuantity}
+                        </p>
                         {(priceChanged || quantityAdjusted || Number(product.stock) <= 0 || !hasValidPrice(product.price)) && (
                           <div className="mt-2 space-y-1 text-[8px] font-extrabold">
                             {priceChanged && <p className="text-[#397a4a]">Price updated to the latest catalog price</p>}
-                            {quantityAdjusted && <p className="text-amber-700">Quantity adjusted to available stock</p>}
+                            {quantityAdjusted && <p className="text-amber-700">Quantity adjusted to current purchase limits</p>}
                             {Number(product.stock) <= 0 && <p className="text-red-600">Out of stock — remove or save this item for later</p>}
                             {!hasValidPrice(product.price) && <p className="text-red-600">Current price unavailable — this item cannot be purchased</p>}
                           </div>
@@ -1512,7 +1517,7 @@ function CartSection({
                           <div className="flex items-center rounded-full border border-slate-200 bg-white shadow-sm">
                             <button
                               type="button"
-                              disabled={quantity <= 1}
+                              disabled={quantity <= minimumOrderQuantity}
                               onClick={() => onChangeQuantity(key, -1)}
                               className="grid size-8 place-items-center hover:text-[#ff5c35] disabled:cursor-not-allowed disabled:opacity-30"
                             >

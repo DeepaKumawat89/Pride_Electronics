@@ -1,5 +1,9 @@
 import { productForVariant, variantCartKey } from '../../utils/productVariants.js'
 import { getApplicablePricingTier } from '../../utils/productPricing.js'
+import {
+  clampProductQuantity,
+  getProductMinimumOrderQuantity,
+} from '../../utils/productMoq.js'
 
 const validId = (value) => /^[a-zA-Z0-9_-]{1,100}$/.test(String(value || ''))
 
@@ -34,13 +38,14 @@ export function normalizeCheckoutSelection(value) {
 }
 
 export function createBuyNowSelection(product, quantity = 1) {
+  const stockLimit = Math.min(Math.max(0, Number(product?.stock) || 0), 100)
   return normalizeCheckoutSelection({
     mode: 'buy-now',
     items: [
       {
         productId: product?.id,
         variantId: product?.selectedVariantId || '',
-        quantity,
+        quantity: clampProductQuantity(product, quantity, stockLimit),
       },
     ],
   })
@@ -59,11 +64,15 @@ export function resolveCheckoutSelection(selection, products = []) {
       ? productForVariant(baseProduct, item.variantId)
       : baseProduct
     if (!product) return []
+    const minimumOrderQuantity = getProductMinimumOrderQuantity(product)
+    const stockLimit = Math.min(Math.max(0, Number(product.stock) || 0), 100)
     return [
       {
         key: variantCartKey(item.productId, item.variantId),
         product,
-        quantity: item.quantity,
+        quantity: stockLimit >= minimumOrderQuantity
+          ? clampProductQuantity(product, item.quantity, stockLimit)
+          : minimumOrderQuantity,
       },
     ]
   })

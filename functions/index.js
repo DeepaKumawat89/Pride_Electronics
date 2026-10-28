@@ -14,6 +14,7 @@ const {
   payableAmountPaiseForQuote,
   razorpayEnvironmentForKey,
   roundMoney,
+  validateMinimumOrderQuantities,
 } = require('./checkout')
 const {
   removePurchasedCartItems,
@@ -232,6 +233,9 @@ const checkoutError = (error) => {
     return new HttpsError('failed-precondition', error.message)
   }
   if (error?.code === 'minimum-order-not-met') {
+    return new HttpsError('failed-precondition', error.message)
+  }
+  if (error?.code === 'minimum-order-quantity-not-met') {
     return new HttpsError('failed-precondition', error.message)
   }
   return new HttpsError('invalid-argument', 'The checkout details are invalid.')
@@ -516,6 +520,11 @@ async function reserveCheckoutStock({
       ...(document.exists ? document.data() : {}),
       enabled: document.exists && document.data().enabled !== false,
     }))
+    try {
+      validateMinimumOrderQuantities(items, products)
+    } catch (error) {
+      throw checkoutError(error)
+    }
     let quote
     try {
       const taxSettings = normalizeInvoiceSettings(invoiceSettingsDocument.data() || {}).tax
@@ -1717,6 +1726,11 @@ async function placeOrderHandler(request) {
       ...(document.exists ? document.data() : {}),
       enabled: document.exists && document.data().enabled !== false,
     }))
+    try {
+      validateMinimumOrderQuantities(items, products)
+    } catch (error) {
+      throw checkoutError(error)
+    }
     let quote
     if (isCashOnDelivery) {
       try {

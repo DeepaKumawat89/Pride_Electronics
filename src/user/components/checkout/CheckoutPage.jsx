@@ -20,6 +20,11 @@ import {
 import { formatCurrency, hasValidPrice } from '../../utils/currency'
 import { getApplicablePricingTier } from '../../../utils/productPricing'
 import {
+  getMinimumOrderQuantityMessage,
+  getProductMinimumOrderQuantity,
+  productMeetsMinimumOrderQuantity,
+} from '../../../utils/productMoq'
+import {
   authoritativePricingFromQuote,
   calculateCartPricing,
   MINIMUM_ORDER_MESSAGE,
@@ -257,12 +262,20 @@ export default function CheckoutPage({
     : pricing
   const checkoutTotal = checkoutPricing.total
   const minimumOrderNotMet = checkoutPricing.taxableSubtotal < MINIMUM_ORDER_VALUE
+  const minimumQuantityViolation = items.find(
+    ({ product, quantity }) =>
+      !productMeetsMinimumOrderQuantity(product, quantity),
+  )
+  const minimumQuantityError = minimumQuantityViolation
+    ? getMinimumOrderQuantityMessage(minimumQuantityViolation.product)
+    : ''
 
   const hasUnavailableItems = items.some(
     ({ product, quantity }) =>
       !hasValidPrice(product.price) ||
       Number(product.stock) <= 0 ||
-      quantity > Number(product.stock),
+      quantity > Number(product.stock) ||
+      !productMeetsMinimumOrderQuantity(product, quantity),
   )
 
   // Coupon handling
@@ -414,6 +427,10 @@ export default function CheckoutPage({
     setGstDetailsError('')
     setPage1Error('')
 
+    if (minimumQuantityError) {
+      setPage1Error(minimumQuantityError)
+      return
+    }
     if (minimumOrderNotMet) {
       setPage1Error(MINIMUM_ORDER_MESSAGE)
       return
@@ -550,6 +567,10 @@ export default function CheckoutPage({
       return
     }
 
+    if (minimumQuantityError) {
+      setPaymentError(minimumQuantityError)
+      return
+    }
     if (!items.length || hasUnavailableItems) {
       setPaymentError('Your cart contains unavailable or invalid items. Return to your cart and review them before placing the order.')
       return
@@ -1193,7 +1214,13 @@ export default function CheckoutPage({
                 <span>{page1Error}</span>
               </div>
             )}
-            {minimumOrderNotMet && !page1Error && (
+            {minimumQuantityError && !page1Error && (
+              <div className="flex items-center gap-2.5 rounded-xl bg-amber-50 p-3.5 text-xs font-bold text-amber-800 border border-amber-200">
+                <AlertCircle size={16} className="shrink-0" />
+                <span>{minimumQuantityError}</span>
+              </div>
+            )}
+            {minimumOrderNotMet && !minimumQuantityError && !page1Error && (
               <div className="flex items-center gap-2.5 rounded-xl bg-amber-50 p-3.5 text-xs font-bold text-amber-800 border border-amber-200">
                 <AlertCircle size={16} className="shrink-0" />
                 <span>{MINIMUM_ORDER_MESSAGE}</span>
@@ -1205,7 +1232,7 @@ export default function CheckoutPage({
               <button
                 type="button"
                 onClick={handleProceedToSummary}
-                disabled={minimumOrderNotMet}
+                disabled={Boolean(minimumQuantityError) || minimumOrderNotMet}
                 className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#253329] px-7 text-xs font-extrabold text-white shadow-md transition hover:bg-[#397a4a] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
               >
                 Continue to Order Summary →
@@ -1295,6 +1322,7 @@ export default function CheckoutPage({
                   const stock = Math.max(0, Number(product.stock) || 0)
                   const available = stock > 0
                   const applicableTier = getApplicablePricingTier(product, quantity)
+                  const minimumOrderQuantity = getProductMinimumOrderQuantity(product)
                   const unitPrice = applicableTier.unitPrice
                   const validPrice = hasValidPrice(unitPrice)
                   const lineTotal = unitPrice * quantity
@@ -1329,6 +1357,9 @@ export default function CheckoutPage({
                               </span>
                             )}
                           </p>
+                          <p className="mt-0.5 text-[9px] font-bold text-[#397a4a]">
+                            Minimum order quantity: {minimumOrderQuantity}
+                          </p>
                         </div>
                       </div>
 
@@ -1340,16 +1371,16 @@ export default function CheckoutPage({
                           <button
                             type="button"
                             onClick={() => {
-                              if (quantity > 1) {
+                              if (quantity > minimumOrderQuantity) {
                                 updateCheckoutQuantity(key, -1)
                               } else {
                                 removeCheckoutItem(key)
                               }
                             }}
                             className="grid size-11 place-items-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 sm:size-9"
-                            title={quantity === 1 ? 'Remove item' : 'Decrease quantity'}
+                            title={quantity === minimumOrderQuantity ? 'Remove item' : 'Decrease quantity'}
                           >
-                            {quantity === 1 ? <Trash2 size={12} className="text-red-600" /> : <Minus size={12} />}
+                            {quantity === minimumOrderQuantity ? <Trash2 size={12} className="text-red-600" /> : <Minus size={12} />}
                           </button>
                           <span className="min-w-[1.5rem] text-center text-xs font-extrabold text-slate-900">
                             {quantity}
@@ -1547,9 +1578,14 @@ export default function CheckoutPage({
                   {paymentError}
                 </div>
               )}
-              {hasUnavailableItems && (
+              {hasUnavailableItems && !minimumQuantityError && (
                 <div className="mt-4 rounded-xl bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-800 border border-amber-200">
-                  Some products are out of stock. Please adjust quantities before placing your order.
+                  Some products do not meet their stock or minimum quantity requirements. Please adjust your cart before placing your order.
+                </div>
+              )}
+              {minimumQuantityError && (
+                <div className="mt-4 rounded-xl bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-800 border border-amber-200">
+                  {minimumQuantityError}
                 </div>
               )}
               {minimumOrderNotMet && (

@@ -39,6 +39,7 @@ import {
   isValidHsnCode,
   roundToTwoDecimals,
 } from '../../utils/productValidation'
+import { MINIMUM_ORDER_QUANTITY_OPTIONS } from '../../utils/productMoq'
 import {
   CUSTOMER_RIGHTS_NOTICE,
   RETURN_POLICY_OPTIONS,
@@ -62,6 +63,7 @@ const blankProduct = {
   badge: '',
   hsnCode: '',
   stock: '',
+  minimumOrderQuantity: 1,
   taxRate: 18,
   lowStockThreshold: '',
   enableBulkPricing: false,
@@ -438,6 +440,8 @@ export default function ProductsPage({
       errors.price = 'Enter a positive INR amount with no more than 2 decimal places.'
     if (!Number.isInteger(Number(form.stock)) || Number(form.stock) < 0)
       errors.stock = 'Stock must be a non-negative whole number.'
+    if (!MINIMUM_ORDER_QUANTITY_OPTIONS.includes(Number(form.minimumOrderQuantity)))
+      errors.minimumOrderQuantity = 'Select a valid minimum order quantity.'
     if (!form.modelNumber.trim()) errors.modelNumber = 'Model number is required.'
     if (!parseList(form.specs).length)
       errors.specs = 'Add at least one technical specification.'
@@ -511,6 +515,7 @@ export default function ProductsPage({
       pricingModel: GST_EXCLUSIVE_PRICING_MODEL,
       priceIncludesTax: false,
       stock: Number(form.stock),
+      minimumOrderQuantity: Number(form.minimumOrderQuantity),
       lowStockThreshold: Number(form.lowStockThreshold),
       enableBulkPricing: Boolean(form.enableBulkPricing),
       pricingTiers: form.enableBulkPricing
@@ -891,6 +896,22 @@ export default function ProductsPage({
                 step="1"
                 {...field('stock')}
                 className={inputClass}
+              />
+            </FormField>
+            <FormField label="Minimum Order Quantity (MOQ)" required error={formErrors.minimumOrderQuantity}>
+              <SelectMenu
+                value={Number(form.minimumOrderQuantity)}
+                onChange={(minimumOrderQuantity) => setForm((current) => ({
+                  ...current,
+                  minimumOrderQuantity,
+                }))}
+                options={MINIMUM_ORDER_QUANTITY_OPTIONS.map((quantity) => ({
+                  value: quantity,
+                  label: String(quantity),
+                }))}
+                required
+                ariaLabel="Minimum Order Quantity"
+                buttonClassName={inputClass}
               />
             </FormField>
             <FormField label="Low stock threshold" required>

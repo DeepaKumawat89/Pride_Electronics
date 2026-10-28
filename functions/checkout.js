@@ -8,6 +8,7 @@ const normalizedText = (value) => String(value || '').trim().toLowerCase()
 const GST_EXCLUSIVE_PRICING_MODEL = 'gst-exclusive-v1'
 const MINIMUM_ORDER_VALUE = 100
 const MINIMUM_ORDER_MESSAGE = 'Minimum order value is ₹100 (excluding GST and delivery charges).'
+const MINIMUM_ORDER_QUANTITIES = Object.freeze([1, 2, 5, 10, 20, 50, 100])
 const DELIVERY_METHODS = Object.freeze({
   office_pickup: { name: 'Collect From Office', charge: 0 },
   porter: { name: 'Through Porter', charge: 0 },
@@ -22,6 +23,44 @@ const OFFICE_PICKUP_ADDRESS = 'Office No. 237, 2nd Floor, XION Mall, Hinjewadi, 
 const normalizedHsnCode = (value) => {
   const hsnCode = String(value || '').trim()
   return /^[0-9]{8}$/.test(hsnCode) ? hsnCode : ''
+}
+
+const minimumOrderQuantityFor = (product = {}) => {
+  if (
+    !Object.prototype.hasOwnProperty.call(product, 'minimumOrderQuantity') ||
+    product.minimumOrderQuantity === null ||
+    product.minimumOrderQuantity === ''
+  ) return 1
+  const value = Number(product.minimumOrderQuantity)
+  if (!MINIMUM_ORDER_QUANTITIES.includes(value)) {
+    const error = new Error('A product has an invalid minimum order quantity.')
+    error.code = 'product-unavailable'
+    throw error
+  }
+  return value
+}
+
+function validateMinimumOrderQuantities(requestedItems, products) {
+  const productsById = products instanceof Map
+    ? products
+    : new Map(products.map((product) => [String(product.id), product]))
+  requestedItems.forEach((requested) => {
+    const product = productsById.get(String(requested.productId))
+    if (!product || product.enabled === false) {
+      const error = new Error('A product is no longer available.')
+      error.code = 'product-unavailable'
+      throw error
+    }
+    const minimumOrderQuantity = minimumOrderQuantityFor(product)
+    const quantity = Number(requested.qty || requested.quantity)
+    if (!Number.isInteger(quantity) || quantity < minimumOrderQuantity) {
+      const error = new Error(
+        `${String(product.name || 'This product')} requires a minimum quantity of ${minimumOrderQuantity}.`,
+      )
+      error.code = 'minimum-order-quantity-not-met'
+      throw error
+    }
+  })
 }
 
 const CUSTOMER_RIGHTS_NOTICE =
@@ -190,6 +229,14 @@ function calculateOrderQuote({
       error.code = 'product-unavailable'
       throw error
     }
+    const minimumOrderQuantity = minimumOrderQuantityFor(product)
+    if (qty < minimumOrderQuantity) {
+      const error = new Error(
+        `${String(product.name || 'This product')} requires a minimum quantity of ${minimumOrderQuantity}.`,
+      )
+      error.code = 'minimum-order-quantity-not-met'
+      throw error
+    }
     const variants = Array.isArray(product.variants) ? product.variants : []
     const variant = variants.find(
       (item) => String(item.id) === String(requested.variantId || ''),
@@ -262,6 +309,7 @@ function calculateOrderQuote({
       image: String(variant?.images?.[0] || variant?.image || product.image || '').slice(0, 2000),
       category: String(product.category || '').slice(0, 100),
       qty,
+      minimumOrderQuantity,
       price: price.basePrice,
       baseUnitPrice: price.basePrice,
       unitPrice: price.basePrice,
@@ -482,6 +530,7 @@ function payableAmountPaiseForQuote(quote = {}) {
   const items = Array.isArray(quote.items) ? quote.items : []
   const invalidItem = items.some((item) => {
     const quantity = Number(item.qty)
+    const minimumOrderQuantity = Number(item.minimumOrderQuantity ?? 1)
     const unitPrice = roundMoney(item.price)
     const grossAmount = roundMoney(item.grossAmount)
     const discount = roundMoney(item.discount)
@@ -491,6 +540,8 @@ function payableAmountPaiseForQuote(quote = {}) {
     return (
       !Number.isInteger(quantity) ||
       quantity < 1 ||
+      !MINIMUM_ORDER_QUANTITIES.includes(minimumOrderQuantity) ||
+      quantity < minimumOrderQuantity ||
       unitPrice <= 0 ||
       grossAmount !== roundMoney(unitPrice * quantity) ||
       discount < 0 ||
@@ -589,6 +640,7 @@ module.exports = {
   money,
   normalizePaymentConfiguration,
   normalizeRequestedItems,
+  validateMinimumOrderQuantities,
   payableAmountPaiseForQuote,
   razorpayEnvironmentForKey,
   roundMoney,

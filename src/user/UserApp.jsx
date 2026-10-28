@@ -75,6 +75,7 @@ import {
   resolveCheckoutSelection,
 } from './utils/checkoutSelection'
 import { createOrderMoment } from '../utils/orderTimestamps'
+import { getProductMinimumOrderQuantity } from '../utils/productMoq'
 
 const PRODUCT_HASH_PREFIX = '#product-'
 const PRODUCTS_HASH_PREFIX = '#products'
@@ -992,8 +993,10 @@ export default function UserApp({
       notify(`${product.name} is currently out of stock`)
       return
     }
+    const minimumOrderQuantity = getProductMinimumOrderQuantity(product)
+    const minimumApplied = (Number(quantity) || 1) < minimumOrderQuantity
     notify(
-      `${quantity > 1 ? `${quantity} x ` : ''}${product.name} added to your cart`,
+      `${product.name} added to your cart${minimumApplied ? ` · MOQ ${minimumOrderQuantity} applied` : ''}`,
     )
   }
 

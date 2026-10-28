@@ -89,6 +89,43 @@ test('checkout rejects products without a valid current Firebase price', () => {
   )
 })
 
+test('backend checkout enforces product MOQ from current Firebase data', () => {
+  const moqProduct = { ...product, minimumOrderQuantity: 5, stock: 20 }
+  assert.throws(
+    () => quoteFor({
+      requestedItems: [{ productId: product.id, quantity: 4 }],
+      products: [moqProduct],
+      deliveryId: 'office_pickup',
+    }),
+    (error) => error.code === 'minimum-order-quantity-not-met',
+  )
+  const quote = quoteFor({
+    requestedItems: [{ productId: product.id, quantity: 5 }],
+    products: [moqProduct],
+    deliveryId: 'office_pickup',
+  })
+  assert.equal(quote.items[0].minimumOrderQuantity, 5)
+  assert.equal(quote.items[0].qty, 5)
+})
+
+test('the existing ₹100 minimum order value remains independently enforced', () => {
+  const lowValueProduct = { ...product, price: 40, stock: 10 }
+  assert.throws(
+    () => quoteFor({
+      requestedItems: [{ productId: product.id, quantity: 2 }],
+      products: [lowValueProduct],
+      deliveryId: 'office_pickup',
+    }),
+    (error) => error.code === 'minimum-order-not-met',
+  )
+  const quote = quoteFor({
+    requestedItems: [{ productId: product.id, quantity: 3 }],
+    products: [lowValueProduct],
+    deliveryId: 'office_pickup',
+  })
+  assert.equal(quote.taxableSubtotal, 120)
+})
+
 test('buy-now selection resolves current Firebase product data and stays isolated', () => {
   const selection = createBuyNowSelection(product, 2)
   const updatedProduct = { ...product, price: 1350, stock: 3 }

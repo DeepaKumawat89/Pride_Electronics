@@ -1,6 +1,7 @@
 const DECIMAL_INPUT_PATTERN = /^\d+(?:\.\d{1,2})?$/
 const HSN_CODE_PATTERN = /^\d{8}$/
 const RETURN_POLICY_TYPES = ['return', 'replacement', 'non-returnable']
+const MINIMUM_ORDER_QUANTITIES = [1, 2, 5, 10, 20, 50, 100]
 
 const cleanText = (value) => String(value ?? '').trim()
 
@@ -62,6 +63,9 @@ export function validateProductForCreate(product = {}) {
 
   if (!Number.isInteger(Number(product.stock)) || Number(product.stock) < 0) {
     errors.push('Stock must be a non-negative whole number.')
+  }
+  if (!MINIMUM_ORDER_QUANTITIES.includes(Number(product.minimumOrderQuantity ?? 1))) {
+    errors.push('Select a valid minimum order quantity.')
   }
   if (product.pricingModel !== 'gst-exclusive-v1' || product.priceIncludesTax !== false) {
     errors.push('Products must use GST-exclusive selling prices.')

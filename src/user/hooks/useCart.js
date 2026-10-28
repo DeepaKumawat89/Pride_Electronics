@@ -6,6 +6,10 @@ import {
   variantCartKey,
 } from '../../utils/productVariants'
 import { calculateProductUnitPrice } from '../../utils/productPricing'
+import {
+  clampProductQuantity,
+  getProductMinimumOrderQuantity,
+} from '../../utils/productMoq'
 
 const resolveLiveProduct = (storedProduct, liveProducts) => {
   if (!Array.isArray(liveProducts)) return storedProduct
@@ -26,7 +30,12 @@ export function useCart(initialProduct, liveProducts = null) {
     liveProductsRef.current = liveProducts
   }, [liveProducts])
   const [storedItems, setStoredItems] = useState(
-    initialProduct ? [{ product: initialProduct, quantity: 1 }] : [],
+    initialProduct
+      ? [{
+          product: initialProduct,
+          quantity: getProductMinimumOrderQuantity(initialProduct),
+        }]
+      : [],
   )
   const [storedSavedItems, setStoredSavedItems] = useState([])
 
@@ -36,9 +45,10 @@ export function useCart(initialProduct, liveProducts = null) {
       if (!liveProduct) return []
       const stock = Math.max(0, Number(liveProduct.stock) || 0)
       const purchaseLimit = Math.min(stock, 100)
+      const minimumOrderQuantity = getProductMinimumOrderQuantity(liveProduct)
       const quantity = stock > 0
-        ? Math.min(Math.max(1, item.quantity), purchaseLimit)
-        : item.quantity
+        ? clampProductQuantity(liveProduct, item.quantity, purchaseLimit)
+        : Math.max(minimumOrderQuantity, item.quantity)
       return [{
         key: productKey(liveProduct),
         product: liveProduct,
@@ -80,17 +90,26 @@ export function useCart(initialProduct, liveProducts = null) {
     const stock = Math.max(0, Number(liveProduct.stock) || 0)
     if (!stock || !hasValidPrice(liveProduct.price)) return false
     const purchaseLimit = Math.min(stock, 100)
+    const minimumOrderQuantity = getProductMinimumOrderQuantity(liveProduct)
+    if (purchaseLimit < minimumOrderQuantity) return false
     const key = productKey(liveProduct)
 
     setStoredItems((current) => {
       const exists = current.find((item) => productKey(item.product) === key)
       return exists
         ? current.map((item) => productKey(item.product) === key
-          ? { product: liveProduct, quantity: Math.min(item.quantity + quantity, purchaseLimit) }
+          ? {
+              product: liveProduct,
+              quantity: clampProductQuantity(
+                liveProduct,
+                item.quantity + quantity,
+                purchaseLimit,
+              ),
+            }
           : item)
         : [...current, {
             product: liveProduct,
-            quantity: Math.min(Math.max(1, quantity), purchaseLimit),
+            quantity: clampProductQuantity(liveProduct, quantity, purchaseLimit),
           }]
     })
     setStoredSavedItems((current) =>
@@ -106,11 +125,16 @@ export function useCart(initialProduct, liveProducts = null) {
         const liveProduct = resolveLiveProduct(item.product, liveProducts) || item.product
         const stock = Math.max(0, Number(liveProduct.stock) || 0)
         const purchaseLimit = Math.min(stock, 100)
-        const currentQuantity = stock > 0 ? Math.min(item.quantity, purchaseLimit) : item.quantity
+        const minimumOrderQuantity = getProductMinimumOrderQuantity(liveProduct)
+        const currentQuantity = stock > 0
+          ? clampProductQuantity(liveProduct, item.quantity, purchaseLimit)
+          : Math.max(minimumOrderQuantity, item.quantity)
         const nextQuantity = currentQuantity + amount
         return {
           product: liveProduct,
-          quantity: stock > 0 ? Math.min(nextQuantity, purchaseLimit) : nextQuantity,
+          quantity: stock > 0
+            ? clampProductQuantity(liveProduct, nextQuantity, purchaseLimit)
+            : Math.max(minimumOrderQuantity, nextQuantity),
         }
       })
       .filter((item) => item.quantity > 0))
@@ -167,7 +191,10 @@ export function useCart(initialProduct, liveProducts = null) {
     }
     setStoredItems((account.cartItems || []).map((item) => ({
       product: productFor(item.productId, item.variantId),
-      quantity: Math.max(1, Number(item.quantity) || 1),
+      quantity: Math.max(
+        getProductMinimumOrderQuantity(productFor(item.productId, item.variantId)),
+        Number(item.quantity) || 1,
+      ),
     })))
     setStoredSavedItems((account.savedCartItems || []).map((item) => ({
       product: productFor(item.productId || item, item.variantId),

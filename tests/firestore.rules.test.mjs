@@ -521,6 +521,24 @@ test('an admin can create the complete product editor payload', async () => {
       updatedAt: '2026-10-27T00:01:00.000Z',
     }),
   )
+  await assertSucceeds(
+    updateDoc(doc(database, 'products', 'FULL_PRODUCT'), {
+      minimumOrderQuantity: 5,
+      updatedAt: '2026-10-27T00:02:00.000Z',
+    }),
+  )
+  await assertFails(
+    updateDoc(doc(database, 'products', 'FULL_PRODUCT'), {
+      minimumOrderQuantity: 3,
+      updatedAt: '2026-10-27T00:03:00.000Z',
+    }),
+  )
+  await assertFails(
+    updateDoc(doc(database, 'products', 'FULL_PRODUCT'), {
+      minimumOrderQuantity: '5',
+      updatedAt: '2026-10-27T00:04:00.000Z',
+    }),
+  )
 
   const regularUser = testEnvironment.authenticatedContext('UID_A').firestore()
   await assertFails(
@@ -550,6 +568,36 @@ test('authorized admins can add and update a valid HSN code on legacy products',
   )
   await assertSucceeds(
     setDoc(legacyProduct, { hsnCode: '', updatedAt: '2026-10-15T00:02:00.000Z' }, { merge: true }),
+  )
+})
+
+test('authorized admins can set valid MOQ on legacy products', async () => {
+  const adminDatabase = testEnvironment
+    .authenticatedContext('UID_ADMIN', { admin: true })
+    .firestore()
+  const regularDatabase = testEnvironment.authenticatedContext('UID_A').firestore()
+  const legacyProduct = doc(adminDatabase, 'products', 'PRODUCT_1')
+
+  await assertSucceeds(
+    setDoc(
+      legacyProduct,
+      { minimumOrderQuantity: 10, updatedAt: '2026-10-28T00:00:00.000Z' },
+      { merge: true },
+    ),
+  )
+  await assertFails(
+    setDoc(
+      legacyProduct,
+      { minimumOrderQuantity: 3, updatedAt: '2026-10-28T00:01:00.000Z' },
+      { merge: true },
+    ),
+  )
+  await assertFails(
+    setDoc(
+      doc(regularDatabase, 'products', 'PRODUCT_1'),
+      { minimumOrderQuantity: 20, updatedAt: '2026-10-28T00:02:00.000Z' },
+      { merge: true },
+    ),
   )
 })
 

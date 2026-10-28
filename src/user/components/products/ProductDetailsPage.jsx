@@ -35,6 +35,10 @@ import {
   getProductBasePrice,
   normalizePricingTiers,
 } from '../../../utils/productPricing'
+import {
+  clampProductQuantity,
+  getProductMinimumOrderQuantity,
+} from '../../../utils/productMoq'
 
 function TechnicalSpecificationsSection({ specifications }) {
   const [mobileExpanded, setMobileExpanded] = useState(false)
@@ -109,7 +113,9 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
   }, [])
 
   const [activeImageIndex, setActiveImageIndex] = useState(0)
-  const [quantity, setQuantity] = useState(1)
+  const [quantity, setQuantity] = useState(() =>
+    getProductMinimumOrderQuantity(product),
+  )
   const [selectedVariantId, setSelectedVariantId] = useState('')
   const [showBulkPopover, setShowBulkPopover] = useState(false)
   const [bulkTierError, setBulkTierError] = useState(null)
@@ -143,6 +149,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
   const activeImage = images[activeImageIndex] || images[0]
   const stock = Math.max(0, Number(displayProduct.stock) || 0)
   const purchaseLimit = Math.min(stock, 100)
+  const minimumOrderQuantity = getProductMinimumOrderQuantity(displayProduct)
 
   useEffect(() => {
     setBulkTierError(null)
@@ -183,7 +190,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
 
   const updateQuantity = (amount) => {
     setQuantity((current) =>
-      Math.min(Math.max(current + amount, 1), Math.max(purchaseLimit, 1)),
+      clampProductQuantity(displayProduct, current + amount, purchaseLimit),
     )
   }
 
@@ -272,7 +279,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                       const selected = String(selectedVariantId) === String(variant.id)
                       const variantProduct = productForVariant(product, variant.id)
                       return (
-                        <button key={variant.id} type="button" disabled={!available} onClick={() => { setSelectedVariantId(variant.id); setActiveImageIndex(0); setQuantity(1) }} className={`rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${selected ? 'border-[#397a4a] bg-[#eef6ef] shadow-sm' : 'border-slate-200 bg-white hover:border-[#9bcaa6]'}`}>
+                        <button key={variant.id} type="button" disabled={!available} onClick={() => { setSelectedVariantId(variant.id); setActiveImageIndex(0); setQuantity(getProductMinimumOrderQuantity(product)) }} className={`rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${selected ? 'border-[#397a4a] bg-[#eef6ef] shadow-sm' : 'border-slate-200 bg-white hover:border-[#9bcaa6]'}`}>
                           <strong className="block text-[11px] text-slate-900">{variant.name}</strong>
                           <span className="mt-1 block text-[9px] font-bold text-[#397a4a]">{formatCurrency(getProductBasePrice(variantProduct || product))} (Excl. GST) · {available} available</span>
                         </button>
@@ -347,15 +354,19 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                                 <tr
                                   key={idx}
                                   onClick={() => {
-                                    if (tier.minQty > stock) {
+                                    const selectedQuantity = Math.max(
+                                      tier.minQty,
+                                      minimumOrderQuantity,
+                                    )
+                                    if (selectedQuantity > stock) {
                                       setBulkTierError({
                                         minQty: tier.minQty,
-                                        message: `Only ${stock} units are available. You cannot select a quantity of ${tier.minQty}. Please choose a lower quantity.`,
+                                        message: `Only ${stock} units are available. You cannot select a quantity of ${selectedQuantity}. Please choose a lower quantity.`,
                                       })
                                       return
                                     }
                                     setBulkTierError(null)
-                                    setQuantity(tier.minQty)
+                                    setQuantity(selectedQuantity)
                                     setShowBulkPopover(false)
                                   }}
                                   className={`cursor-pointer transition ${
@@ -403,10 +414,13 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                 <div>
                   <p className="mb-2 text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">Quantity</p>
                   <div className="flex h-12 w-36 items-center justify-between rounded-full border border-slate-200 bg-slate-50 p-1">
-                    <button type="button" onClick={() => updateQuantity(-1)} disabled={quantity <= 1} className="grid size-9 place-items-center rounded-full text-slate-600 transition hover:bg-white hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-30" aria-label="Decrease quantity"><Minus size={15} /></button>
+                    <button type="button" onClick={() => updateQuantity(-1)} disabled={quantity <= minimumOrderQuantity} className="grid size-9 place-items-center rounded-full text-slate-600 transition hover:bg-white hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-30" aria-label="Decrease quantity"><Minus size={15} /></button>
                     <strong className="text-sm text-slate-950">{quantity}</strong>
                     <button type="button" onClick={() => updateQuantity(1)} disabled={quantity >= purchaseLimit} className="grid size-9 place-items-center rounded-full text-slate-600 transition hover:bg-white hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-30" aria-label="Increase quantity"><Plus size={15} /></button>
                   </div>
+                  <p className="mt-1.5 text-[9px] font-bold text-[#397a4a]">
+                    Minimum order quantity: {minimumOrderQuantity}
+                  </p>
                 </div>
                 <p className={`pb-3 text-[11px] font-extrabold ${stock > 0 && stock < 10 ? 'text-amber-600' : stock > 0 ? 'text-emerald-700' : 'text-red-600'}`}>
                   {stock === 0 ? 'Currently unavailable' : stock < 10 ? `Only ${stock} units left` : `${stock} units available`}
@@ -414,10 +428,10 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
               </div>
 
               <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
-                <button type="button" disabled={!stock || !priceAvailable || (requiresVariantSelection && !selectedVariantProduct)} onClick={() => onAdd(displayProduct, quantity)} className="flex h-12 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-xs font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-[52px]">
+                <button type="button" disabled={stock < minimumOrderQuantity || !priceAvailable || (requiresVariantSelection && !selectedVariantProduct)} onClick={() => onAdd(displayProduct, quantity)} className="flex h-12 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-xs font-extrabold text-white transition hover:bg-[#ff5c35] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-[52px]">
                   <ShoppingBag size={17} /> {requiresVariantSelection && !selectedVariantProduct ? 'Select a variant' : 'Add to cart'}
                 </button>
-                <button type="button" disabled={!stock || !priceAvailable || (requiresVariantSelection && !selectedVariantProduct)} onClick={() => onBuyNow(displayProduct, quantity)} className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#397a4a] px-4 text-xs font-extrabold text-white transition hover:bg-[#2f663d] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-[52px]">
+                <button type="button" disabled={stock < minimumOrderQuantity || !priceAvailable || (requiresVariantSelection && !selectedVariantProduct)} onClick={() => onBuyNow(displayProduct, quantity)} className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#397a4a] px-4 text-xs font-extrabold text-white transition hover:bg-[#2f663d] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-[52px]">
                   <Zap size={17} fill="currentColor" /> Buy now
                 </button>
               </div>

@@ -6,7 +6,8 @@ rules_version = '2';
 // products/{productId}: publicly readable catalog documents. Admin-only full
 // writes require name/category metadata, positive GST-exclusive price,
 // pricingModel "gst-exclusive-v1", priceIncludesTax false, GST rate 0..100,
-// inventory, specifications, 1..3 product images scoped to productId, and an
+// inventory, optional product MOQ (default 1), specifications, 1..3 product
+// images scoped to productId, and an
 // optional admin-managed return/replacement policy for legacy compatibility.
 // users/{uid}: private customer profile, address, cart, and preference data.
 // orders, returns: owner/admin-readable commerce records; trusted backend
@@ -88,6 +89,12 @@ service cloud.firestore {
           (data.hsnCode == '' || data.hsnCode.matches('^[0-9]{8}$')));
     }
 
+    function hasValidMinimumOrderQuantity(data) {
+      return !data.keys().hasAny(['minimumOrderQuantity']) ||
+        (data.minimumOrderQuantity is int &&
+          data.minimumOrderQuantity in [1, 2, 5, 10, 20, 50, 100]);
+    }
+
     function isValidProductImagePath(path, productId) {
       return productId.matches('^[A-Za-z0-9_-]{1,128}$') &&
         path is string && path.size() <= 500 &&
@@ -164,6 +171,7 @@ service cloud.firestore {
         data.priceIncludesTax == false &&
         isCurrencyAmount(data.taxRate, true) && data.taxRate <= 100 &&
         data.stock is int && data.stock >= 0 &&
+        hasValidMinimumOrderQuantity(data) &&
         data.modelNumber is string && data.modelNumber.size() > 0 && data.modelNumber.size() <= 200 &&
         hasValidHsnCode(data) &&
         hasValidProductImages(data, productId) &&
@@ -187,10 +195,13 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'stock', 'reservedStock', 'variants', 'rating', 'reviewsCount',
           'categoryId', 'category', 'subcategoryId', 'subcategory', 'updatedAt',
-          'hsnCode', 'enabled'
+          'hsnCode', 'minimumOrderQuantity', 'enabled'
         ]) &&
         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['hsnCode']) ||
-          hasValidHsnCode(request.resource.data));
+          hasValidHsnCode(request.resource.data)) &&
+        (!request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['minimumOrderQuantity']) ||
+          hasValidMinimumOrderQuantity(request.resource.data));
     }
 
     function isValidUser(data, userId) {
