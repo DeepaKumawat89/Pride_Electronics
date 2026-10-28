@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import assert from 'node:assert/strict'
 import { after, before, beforeEach, test } from 'node:test'
 import {
   assertFails,
@@ -13,6 +14,7 @@ import {
   getDoc,
   getDocs,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -88,6 +90,35 @@ beforeEach(async () => {
 
 after(async () => {
   await testEnvironment?.cleanup()
+})
+
+test('the product SKU counter is admin-only, monotonic, and transaction-safe', async () => {
+  const adminDatabase = testEnvironment
+    .authenticatedContext('UID_ADMIN', { admin: true })
+    .firestore()
+  const regularDatabase = testEnvironment.authenticatedContext('UID_A').firestore()
+  const counterReference = doc(adminDatabase, 'skuCounters', 'products')
+
+  const allocateSequence = () => runTransaction(adminDatabase, async (transaction) => {
+    const snapshot = await transaction.get(counterReference)
+    const nextSequence = Math.max(
+      36,
+      snapshot.exists() ? Number(snapshot.data().lastSequence) || 0 : 0,
+    ) + 1
+    transaction.set(counterReference, { lastSequence: nextSequence })
+    return nextSequence
+  })
+
+  const allocated = await Promise.all([allocateSequence(), allocateSequence()])
+  assert.deepEqual(allocated.sort((first, second) => first - second), [37, 38])
+  assert.equal((await getDoc(counterReference)).data().lastSequence, 38)
+
+  await assertFails(getDoc(doc(regularDatabase, 'skuCounters', 'products')))
+  await assertFails(
+    setDoc(doc(regularDatabase, 'skuCounters', 'products'), { lastSequence: 39 }),
+  )
+  await assertFails(setDoc(counterReference, { lastSequence: 37 }))
+  await assertFails(deleteDoc(counterReference))
 })
 
 test('User A can read their profile but direct account writes require the backend', async () => {

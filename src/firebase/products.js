@@ -1,18 +1,24 @@
 import {
   collection,
-  deleteDoc,
   deleteField,
   doc,
+  getDocs,
   onSnapshot,
-  setDoc,
+  runTransaction,
 } from 'firebase/firestore'
 import { db, FIREBASE_STORAGE_BUCKET } from './firebase'
 import {
   assertValidHsnCode,
   assertValidProductForCreate,
 } from '../utils/productValidation'
+import {
+  createProductSku,
+  getHighestSkuSequence,
+  updateProductSku,
+} from '../utils/productSku'
 
 const productsCollection = collection(db, 'products')
+const productSkuCounterReference = doc(db, 'skuCounters', 'products')
 
 const productImageFields = ['image', 'images', 'imageStoragePaths']
 
@@ -127,19 +133,43 @@ export function subscribeToProducts(onProducts, onError) {
 
 export async function createProduct(product) {
   const productToCreate = { ...product }
-  if (!String(productToCreate.sku || '').trim()) delete productToCreate.sku
-  assertValidProductForCreate(productToCreate)
   const productReference = productToCreate.id
     ? doc(productsCollection, String(productToCreate.id))
     : doc(productsCollection)
-  const savedProduct = {
-    ...productToCreate,
-    id: productReference.id,
-    createdAt: productToCreate.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }
-  await setDoc(productReference, serializeProduct(savedProduct))
-  return savedProduct
+  const existingProducts = (await getDocs(productsCollection)).docs.map(
+    (snapshotDocument) => snapshotDocument.data(),
+  )
+  const highestExistingSequence = getHighestSkuSequence(existingProducts)
+
+  return runTransaction(db, async (transaction) => {
+    const [counterSnapshot, productSnapshot] = await Promise.all([
+      transaction.get(productSkuCounterReference),
+      transaction.get(productReference),
+    ])
+    if (productSnapshot.exists()) {
+      throw new Error('A product with this Firestore ID already exists.')
+    }
+    const counterSequence = counterSnapshot.exists()
+      ? Number(counterSnapshot.data().lastSequence) || 0
+      : 0
+    const nextSequence = Math.max(highestExistingSequence, counterSequence) + 1
+    const savedProduct = {
+      ...productToCreate,
+      id: productReference.id,
+      sku: createProductSku(
+        productToCreate.sku,
+        productToCreate.category,
+        productToCreate.subcategory,
+        nextSequence,
+      ),
+      createdAt: productToCreate.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    assertValidProductForCreate(savedProduct)
+    transaction.set(productSkuCounterReference, { lastSequence: nextSequence })
+    transaction.set(productReference, serializeProduct(savedProduct))
+    return savedProduct
+  })
 }
 
 export const createProductId = () => doc(productsCollection).id
@@ -149,16 +179,32 @@ export async function saveProduct(product) {
   if (Object.prototype.hasOwnProperty.call(product, 'hsnCode')) {
     assertValidHsnCode(product.hsnCode)
   }
-  const savedProduct = {
-    ...product,
-    updatedAt: new Date().toISOString(),
-  }
-  await setDoc(
-    doc(productsCollection, String(product.id)),
-    serializeProductUpdate(savedProduct),
-    { merge: true },
-  )
-  return savedProduct
+  const productReference = doc(productsCollection, String(product.id))
+  return runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(productReference)
+    if (!snapshot.exists()) throw new Error('Product not found.')
+    const existingProduct = snapshot.data()
+    const savedProduct = {
+      ...product,
+      ...(Object.prototype.hasOwnProperty.call(product, 'sku')
+        ? {
+            sku: updateProductSku(
+              existingProduct.sku,
+              product.sku,
+              product.category || existingProduct.category,
+              product.subcategory || existingProduct.subcategory,
+            ),
+          }
+        : {}),
+      updatedAt: new Date().toISOString(),
+    }
+    transaction.set(
+      productReference,
+      serializeProductUpdate(savedProduct),
+      { merge: true },
+    )
+    return savedProduct
+  })
 }
 
 export async function saveProducts(products, { batchSize = 50 } = {}) {
@@ -172,7 +218,31 @@ export async function saveProducts(products, { batchSize = 50 } = {}) {
 
 export async function removeProduct(productId) {
   if (!productId) throw new Error('A Firestore product ID is required.')
-  await deleteDoc(doc(productsCollection, String(productId)))
+  const productReference = doc(productsCollection, String(productId))
+  const existingProducts = (await getDocs(productsCollection)).docs.map(
+    (snapshotDocument) => snapshotDocument.data(),
+  )
+  const highestExistingSequence = getHighestSkuSequence(existingProducts)
+
+  await runTransaction(db, async (transaction) => {
+    const [counterSnapshot, productSnapshot] = await Promise.all([
+      transaction.get(productSkuCounterReference),
+      transaction.get(productReference),
+    ])
+    if (!productSnapshot.exists()) throw new Error('Product not found.')
+    const counterSequence = counterSnapshot.exists()
+      ? Number(counterSnapshot.data().lastSequence) || 0
+      : 0
+    if (
+      highestExistingSequence > 0 &&
+      (!counterSnapshot.exists() || highestExistingSequence > counterSequence)
+    ) {
+      transaction.set(productSkuCounterReference, {
+        lastSequence: Math.max(highestExistingSequence, counterSequence),
+      })
+    }
+    transaction.delete(productReference)
+  })
 }
 
 export async function updateProductRatingStats(productId, reviews = []) {

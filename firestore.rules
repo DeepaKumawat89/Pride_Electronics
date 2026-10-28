@@ -16,6 +16,7 @@ rules_version = '2';
 // settings/invoice: public seller/tax information used for checkout display;
 // writes are backend-only after callable admin authorization and validation.
 // refunds, inventoryHistory: admin-only operational records.
+// skuCounters/products: admin-only monotonic product SKU sequence allocator.
 // invoices, paymentIntents, stockReservations, couponUsages, _authPhoneIndex:
 // trusted-backend-only records (default denied to clients).
 // ===============================================================
@@ -173,6 +174,14 @@ service cloud.firestore {
         !data.keys().hasAny(['originalPrice', 'discount']);
     }
 
+    function isValidSkuCounter(data) {
+      return data.keys().hasOnly(['lastSequence']) &&
+        data.keys().hasAll(['lastSequence']) &&
+        data.lastSequence is int &&
+        data.lastSequence >= 1 &&
+        data.lastSequence <= 999999;
+    }
+
     function isLegacyProductOperationalUpdate(productId) {
       return !isValidProduct(resource.data, productId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -255,6 +264,16 @@ service cloud.firestore {
         (isValidProduct(request.resource.data, productId) ||
           isLegacyProductOperationalUpdate(productId));
       allow delete: if isAdmin();
+    }
+
+    match /skuCounters/{counterId} {
+      allow read: if counterId == 'products' && isAdmin();
+      allow create: if counterId == 'products' && isAdmin() &&
+        isValidSkuCounter(request.resource.data);
+      allow update: if counterId == 'products' && isAdmin() &&
+        isValidSkuCounter(request.resource.data) &&
+        request.resource.data.lastSequence > resource.data.lastSequence;
+      allow delete: if false;
     }
 
     match /categories/{categoryId} {

@@ -131,9 +131,7 @@ const createDuplicateProduct = (product) => {
     ...convertProductToGstExclusive(product),
     id: duplicateId,
     name: `${product.name} Copy`,
-    sku: product.sku
-      ? `${product.sku}-COPY-${String(duplicateId).slice(-4)}`
-      : '',
+    sku: product.sku || '',
     technicalSpecifications: [],
     customSpecifications: [],
     variants: [],
@@ -479,14 +477,11 @@ export default function ProductsPage({
         : `${invalidImage.name} must be a JPG, PNG, or WebP image.`
     if (
       form.sku.trim() &&
-      products.some(
-        (product) =>
-          product.id !== editingProduct?.id &&
-          String(product.sku).toLowerCase() ===
-            form.sku.trim().toLowerCase(),
-      )
-    )
-      errors.sku = 'This SKU is already in use.'
+      !/^PC-[A-Z0-9]{3}-[A-Z0-9]{3}(?:-[0-9]{6})?$/i.test(form.sku.trim()) &&
+      form.sku.trim() !== String(editingProduct?.sku || '').trim()
+    ) {
+      errors.sku = 'Use PC-XXX-YYY; the six-digit sequence is generated automatically.'
+    }
     const bulkPricingError = validatePricingTiers(form.pricingTiers, form.enableBulkPricing)
     if (bulkPricingError) {
       errors.pricingTiers = bulkPricingError
