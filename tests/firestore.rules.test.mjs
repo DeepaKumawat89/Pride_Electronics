@@ -392,6 +392,76 @@ test('admin product creates require complete fields and valid INR pricing', asyn
   )
 })
 
+test('an admin can create the complete product editor payload', async () => {
+  const database = testEnvironment
+    .authenticatedContext('UID_ADMIN', { admin: true })
+    .firestore()
+  const product = {
+    name: 'Complete product editor payload',
+    sku: 'COMPLETE-1',
+    brand: 'Pride',
+    description: 'A complete product description created by the admin editor.',
+    categoryId: 'CATEGORY_1',
+    category: 'Electronics',
+    subcategoryId: 'SUBCATEGORY_1',
+    subcategory: 'Accessories',
+    price: 900.45,
+    pricingModel: 'gst-exclusive-v1',
+    priceIncludesTax: false,
+    pricingTiers: [],
+    enableBulkPricing: false,
+    taxRate: 18,
+    stock: 5,
+    reservedStock: 0,
+    lowStockThreshold: 2,
+    modelNumber: 'MODEL-1',
+    hsnCode: '85371000',
+    specs: ['Power: 10 W'],
+    image: 'https://example.com/product.webp',
+    images: ['https://example.com/product.webp'],
+    imageStoragePaths: ['products/FULL_PRODUCT/photo.webp'],
+    variants: [],
+    videos: [],
+    badge: '',
+    warranty: '',
+    weight: '',
+    dimensions: '',
+    deliveryInformation: '',
+    rating: 0,
+    reviewsCount: 0,
+    featured: true,
+    enabled: true,
+    returnPolicy: {
+      type: 'return',
+      days: 7,
+      conditions: 'Return the product in its original condition.',
+      customerRights: 'Statutory consumer rights remain unaffected.',
+    },
+    createdAt: '2026-10-27T00:00:00.000Z',
+    updatedAt: '2026-10-27T00:00:00.000Z',
+  }
+
+  await assertSucceeds(
+    setDoc(doc(database, 'products', 'FULL_PRODUCT'), product),
+  )
+  await assertSucceeds(
+    updateDoc(doc(database, 'products', 'FULL_PRODUCT'), {
+      name: 'Updated complete product payload',
+      updatedAt: '2026-10-27T00:01:00.000Z',
+    }),
+  )
+
+  const regularUser = testEnvironment.authenticatedContext('UID_A').firestore()
+  await assertFails(
+    setDoc(doc(regularUser, 'products', 'UNAUTHORIZED_PRODUCT'), product),
+  )
+  await assertFails(
+    updateDoc(doc(regularUser, 'products', 'FULL_PRODUCT'), {
+      name: 'Unauthorized product update',
+    }),
+  )
+})
+
 test('authorized admins can add and update a valid HSN code on legacy products', async () => {
   const database = testEnvironment
     .authenticatedContext('UID_ADMIN', { admin: true })
