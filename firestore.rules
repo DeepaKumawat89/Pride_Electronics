@@ -75,7 +75,10 @@ service cloud.firestore {
     function isCurrencyAmount(value, allowZero) {
       return value is number &&
         (allowZero ? value >= 0 : value > 0) &&
-        value * 100 == int(value * 100);
+        (
+          value * 100 - int(value * 100) < 0.000001 ||
+          int(value * 100) + 1 - value * 100 < 0.000001
+        );
     }
 
     function hasValidHsnCode(data) {

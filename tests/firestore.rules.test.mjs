@@ -392,6 +392,46 @@ test('admin product creates require complete fields and valid INR pricing', asyn
   )
 })
 
+test('admin product pricing accepts valid cents affected by floating-point precision', async () => {
+  const database = testEnvironment
+    .authenticatedContext('UID_ADMIN', { admin: true })
+    .firestore()
+  const validProduct = {
+    name: 'Precision-safe product',
+    brand: 'Pride',
+    description: 'A complete product description for price validation.',
+    categoryId: 'CATEGORY_1',
+    category: 'Electronics',
+    subcategoryId: 'SUBCATEGORY_1',
+    subcategory: 'Accessories',
+    pricingModel: 'gst-exclusive-v1',
+    priceIncludesTax: false,
+    taxRate: 18,
+    stock: 5,
+    modelNumber: 'MODEL-1',
+    specs: ['Power: 10 W'],
+    image: 'https://example.com/product.webp',
+    images: ['https://example.com/product.webp'],
+    imageStoragePaths: [''],
+  }
+
+  for (const price of [66.48, 66.49, 66.5]) {
+    await assertSucceeds(
+      setDoc(doc(database, 'products', `PRICE_${String(price).replace('.', '_')}`), {
+        ...validProduct,
+        price,
+      }),
+    )
+  }
+
+  await assertFails(
+    setDoc(doc(database, 'products', 'PRICE_THREE_DECIMALS'), {
+      ...validProduct,
+      price: 66.491,
+    }),
+  )
+})
+
 test('an admin can create the complete product editor payload', async () => {
   const database = testEnvironment
     .authenticatedContext('UID_ADMIN', { admin: true })
