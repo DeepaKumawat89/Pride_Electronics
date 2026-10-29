@@ -15,6 +15,34 @@ export const getHighestSkuSequence = (products = []) =>
     0,
   )
 
+export const findSkuSequenceConflict = (
+  sku,
+  products = [],
+  excludedProductId = '',
+) => {
+  const requestedSequence = extractSkuSequence(sku)
+  if (!requestedSequence) return null
+
+  return products.find((product) =>
+    String(product?.id ?? '') !== String(excludedProductId ?? '') &&
+    extractSkuSequence(product?.sku) === requestedSequence,
+  ) || null
+}
+
+export const assertUniqueSkuSequence = (
+  sku,
+  products = [],
+  excludedProductId = '',
+) => {
+  const conflict = findSkuSequenceConflict(sku, products, excludedProductId)
+  if (!conflict) return
+
+  const sequence = formatSkuSequence(extractSkuSequence(sku))
+  throw new Error(
+    `SKU sequence ${sequence} is already used by ${conflict.sku}. Enter a different six-digit sequence.`,
+  )
+}
+
 export const formatSkuSequence = (sequence) => {
   const numericSequence = Number(sequence)
   if (
@@ -90,9 +118,14 @@ export const updateProductSku = (
   const requested = cleanText(requestedSku)
   if (requested === existing) return existing
 
-  const sequence = extractSkuSequence(existing)
+  // A complete requested SKU intentionally replaces the stored sequence. A
+  // prefix-only edit keeps the stored sequence, while legacy products without
+  // one must provide the complete SKU.
+  const sequence = extractSkuSequence(requested) || extractSkuSequence(existing)
   if (!sequence) {
-    throw new Error('The existing SKU does not contain a six-digit sequence to preserve.')
+    throw new Error(
+      'Enter a complete SKU such as PC-PAC-FBD-000056 because the existing product has no six-digit sequence.',
+    )
   }
   const { categoryCode, subcategoryCode } = resolveSkuSegments(
     requested,

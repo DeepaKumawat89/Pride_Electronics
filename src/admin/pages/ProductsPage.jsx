@@ -41,6 +41,12 @@ import {
 } from '../../utils/productValidation'
 import { MINIMUM_ORDER_QUANTITY_OPTIONS } from '../../utils/productMoq'
 import {
+  createSkuSegment,
+  extractSkuSequence,
+  findSkuSequenceConflict,
+  formatSkuSequence,
+} from '../../utils/productSku'
+import {
   CUSTOMER_RIGHTS_NOTICE,
   RETURN_POLICY_OPTIONS,
   RETURN_POLICY_TYPES,
@@ -220,6 +226,9 @@ export default function ProductsPage({
     })),
   ]
   const productFormOpen = creatingProduct || Boolean(editingProduct)
+  const generatedSkuPrefix = selectedCategory && selectedSubcategory
+    ? `PC-${createSkuSegment(selectedCategory.name)}-${createSkuSegment(selectedSubcategory.name)}`
+    : ''
   const categories = [
     'All',
     ...new Set(products.map((product) => product.category)),
@@ -480,11 +489,23 @@ export default function ProductsPage({
         ? `${invalidImage.name} must be smaller than 20 MB.`
         : `${invalidImage.name} must be a JPG, PNG, or WebP image.`
     if (
+      editingProduct &&
       form.sku.trim() &&
       !/^PC-[A-Z0-9]{3}-[A-Z0-9]{3}(?:-[0-9]{6})?$/i.test(form.sku.trim()) &&
       form.sku.trim() !== String(editingProduct?.sku || '').trim()
     ) {
       errors.sku = 'Use PC-XXX-YYY; the six-digit sequence is generated automatically.'
+    }
+    if (editingProduct && form.sku.trim() && !errors.sku) {
+      const conflict = findSkuSequenceConflict(
+        form.sku,
+        products,
+        editingProduct.id,
+      )
+      if (conflict) {
+        const sequence = formatSkuSequence(extractSkuSequence(form.sku))
+        errors.sku = `Sequence ${sequence} is already used by ${conflict.sku}.`
+      }
     }
     const bulkPricingError = validatePricingTiers(form.pricingTiers, form.enableBulkPricing)
     if (bulkPricingError) {
@@ -532,7 +553,9 @@ export default function ProductsPage({
       },
       rating: editingProduct?.rating ?? 0,
       reviewsCount: editingProduct?.reviewsCount ?? 0,
-      sku: form.sku.trim() || undefined,
+      // New product SKUs are derived from taxonomy and receive their global,
+      // transaction-safe six-digit sequence in createProduct().
+      sku: editingProduct ? form.sku.trim() || undefined : undefined,
       hsnCode: form.hsnCode.trim(),
       specs: parseList(form.specs),
       imageFiles: selectedImages,
@@ -787,8 +810,24 @@ export default function ProductsPage({
             <FormField label="Product name" required error={formErrors.name} wide>
               <input required {...field('name')} className={inputClass} />
             </FormField>
-            <FormField label="SKU" error={formErrors.sku}>
-              <input {...field('sku')} className={inputClass} />
+            <FormField
+              label={editingProduct ? 'SKU' : 'SKU (automatic)'}
+              error={formErrors.sku}
+              hint={editingProduct
+                ? 'Enter the complete SKU to change its sequence, or enter only PC-XXX-YYY to preserve the current sequence.'
+                : 'The next global six-digit count is detected and allocated when this product is saved.'}
+            >
+              {editingProduct ? (
+                <input {...field('sku')} className={inputClass} />
+              ) : (
+                <input
+                  readOnly
+                  value={generatedSkuPrefix ? `${generatedSkuPrefix}-######` : ''}
+                  placeholder="Select a category and subcategory"
+                  aria-label="Automatically generated SKU"
+                  className={`${inputClass} cursor-not-allowed bg-slate-50 font-mono text-slate-600`}
+                />
+              )}
             </FormField>
             <FormField label="Brand" required error={formErrors.brand}>
               <input required {...field('brand')} className={inputClass} />
@@ -1289,13 +1328,14 @@ function FormSectionTitle({ title }) {
     </div>
   )
 }
-function FormField({ label, required = false, error = '', wide, children }) {
+function FormField({ label, required = false, error = '', hint = '', wide, children }) {
   return (
     <label className={wide ? 'sm:col-span-2' : ''}>
       <span className="mb-2 block text-[9px] font-extrabold text-slate-500">
         {label}{required && <span className="ml-0.5 text-red-600" aria-hidden="true">*</span>}
       </span>
       {children}
+      {hint && !error && <span className="mt-1.5 block text-[9px] font-medium text-slate-400">{hint}</span>}
       {error && <span role="alert" className="mt-1.5 block text-[9px] font-bold text-red-600">{error}</span>}
     </label>
   )

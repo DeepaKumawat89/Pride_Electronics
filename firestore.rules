@@ -178,7 +178,8 @@ service cloud.firestore {
         hasValidReturnPolicy(data) &&
         data.specs is list && data.specs.size() > 0 && data.specs.size() <= 100 &&
         (!data.keys().hasAny(['sku']) ||
-          (data.sku is string && data.sku.size() > 0 && data.sku.size() <= 100)) &&
+          (data.sku is string &&
+            data.sku.matches('^PC-[A-Z0-9]{3}-[A-Z0-9]{3}-[0-9]{6}$'))) &&
         !data.keys().hasAny(['originalPrice', 'discount']);
     }
 

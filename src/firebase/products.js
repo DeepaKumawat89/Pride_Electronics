@@ -12,6 +12,7 @@ import {
   assertValidProductForCreate,
 } from '../utils/productValidation'
 import {
+  assertUniqueSkuSequence,
   createProductSku,
   getHighestSkuSequence,
   updateProductSku,
@@ -180,6 +181,15 @@ export async function saveProduct(product) {
     assertValidHsnCode(product.hsnCode)
   }
   const productReference = doc(productsCollection, String(product.id))
+  const existingProducts = (await getDocs(productsCollection)).docs.map(
+    (snapshotDocument) => ({
+      ...snapshotDocument.data(),
+      id: snapshotDocument.id,
+    }),
+  )
+  if (Object.prototype.hasOwnProperty.call(product, 'sku')) {
+    assertUniqueSkuSequence(product.sku, existingProducts, product.id)
+  }
   return runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(productReference)
     if (!snapshot.exists()) throw new Error('Product not found.')
