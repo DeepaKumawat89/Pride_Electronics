@@ -19,6 +19,9 @@ Before deploying production authentication:
    set `VITE_FIREBASE_APP_CHECK_SITE_KEY` in the production build environment,
    and enable enforcement for the remaining Cloud Functions. Local development
    can use a registered `VITE_FIREBASE_APP_CHECK_DEBUG_TOKEN`.
+   For GitHub Actions deployments, add the same value as the repository secret
+   `VITE_FIREBASE_APP_CHECK_SITE_KEY`; both Hosting workflows inject it into
+   the Vite production build.
 7. Create the single administrator as an Email/Password user in the Firebase
    console with the login email `admin@prideelectronics.in`. Generate a unique
    password of at least 16 characters with a password manager; never store it
