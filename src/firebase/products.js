@@ -21,6 +21,19 @@ import {
 const productsCollection = collection(db, 'products')
 const productSkuCounterReference = doc(db, 'skuCounters', 'products')
 
+const PRODUCT_LISTENER_RETRY_MIN_MS = 1_000
+const PRODUCT_LISTENER_RETRY_MAX_MS = 30_000
+const PRODUCT_CHANNEL_NAME = `pride-electronics:${db.app.options.projectId}:products:v1`
+const NON_RETRYABLE_LISTENER_CODES = new Set([
+  'already-exists',
+  'data-loss',
+  'failed-precondition',
+  'invalid-argument',
+  'not-found',
+  'out-of-range',
+  'unimplemented',
+])
+
 const productImageFields = ['image', 'images', 'imageStoragePaths']
 
 const parseFirebaseStorageDownloadUrl = (value) => {
@@ -116,20 +129,82 @@ const sortProducts = (products) =>
   )
 
 export function subscribeToProducts(onProducts, onError) {
-  return onSnapshot(
-    productsCollection,
-    (snapshot) => {
-      onProducts(
-        sortProducts(
-          snapshot.docs.map((snapshotDocument) => ({
-            ...snapshotDocument.data(),
-            id: snapshotDocument.id,
-          })),
-        ),
-      )
-    },
-    onError,
-  )
+  let active = true
+  let retryCount = 0
+  let retryTimer = null
+  let unsubscribeSnapshot = null
+  let latestProducts = null
+  const channel =
+    typeof window !== 'undefined' && 'BroadcastChannel' in window
+      ? new window.BroadcastChannel(PRODUCT_CHANNEL_NAME)
+      : null
+
+  const publishProducts = (products, { broadcast = false } = {}) => {
+    if (!active) return
+    const sortedProducts = sortProducts(products)
+    latestProducts = sortedProducts
+    onProducts(sortedProducts)
+    if (broadcast && channel) {
+      channel.postMessage({ type: 'products', products: sortedProducts })
+    }
+  }
+
+  if (channel) {
+    channel.onmessage = ({ data }) => {
+      if (data?.type === 'request-products' && latestProducts) {
+        channel.postMessage({ type: 'products', products: latestProducts })
+      } else if (data?.type === 'products' && Array.isArray(data.products)) {
+        publishProducts(data.products)
+      }
+    }
+    channel.postMessage({ type: 'request-products' })
+  }
+
+  const startListener = () => {
+    if (!active) return
+    unsubscribeSnapshot = onSnapshot(
+      productsCollection,
+      (snapshot) => {
+        retryCount = 0
+        const products = snapshot.docs.map((snapshotDocument) => ({
+          ...snapshotDocument.data(),
+          id: snapshotDocument.id,
+        }))
+
+        // A newly opened tab can receive an empty memory-cache snapshot before
+        // the server answers. Treating that as authoritative makes a healthy
+        // catalog flash or remain empty when the following request is rejected.
+        if (snapshot.metadata.fromCache && products.length === 0) return
+        publishProducts(products, { broadcast: !snapshot.metadata.fromCache })
+      },
+      (error) => {
+        unsubscribeSnapshot = null
+        if (!active) return
+        onError?.(error)
+
+        // Firestore does not reattach a listener after calling its error
+        // callback. Retry recoverable transport, auth, and App Check failures;
+        // malformed queries and missing indexes remain terminal and visible.
+        if (NON_RETRYABLE_LISTENER_CODES.has(error?.code)) return
+        const baseDelay = Math.min(
+          PRODUCT_LISTENER_RETRY_MIN_MS * 2 ** retryCount,
+          PRODUCT_LISTENER_RETRY_MAX_MS,
+        )
+        retryCount += 1
+        const jitteredDelay = baseDelay * (0.75 + Math.random() * 0.5)
+        retryTimer = window.setTimeout(startListener, jitteredDelay)
+      },
+    )
+  }
+
+  startListener()
+
+  return () => {
+    active = false
+    if (retryTimer !== null) window.clearTimeout(retryTimer)
+    unsubscribeSnapshot?.()
+    channel?.close()
+  }
 }
 
 export async function createProduct(product) {
