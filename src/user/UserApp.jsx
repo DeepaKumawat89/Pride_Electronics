@@ -11,6 +11,7 @@ import HomeScrollReveal from './components/home/HomeScrollReveal'
 import ProductCatalog from './components/products/ProductCatalog'
 import ProductDetailsPage from './components/products/ProductDetailsPage'
 import ProductSeo from './components/seo/ProductSeo'
+import HomeSeo from './components/seo/HomeSeo'
 import ProductReviewsPage from './components/products/ProductReviewsPage'
 import ProductsPage from './components/products/ProductsPage'
 import AboutUs from './components/pages/AboutUs'
@@ -1923,6 +1924,7 @@ export default function UserApp({
 
   return (
     <div className="customer-shell min-h-screen overflow-x-clip bg-[#f7f8f5] pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-16 lg:pb-0">
+      {!liveSelectedProduct && !ContentPage && !productsOpen && !checkoutOpen && !successfulOrder && !orderVerification && !accountSection && <HomeSeo />}
       {liveSelectedProduct && <ProductSeo product={liveSelectedProduct} />}
       <AnnouncementBar shippingSettings={shippingSettings} />
       <Header

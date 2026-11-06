@@ -1,4 +1,14 @@
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /account
+Disallow: /profile
+Disallow: /wishlist
+Disallow: /cart
+Disallow: /orders
+Disallow: /checkout
+Disallow: /saved-address
+Disallow: /saved-cards
+Disallow: /coupons
 
 Sitemap: https://pridecircuit.in/sitemap.xml
