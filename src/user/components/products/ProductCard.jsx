@@ -13,6 +13,7 @@ export default function ProductCard({
   const sellingPrice = getProductBasePrice(product)
   const priceAvailable = hasValidPrice(sellingPrice)
   const purchasable = Number(product.stock) > 0 && priceAvailable
+  const productPath = `/product/${encodeURIComponent(String(product.id))}`
   const availability =
     product.stock <= 0
       ? 'Out of stock'
@@ -24,7 +25,15 @@ export default function ProductCard({
     <article className="group flex min-w-0 flex-col">
       <div className="relative aspect-[1/0.9] overflow-hidden rounded-[26px] bg-white">
         <img src={product.image} alt={product.name} loading="lazy" decoding="async" className="size-full object-cover transition duration-500 group-hover:scale-105" />
-        <button type="button" onClick={() => onView(product)} className="absolute inset-0 z-10 cursor-pointer" aria-label={`View details for ${product.name}`} />
+        <a
+          href={productPath}
+          onClick={(event) => {
+            event.preventDefault()
+            onView(product)
+          }}
+          className="absolute inset-0 z-10 cursor-pointer"
+          aria-label={`View details for ${product.name}`}
+        />
         <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-slate-950/20 to-transparent opacity-0 transition group-hover:opacity-100" />
         <span className="absolute left-3 top-3 z-20 rounded-full bg-white/90 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-wider text-slate-800 backdrop-blur">{product.badge}</span>
         <button type="button" onClick={() => onLike(product.id)} className={`absolute right-3 top-3 z-20 grid size-9 place-items-center rounded-full backdrop-blur transition ${liked ? 'bg-[#ff5c35] text-white' : 'bg-white/90 text-slate-600 hover:text-[#ff5c35]'}`} aria-label={liked ? 'Remove from wishlist' : 'Add to wishlist'}><Heart size={16} fill={liked ? 'currentColor' : 'none'} /></button>
@@ -42,7 +51,7 @@ export default function ProductCard({
             </span>
           )}
         </div>
-        <button type="button" onClick={() => onView(product)} className="mt-2 min-h-12 text-left text-sm font-extrabold leading-6 text-slate-900 transition hover:text-[#ff5c35]">{product.name}</button>
+        <a href={productPath} onClick={(event) => { event.preventDefault(); onView(product) }} className="mt-2 min-h-12 text-left text-sm font-extrabold leading-6 text-slate-900 transition hover:text-[#ff5c35]">{product.name}</a>
         <div className="mt-3 flex min-w-0 flex-wrap items-end justify-between gap-x-3 gap-y-1">
           <div className="min-w-0"><strong className="text-base font-extrabold text-slate-950">{priceAvailable ? formatCurrency(sellingPrice) : 'Price unavailable'}</strong>{priceAvailable && <span className="ml-1 text-[9px] font-semibold text-slate-400">(Excl. GST)</span>}</div>
           <span className="shrink-0 text-right">

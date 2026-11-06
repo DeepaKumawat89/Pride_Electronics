@@ -32,6 +32,7 @@ initializeApp()
 
 const db = getFirestore()
 const adminAuth = getAuth()
+const { sitemap } = require('./sitemap')
 
 const supplyTypeFor = (taxSettings = {}, shippingAddress = {}) => {
   const sellerGstin = String(taxSettings.gstin || '').trim().toUpperCase()
@@ -2568,3 +2569,5 @@ exports.updateCustomerStatus = onCall(
   callableOptions,
   updateCustomerStatusHandler,
 )
+
+exports.sitemap = sitemap

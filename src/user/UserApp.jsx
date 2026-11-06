@@ -10,6 +10,7 @@ import PromoBanner from './components/home/PromoBanner'
 import HomeScrollReveal from './components/home/HomeScrollReveal'
 import ProductCatalog from './components/products/ProductCatalog'
 import ProductDetailsPage from './components/products/ProductDetailsPage'
+import ProductSeo from './components/seo/ProductSeo'
 import ProductReviewsPage from './components/products/ProductReviewsPage'
 import ProductsPage from './components/products/ProductsPage'
 import AboutUs from './components/pages/AboutUs'
@@ -127,6 +128,31 @@ function parseProductsHash(hash) {
     category: params.get('category') || 'All',
     query: params.get('query') || '',
   }
+}
+
+const publicSlug = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+
+function parsePublicPath(pathname) {
+  const path = String(pathname || '').replace(/\/+$/, '') || '/'
+  if (path === '/products') return { type: 'products', categorySlug: '' }
+  if (path.startsWith('/category/')) {
+    return {
+      type: 'category',
+      categorySlug: decodeURIComponent(path.slice('/category/'.length)),
+    }
+  }
+  if (path.startsWith('/product/')) {
+    return {
+      type: 'product',
+      productId: decodeURIComponent(path.slice('/product/'.length)),
+    }
+  }
+  return null
 }
 
 function formatVerifiedPaymentMethod(payment, fallback, gatewayLabel = 'Razorpay Test Mode') {
@@ -366,6 +392,54 @@ export default function UserApp({
         resetScroll()
         return
       }
+      const publicPath = parsePublicPath(window.location.pathname)
+      if (publicPath?.type === 'product') {
+        const pathProduct = products.find(
+          (product) => String(product.id) === publicPath.productId,
+        )
+        if (!pathProduct) {
+          if (productsLoading) return
+          window.history.replaceState(null, '', '/')
+          productHistoryActive.current = false
+          setSelectedProduct(null)
+          setReviewsOpen(false)
+          setProductsOpen(false)
+          setContentPage(null)
+          setAccountSection(null)
+          resetScroll()
+          return
+        }
+        productHistoryActive.current = true
+        setSelectedProduct(pathProduct)
+        setReviewsOpen(window.location.hash === '#reviews')
+        setProductsOpen(false)
+        setContentPage(null)
+        setAccountSection(null)
+        resetScroll()
+        return
+      }
+      if (publicPath?.type === 'products' || publicPath?.type === 'category') {
+        const pathCategory =
+          publicPath.type === 'category'
+            ? categories.find(
+                (item) => publicSlug(item.name) === publicPath.categorySlug,
+              ) ||
+              products.find(
+                (product) => publicSlug(product.category) === publicPath.categorySlug,
+              )
+            : null
+        productsHistoryActive.current = true
+        productHistoryActive.current = false
+        productReturnSection.current = null
+        setProductsOpen(true)
+        setSelectedProduct(null)
+        setReviewsOpen(false)
+        setAccountSection(null)
+        setCategory(pathCategory?.name || 'All')
+        setQuery('')
+        resetScroll()
+        return
+      }
       const protectedHash = [
         CHECKOUT_HASH,
         ORDER_SUCCESS_HASH,
@@ -495,6 +569,11 @@ export default function UserApp({
         )
         if (historyProduct) {
           productHistoryActive.current = true
+          window.history.replaceState(
+            { prideProduct: historyProduct.id },
+            '',
+            `/product/${encodeURIComponent(historyProduct.id)}${isReviewsPage ? '#reviews' : ''}`,
+          )
           setSelectedProduct(historyProduct)
           setReviewsOpen(isReviewsPage)
           setAccountSection(null)
@@ -535,7 +614,7 @@ export default function UserApp({
     handleHistoryBack()
     window.addEventListener('popstate', handleHistoryBack)
     return () => window.removeEventListener('popstate', handleHistoryBack)
-  }, [authStatus, categories, products])
+  }, [authStatus, categories, products, productsLoading])
 
   const notify = (message) => {
     setToast(message)
@@ -763,7 +842,11 @@ export default function UserApp({
   }, [products, query])
 
   const resetToStorefront = () => {
-    if (window.location.hash || getProtectedRoute(window.location.pathname)) {
+    if (
+      window.location.pathname !== '/' ||
+      window.location.hash ||
+      getProtectedRoute(window.location.pathname)
+    ) {
       window.history.replaceState(
         null,
         '',
@@ -1004,9 +1087,9 @@ export default function UserApp({
     if (!productHistoryActive.current)
       productReturnSection.current = accountSection
     productHistoryActive.current = true
-    const productHash = `${PRODUCT_HASH_PREFIX}${encodeURIComponent(product.id)}`
-    if (window.location.hash !== productHash)
-      window.history.pushState({ prideProduct: product.id }, '', `/${productHash}`)
+    const productPath = `/product/${encodeURIComponent(product.id)}`
+    if (window.location.pathname !== productPath || window.location.hash)
+      window.history.pushState({ prideProduct: product.id }, '', productPath)
     setSelectedProduct(product)
     setReviewsOpen(false)
     setAccountSection(null)
@@ -1014,7 +1097,14 @@ export default function UserApp({
   }
 
   const closeProductDetails = () => {
-    if (window.location.hash.startsWith(PRODUCT_HASH_PREFIX)) {
+    if (
+      window.location.pathname.startsWith('/product/') ||
+      window.location.hash.startsWith(PRODUCT_HASH_PREFIX)
+    ) {
+      if (!window.history.state?.prideProduct && window.location.pathname.startsWith('/product/')) {
+        navigateHome()
+        return
+      }
       window.history.back()
       return
     }
@@ -1023,19 +1113,22 @@ export default function UserApp({
 
   const navigateToReviews = () => {
     if (!liveSelectedProduct) return
-    const reviewsHash = `${PRODUCT_HASH_PREFIX}${encodeURIComponent(liveSelectedProduct.id)}${REVIEWS_HASH_SUFFIX}`
-    if (window.location.hash !== reviewsHash)
+    const reviewsPath = `/product/${encodeURIComponent(liveSelectedProduct.id)}#reviews`
+    if (window.location.pathname !== `/product/${encodeURIComponent(liveSelectedProduct.id)}` || window.location.hash !== '#reviews')
       window.history.pushState(
         { prideProductReviews: liveSelectedProduct.id },
         '',
-        `/${reviewsHash}`,
+        reviewsPath,
       )
     setReviewsOpen(true)
     window.scrollTo({ top: 0, behavior: 'auto' })
   }
 
   const closeReviews = () => {
-    if (window.location.hash.endsWith(REVIEWS_HASH_SUFFIX)) {
+    if (
+      window.location.hash === '#reviews' ||
+      window.location.hash.endsWith(REVIEWS_HASH_SUFFIX)
+    ) {
       window.history.back()
       return
     }
@@ -1830,6 +1923,7 @@ export default function UserApp({
 
   return (
     <div className="customer-shell min-h-screen overflow-x-clip bg-[#f7f8f5] pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-16 lg:pb-0">
+      {liveSelectedProduct && <ProductSeo product={liveSelectedProduct} />}
       <AnnouncementBar shippingSettings={shippingSettings} />
       <Header
         products={products}
