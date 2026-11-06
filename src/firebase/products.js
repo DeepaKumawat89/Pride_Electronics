@@ -23,7 +23,6 @@ const productSkuCounterReference = doc(db, 'skuCounters', 'products')
 
 const PRODUCT_LISTENER_RETRY_MIN_MS = 1_000
 const PRODUCT_LISTENER_RETRY_MAX_MS = 30_000
-const PRODUCT_CHANNEL_NAME = `pride-electronics:${db.app.options.projectId}:products:v1`
 const NON_RETRYABLE_LISTENER_CODES = new Set([
   'already-exists',
   'data-loss',
@@ -133,31 +132,11 @@ export function subscribeToProducts(onProducts, onError) {
   let retryCount = 0
   let retryTimer = null
   let unsubscribeSnapshot = null
-  let latestProducts = null
-  const channel =
-    typeof window !== 'undefined' && 'BroadcastChannel' in window
-      ? new window.BroadcastChannel(PRODUCT_CHANNEL_NAME)
-      : null
 
-  const publishProducts = (products, { broadcast = false } = {}) => {
+  const publishProducts = (products) => {
     if (!active) return
     const sortedProducts = sortProducts(products)
-    latestProducts = sortedProducts
     onProducts(sortedProducts)
-    if (broadcast && channel) {
-      channel.postMessage({ type: 'products', products: sortedProducts })
-    }
-  }
-
-  if (channel) {
-    channel.onmessage = ({ data }) => {
-      if (data?.type === 'request-products' && latestProducts) {
-        channel.postMessage({ type: 'products', products: latestProducts })
-      } else if (data?.type === 'products' && Array.isArray(data.products)) {
-        publishProducts(data.products)
-      }
-    }
-    channel.postMessage({ type: 'request-products' })
   }
 
   const startListener = () => {
@@ -171,7 +150,7 @@ export function subscribeToProducts(onProducts, onError) {
           id: snapshotDocument.id,
         }))
 
-        publishProducts(products, { broadcast: !snapshot.metadata.fromCache })
+        publishProducts(products)
       },
       (error) => {
         unsubscribeSnapshot = null
@@ -199,7 +178,6 @@ export function subscribeToProducts(onProducts, onError) {
     active = false
     if (retryTimer !== null) window.clearTimeout(retryTimer)
     unsubscribeSnapshot?.()
-    channel?.close()
   }
 }
 
