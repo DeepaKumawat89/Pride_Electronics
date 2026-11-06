@@ -34,6 +34,7 @@ export default function HomeScrollReveal({ children }) {
     )
     const revealedElements = new Set()
     const transitionHandlers = new Map()
+    let fallbackRevealTimer = null
 
     const restoreStyles = (element) => {
       originalStyles.get(element)?.forEach(({ property, value, priority }) => {
@@ -55,6 +56,16 @@ export default function HomeScrollReveal({ children }) {
       )
       element.style.setProperty('will-change', 'opacity, transform')
     })
+
+    // Keep content usable if an IntersectionObserver callback is missed during
+    // refresh, dynamic layout changes, or browser lifecycle suspension.
+    fallbackRevealTimer = window.setTimeout(() => {
+      elements.forEach((element) => {
+        if (revealedElements.has(element)) return
+        revealedElements.add(element)
+        restoreStyles(element)
+      })
+    }, 1500)
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -103,6 +114,9 @@ export default function HomeScrollReveal({ children }) {
         element.removeEventListener('transitionend', handler)
         window.clearTimeout(timeout)
       })
+      if (fallbackRevealTimer !== null) {
+        window.clearTimeout(fallbackRevealTimer)
+      }
       elements.forEach(restoreStyles)
     }
   }, [])
