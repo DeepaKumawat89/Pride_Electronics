@@ -171,10 +171,6 @@ export function subscribeToProducts(onProducts, onError) {
           id: snapshotDocument.id,
         }))
 
-        // A newly opened tab can receive an empty memory-cache snapshot before
-        // the server answers. Treating that as authoritative makes a healthy
-        // catalog flash or remain empty when the following request is rejected.
-        if (snapshot.metadata.fromCache && products.length === 0) return
         publishProducts(products, { broadcast: !snapshot.metadata.fromCache })
       },
       (error) => {
