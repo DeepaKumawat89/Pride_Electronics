@@ -16,6 +16,8 @@ rules_version = '2';
 // data with collection-specific read restrictions and admin/backend writes.
 // settings/invoice: public seller/tax information used for checkout display;
 // writes are backend-only after callable admin authorization and validation.
+// settings/maintenance: public storefront availability with one required
+// Boolean field, enabled; only custom-claim administrators may create/update it.
 // refunds, inventoryHistory: admin-only operational records.
 // skuCounters/products: admin-only monotonic product SKU sequence allocator.
 // invoices, paymentIntents, stockReservations, couponUsages, _authPhoneIndex:
@@ -57,6 +59,12 @@ service cloud.firestore {
     function backendGstFieldsUnchanged() {
       return !request.resource.data.diff(resource.data).affectedKeys()
         .hasAny(['gstDetails', 'gstProfiles']);
+    }
+
+    function isValidMaintenanceSettings(data) {
+      return data.keys().hasAll(['enabled']) &&
+        data.keys().hasOnly(['enabled']) &&
+        data.enabled is bool;
     }
 
     function optionalString(data, field, maxSize) {
@@ -308,12 +316,15 @@ service cloud.firestore {
         'marketing',
         'shipping',
         'invoice',
-        'storefront'
+        'storefront',
+        'maintenance'
       ];
       allow write: if settingId != 'invoice' && (
         (settingId == 'admin' && isAdmin()) ||
         (settingId == 'marketing' && isAdmin()) ||
-        (settingId == 'storefront' && isAdmin())
+        (settingId == 'storefront' && isAdmin()) ||
+        (settingId == 'maintenance' && isAdmin() &&
+          isValidMaintenanceSettings(request.resource.data))
       );
     }
 

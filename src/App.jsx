@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { onIdTokenChanged } from 'firebase/auth'
 import UserApp from './user/UserApp'
 import AdminApp from './admin/AdminApp'
+import MaintenancePage from './user/components/pages/MaintenancePage'
 import { initialMarketingSettings } from './data/marketing'
 import { initialShippingSettings } from './data/shipping'
 import { initialInvoiceSettings } from './data/invoice'
@@ -41,6 +42,10 @@ import {
   subscribeToPublishedReviews,
   subscribeToSetting,
 } from './firebase/storeData'
+import {
+  subscribeToMaintenanceMode,
+  updateMaintenanceMode,
+} from './firebase/maintenance'
 import {
   cancelCustomerOrder,
   createCustomerReturn,
@@ -173,6 +178,9 @@ function App() {
   const [invoiceSettingsLoading, setInvoiceSettingsLoading] = useState(true)
   const [invoiceSettingsError, setInvoiceSettingsError] = useState('')
   const [adminSettings, setAdminSettings] = useState(initialAdminSettings)
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false)
+  const [maintenanceLoading, setMaintenanceLoading] = useState(true)
+  const [maintenanceError, setMaintenanceError] = useState('')
   const taxonomyMigrationKey = useRef('')
 
   useEffect(() => {
@@ -183,6 +191,24 @@ function App() {
     window.addEventListener('popstate', syncPortalWithLocation)
     return () => window.removeEventListener('popstate', syncPortalWithLocation)
   }, [])
+
+  useEffect(
+    () =>
+      subscribeToMaintenanceMode(
+        (enabled) => {
+          setMaintenanceEnabled(enabled)
+          setMaintenanceError('')
+          setMaintenanceLoading(false)
+        },
+        (error) => {
+          setMaintenanceError(
+            error?.message || 'Unable to confirm the current website status.',
+          )
+          setMaintenanceLoading(false)
+        },
+      ),
+    [],
+  )
 
   useEffect(
     () =>
@@ -384,6 +410,12 @@ function App() {
     const saved = await saveInvoiceSettings(settings)
     if (saved) setInvoiceSettings(mergeSetting(initialInvoiceSettings, saved))
     return saved
+  }
+  const handleUpdateMaintenance = async (enabled) => {
+    const savedEnabled = await updateMaintenanceMode(enabled)
+    setMaintenanceEnabled(savedEnabled)
+    setMaintenanceError('')
+    return savedEnabled
   }
   const handleCustomerAuthenticated = () => {}
 
@@ -985,24 +1017,31 @@ function App() {
     <div className="min-h-screen bg-[#f7f8f5] font-sans text-slate-950 antialiased">
       {/* Render Selected View */}
       {activePortal === 'user' ? (
-        <UserApp
-          products={storefrontProducts}
-          productsLoading={productsLoading}
-          productsError={productsError}
-          coupons={couponsList}
-          marketingSettings={marketingSettings}
-          shippingSettings={shippingSettings}
-          invoiceSettings={invoiceSettings}
-          adminSettings={adminSettings}
-          categories={managedCategories}
-          reviews={reviewsList.filter((review) => review.status === 'Published')}
-          onNewOrder={handleNewOrder}
-          onCreateReturnRequest={handleCreateReturnRequest}
-          onCancelOrder={handleCancelOrder}
-          onSubmitOrderFeedback={handleSubmitOrderFeedback}
-          onCustomerAuthenticated={handleCustomerAuthenticated}
-          onBeSellerClick={() => switchPortal('admin')}
-        />
+        maintenanceLoading || maintenanceError || maintenanceEnabled ? (
+          <MaintenancePage
+            loading={maintenanceLoading}
+            error={maintenanceError}
+          />
+        ) : (
+          <UserApp
+            products={storefrontProducts}
+            productsLoading={productsLoading}
+            productsError={productsError}
+            coupons={couponsList}
+            marketingSettings={marketingSettings}
+            shippingSettings={shippingSettings}
+            invoiceSettings={invoiceSettings}
+            adminSettings={adminSettings}
+            categories={managedCategories}
+            reviews={reviewsList.filter((review) => review.status === 'Published')}
+            onNewOrder={handleNewOrder}
+            onCreateReturnRequest={handleCreateReturnRequest}
+            onCancelOrder={handleCancelOrder}
+            onSubmitOrderFeedback={handleSubmitOrderFeedback}
+            onCustomerAuthenticated={handleCustomerAuthenticated}
+            onBeSellerClick={() => switchPortal('admin')}
+          />
+        )
       ) : (
         <AdminApp
           products={catalogProducts}
@@ -1022,6 +1061,9 @@ function App() {
           invoiceSettingsLoading={invoiceSettingsLoading}
           invoiceSettingsError={invoiceSettingsError}
           adminSettings={adminSettings}
+          maintenanceEnabled={maintenanceEnabled}
+          maintenanceLoading={maintenanceLoading}
+          maintenanceError={maintenanceError}
           onAddProduct={handleAddProduct}
           onUpdateProduct={handleUpdateProduct}
           onDeleteProduct={handleDeleteProduct}
@@ -1042,6 +1084,7 @@ function App() {
           onUpdateCustomer={handleUpdateCustomer}
           onUpdateMarketingSettings={updateMarketingSettings}
           onUpdateInvoiceSettings={updateInvoiceSettings}
+          onUpdateMaintenance={handleUpdateMaintenance}
         />
       )}
     </div>

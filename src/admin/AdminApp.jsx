@@ -20,6 +20,7 @@ import CategoriesPage from './pages/CategoriesPage'
 import ReviewsPage from './pages/ReviewsPage'
 import { EmptyState } from './components/ui/AdminUI'
 import AdminLogoutConfirmation from './components/AdminLogoutConfirmation'
+import WebsiteSettingsPage from './pages/WebsiteSettingsPage'
 
 export default function AdminApp({
   products = [],
@@ -39,6 +40,9 @@ export default function AdminApp({
   invoiceSettingsLoading = false,
   invoiceSettingsError = '',
   adminSettings = initialAdminSettings,
+  maintenanceEnabled = false,
+  maintenanceLoading = false,
+  maintenanceError = '',
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
@@ -59,6 +63,7 @@ export default function AdminApp({
   onUpdateCustomer,
   onUpdateMarketingSettings,
   onUpdateInvoiceSettings,
+  onUpdateMaintenance,
 }) {
   const {
     admin,
@@ -75,6 +80,7 @@ export default function AdminApp({
   const availableTabs = new Set([
     'dashboard', 'products', 'categories', 'orders', 'inventory', 'payments',
     'returns', 'coupons', 'users', 'reviews', 'offers', 'tax-invoice',
+    'website-settings',
   ])
   const canAccess = (tab) =>
     availableTabs.has(tab) &&
@@ -276,6 +282,15 @@ export default function AdminApp({
           loading={invoiceSettingsLoading}
           loadError={invoiceSettingsError}
           onUpdate={onUpdateInvoiceSettings}
+        />
+      )}
+
+      {permittedTab === 'website-settings' && (
+        <WebsiteSettingsPage
+          maintenanceEnabled={maintenanceEnabled}
+          maintenanceLoading={maintenanceLoading}
+          maintenanceError={maintenanceError}
+          onUpdateMaintenance={onUpdateMaintenance}
         />
       )}
 

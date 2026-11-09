@@ -12,6 +12,7 @@ import {
   ReceiptText,
   MessageSquareText,
   Tags,
+  Settings2,
   X,
 } from 'lucide-react'
 import prideCircuitLogo from '../../../images/Prism_Circuit_Tech_Logo-removebg-preview.png'
@@ -88,6 +89,12 @@ const navItems = [
     label: 'Tax & invoice',
     caption: 'GST & business details',
     icon: ReceiptText,
+  },
+  {
+    id: 'website-settings',
+    label: 'Website settings',
+    caption: 'Store availability',
+    icon: Settings2,
   },
 ]
 
