@@ -19,7 +19,13 @@ const slugify = (value) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
 
-const urlEntry = (path) => `  <url><loc>${escapeXml(`${SITE_URL}${path}`)}</loc></url>`
+const lastModified = (value) => {
+  const date = typeof value?.toDate === 'function' ? value.toDate() : new Date(value || 0)
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString()
+}
+
+const urlEntry = ({ path, lastmod = '' }) =>
+  `  <url><loc>${escapeXml(`${SITE_URL}${path}`)}</loc>${lastmod ? `<lastmod>${escapeXml(lastmod)}</lastmod>` : ''}</url>`
 
 exports.sitemap = onRequest(
   { region: 'asia-south1', invoker: 'public' },
@@ -59,6 +65,7 @@ exports.sitemap = onRequest(
           subcategoryId: String(document.data()?.subcategoryId || ''),
           subcategory: String(document.data()?.subcategory || '').trim(),
           enabled: document.data()?.enabled !== false,
+          lastmod: lastModified(document.data()?.updatedAt || document.data()?.createdAt),
         }))
         .filter((product) => {
           const category =
@@ -95,15 +102,14 @@ exports.sitemap = onRequest(
         .filter(Boolean)
         .sort()
         .map((slug) => `/category/${encodeURIComponent(slug)}`)
-      const productPaths = publicProducts
-        .map((product) => `/product/${encodeURIComponent(product.id)}`)
-        .sort()
-
       const urls = [
-        '/',
-        '/products',
-        ...categoryPaths,
-        ...productPaths,
+        { path: '/' },
+        { path: '/products' },
+        ...categoryPaths.map((path) => ({ path })),
+        ...publicProducts.map((product) => ({
+          path: `/product/${encodeURIComponent(product.id)}`,
+          lastmod: product.lastmod,
+        })),
       ]
       const xml = [
         '<?xml version="1.0" encoding="UTF-8"?>',

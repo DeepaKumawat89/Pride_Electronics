@@ -63,6 +63,7 @@ export default function ProductSeo({ product }) {
     const structuredProduct = {
       '@context': 'https://schema.org',
       '@type': 'Product',
+      url: canonicalUrl,
       name,
       description,
       image: [...new Set(images)],
@@ -110,8 +111,10 @@ export default function ProductSeo({ product }) {
       setMeta('property', 'og:title', `${name} | Pride Circuit`),
       setMeta('property', 'og:description', description),
       setMeta('property', 'og:url', canonicalUrl),
+      setMeta('property', 'og:image', images[0] || `${SITE_URL}/favicon-192x192.png`),
       setMeta('name', 'twitter:title', `${name} | Pride Circuit`),
       setMeta('name', 'twitter:description', description),
+      setMeta('name', 'twitter:image', images[0] || `${SITE_URL}/favicon-192x192.png`),
       setCanonical(canonicalUrl),
     ]
 
