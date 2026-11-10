@@ -2,11 +2,56 @@ import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { db } from './firebase'
 
 const maintenanceReference = doc(db, 'settings', 'maintenance')
+const MAINTENANCE_CACHE_KEY = 'pride_maintenance_status'
+const MAINTENANCE_CACHE_TTL_MS = 5 * 60 * 1000
+
+const readMaintenanceCache = () => {
+  try {
+    const cached = JSON.parse(
+      window.localStorage.getItem(MAINTENANCE_CACHE_KEY) || 'null',
+    )
+    if (
+      !cached ||
+      typeof cached.enabled !== 'boolean' ||
+      !Number.isFinite(cached.updatedAt) ||
+      Date.now() - cached.updatedAt > MAINTENANCE_CACHE_TTL_MS
+    ) {
+      window.localStorage.removeItem(MAINTENANCE_CACHE_KEY)
+      return null
+    }
+    return cached.enabled
+  } catch {
+    return null
+  }
+}
+
+const writeMaintenanceCache = (enabled) => {
+  try {
+    window.localStorage.setItem(
+      MAINTENANCE_CACHE_KEY,
+      JSON.stringify({ enabled: enabled === true, updatedAt: Date.now() }),
+    )
+  } catch {
+    // Local caching is an optimization; Firebase remains the source of truth.
+  }
+}
+
+export function getInitialMaintenanceState() {
+  const cachedEnabled = readMaintenanceCache()
+  return {
+    enabled: cachedEnabled === true,
+    loading: cachedEnabled === null,
+  }
+}
 
 export function subscribeToMaintenanceMode(onValue, onError) {
   return onSnapshot(
     maintenanceReference,
-    (snapshot) => onValue(snapshot.exists() && snapshot.data()?.enabled === true),
+    (snapshot) => {
+      const enabled = snapshot.exists() && snapshot.data()?.enabled === true
+      writeMaintenanceCache(enabled)
+      onValue(enabled)
+    },
     onError,
   )
 }
@@ -18,5 +63,6 @@ export async function updateMaintenanceMode(enabled) {
     { enabled: normalizedEnabled },
     { merge: true },
   )
+  writeMaintenanceCache(normalizedEnabled)
   return normalizedEnabled
 }

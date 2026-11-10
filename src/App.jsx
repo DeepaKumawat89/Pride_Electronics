@@ -43,6 +43,7 @@ import {
   subscribeToSetting,
 } from './firebase/storeData'
 import {
+  getInitialMaintenanceState,
   subscribeToMaintenanceMode,
   updateMaintenanceMode,
 } from './firebase/maintenance'
@@ -178,8 +179,13 @@ function App() {
   const [invoiceSettingsLoading, setInvoiceSettingsLoading] = useState(true)
   const [invoiceSettingsError, setInvoiceSettingsError] = useState('')
   const [adminSettings, setAdminSettings] = useState(initialAdminSettings)
-  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false)
-  const [maintenanceLoading, setMaintenanceLoading] = useState(true)
+  const [initialMaintenanceState] = useState(getInitialMaintenanceState)
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(
+    initialMaintenanceState.enabled,
+  )
+  const [maintenanceLoading, setMaintenanceLoading] = useState(
+    initialMaintenanceState.loading,
+  )
   const [maintenanceError, setMaintenanceError] = useState('')
   const taxonomyMigrationKey = useRef('')
 
@@ -201,14 +207,16 @@ function App() {
           setMaintenanceLoading(false)
         },
         (error) => {
-          setMaintenanceEnabled(false)
+          if (initialMaintenanceState.loading) {
+            setMaintenanceEnabled(true)
+          }
           setMaintenanceError(
             error?.message || 'Unable to confirm the current website status.',
           )
           setMaintenanceLoading(false)
         },
       ),
-    [],
+    [initialMaintenanceState],
   )
 
   useEffect(
