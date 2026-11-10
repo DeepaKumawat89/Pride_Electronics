@@ -17,10 +17,10 @@ export default function HeroSection({
             <Sparkles size={13} /> {banner.eyebrow}
           </div>
           <h1 className="max-w-2xl text-[42px] font-extrabold leading-[0.98] tracking-[-0.055em] text-[#17211d] sm:text-6xl lg:text-[72px]">
-            {banner.title}{' '}<span className="font-serif italic text-[#ff5c35]">{banner.accent}</span>
+            Pride Circuit: {banner.title}{' '}<span className="font-serif italic text-[#ff5c35]">{banner.accent}</span>
           </h1>
           <p className="mt-6 max-w-lg text-sm font-medium leading-7 text-[#44554a] sm:text-base">
-            {banner.description}
+            Pride Circuit is an online store in India for electronic and industrial automation components. {banner.description}
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <button type="button" onClick={onShopNow} className="group inline-flex h-12 items-center gap-3 rounded-full bg-[#17211d] px-6 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#ff5c35] hover:shadow-xl">

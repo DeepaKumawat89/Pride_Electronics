@@ -201,6 +201,7 @@ function App() {
           setMaintenanceLoading(false)
         },
         (error) => {
+          setMaintenanceEnabled(false)
           setMaintenanceError(
             error?.message || 'Unable to confirm the current website status.',
           )
@@ -1017,10 +1018,9 @@ function App() {
     <div className="min-h-screen bg-[#f7f8f5] font-sans text-slate-950 antialiased">
       {/* Render Selected View */}
       {activePortal === 'user' ? (
-        maintenanceLoading || maintenanceError || maintenanceEnabled ? (
+        maintenanceLoading || maintenanceEnabled ? (
           <MaintenancePage
             loading={maintenanceLoading}
-            error={maintenanceError}
           />
         ) : (
           <UserApp

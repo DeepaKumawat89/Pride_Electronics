@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 const SITE_URL = 'https://pridecircuit.in'
 const HOME_TITLE = 'Pride Circuit | Buy Electronic Components Online in India'
 const HOME_DESCRIPTION =
-  'Shop electronic components, DIY modules, audio gear, wearables, peripherals, and power accessories online in India at Pride Circuit. Explore genuine products, secure checkout, and reliable support.'
+  'Shop electronic and industrial automation components online in India with Pride Circuit. Find genuine products, clear pricing, secure checkout, and reliable support.'
 
 const setMeta = (attribute, name, content) => {
   let element = document.head.querySelector(`meta[${attribute}="${name}"]`)
@@ -44,6 +44,8 @@ export default function HomeSeo() {
       setMeta('property', 'og:type', 'website'),
       setMeta('property', 'og:url', `${SITE_URL}/`),
       setMeta('property', 'og:image', `${SITE_URL}/favicon-192x192.png`),
+      setMeta('property', 'og:locale', 'en_IN'),
+      setMeta('name', 'twitter:card', 'summary'),
       setMeta('name', 'twitter:title', HOME_TITLE),
       setMeta('name', 'twitter:description', HOME_DESCRIPTION),
       setMeta('name', 'twitter:image', `${SITE_URL}/favicon-192x192.png`),

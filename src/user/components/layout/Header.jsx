@@ -86,12 +86,12 @@ export default function Header({
             <button
               type="button"
               onClick={goHome}
-              aria-label="Pride Electronics home"
+              aria-label="Pride Circuit home"
               className="shrink-0"
             >
               <img
                 src={prideCircuitLogo}
-                alt="PrideCircuit Electronic Components & More"
+                alt="Pride Circuit electronic components"
                 className="block h-auto w-56"
               />
             </button>
