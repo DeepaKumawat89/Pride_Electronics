@@ -39,8 +39,8 @@ const writeMaintenanceCache = (enabled) => {
 export function getInitialMaintenanceState() {
   const cachedEnabled = readMaintenanceCache()
   return {
-    enabled: cachedEnabled === true,
-    loading: cachedEnabled === null,
+    enabled: false,
+    loading: cachedEnabled !== false,
   }
 }
 
