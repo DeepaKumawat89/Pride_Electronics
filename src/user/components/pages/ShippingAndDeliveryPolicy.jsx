@@ -281,6 +281,9 @@ export default function ShippingAndDeliveryPolicy({ onBack }) {
       onBack={onBack}
       icon={Truck}
       eyebrow="Shipping & delivery"
+      hideIntro
+      hideSectionNavigation
+      breadcrumbLabel="Shipping & Delivery Policy"
     />
   )
 }

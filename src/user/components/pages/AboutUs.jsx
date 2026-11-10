@@ -26,10 +26,10 @@ const sections = [
     '2. What We Sell',
     <>
       <p>
-        Our business activity is the online sale of electronic components,
-        electronic modules, and related products. The storefront may also
-        include PC components, audio products, wearables, smart-power products,
-        and other electronics listed in the current catalogue.
+        Pride Circuit sells electronic and industrial automation products
+        online, including passive components, electronic components,
+        connectors, PC components, smart-power products, and other related
+        items listed in the current catalogue.
       </p>
       <p>
         Product availability, specifications, variants, prices, applicable
@@ -88,7 +88,10 @@ const sections = [
         <strong>Office address:</strong> Office No. 237, 2nd Floor, XION Mall,
         Hinjewadi, Pune, Maharashtra – 411057
       </p>
-      <p><strong>Website:</strong> pridecircuit.in</p>
+      <p>
+        <strong>Website:</strong>{' '}
+        <a href="https://pridecircuit.in/">https://pridecircuit.in/</a>
+      </p>
     </>,
   ],
   [
@@ -100,7 +103,13 @@ const sections = [
       </p>
       <p>
         <strong>Email:</strong>{' '}
-        <a href="mailto:Support@pridecircuit.in">Support@pridecircuit.in</a>
+        <a
+          href="https://mail.google.com/mail/?view=cm&fs=1&to=Support%40pridecircuit.in"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Support@pridecircuit.in
+        </a>
       </p>
       <p>
         <strong>Phone:</strong>{' '}

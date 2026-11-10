@@ -2,8 +2,8 @@ import { ArrowRight, Camera, Mail, MessageCircle, Send } from 'lucide-react'
 import prismCircuitTechLogo from '../../../../images/Prism Circuit Tech Logo.png'
 
 const columns = [
-  { title: 'Shop', links: ['New arrivals', 'Audio', 'Wearables', 'PC components', 'Smart power'] },
-  { title: 'Help', links: ['Order tracking', 'Shipping & delivery', 'Returns & refunds', 'About Us', 'Contact us'] },
+  { title: 'Shop', links: ['Passive Components', 'Electronic Components', 'Connectors', 'PC components', 'Smart power'] },
+  { title: 'Help', links: ['Shipping & delivery', 'Returns & refunds', 'About Us', 'Contact us'] },
 ]
 
 const pageLinks = {

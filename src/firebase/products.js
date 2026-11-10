@@ -6,7 +6,7 @@ import {
   onSnapshot,
   runTransaction,
 } from 'firebase/firestore'
-import { db, FIREBASE_STORAGE_BUCKET } from './firebase'
+import { auth, db, FIREBASE_STORAGE_BUCKET } from './firebase'
 import {
   assertValidHsnCode,
   assertValidProductForCreate,
@@ -34,6 +34,19 @@ const NON_RETRYABLE_LISTENER_CODES = new Set([
 ])
 
 const productImageFields = ['image', 'images', 'imageStoragePaths']
+
+const requireAdminFirestoreAccess = async () => {
+  const user = auth.currentUser
+  if (!user) {
+    throw new Error('Sign in as the administrator before saving products.')
+  }
+  const token = await user.getIdTokenResult(true)
+  if (token.claims.admin !== true) {
+    throw new Error(
+      'This Firebase account does not have the required admin claim. Sign out and sign in again.',
+    )
+  }
+}
 
 const parseFirebaseStorageDownloadUrl = (value) => {
   try {
@@ -182,6 +195,7 @@ export function subscribeToProducts(onProducts, onError) {
 }
 
 export async function createProduct(product) {
+  await requireAdminFirestoreAccess()
   const productToCreate = { ...product }
   const productReference = productToCreate.id
     ? doc(productsCollection, String(productToCreate.id))

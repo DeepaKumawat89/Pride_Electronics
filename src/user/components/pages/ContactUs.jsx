@@ -5,6 +5,8 @@ import LegalPageLayout from './LegalPageLayout'
 const pageTitle = 'Contact Pride Circuit | Customer Support & Business Details'
 const pageDescription = 'Contact Pride Circuit for product, order, payment, delivery, return, refund, or account support. View Pride Automation business details and the Pune operational office and pickup location.'
 const directionsUrl = 'https://www.google.com/maps/search/?api=1&query=Office%20No.%20237%2C%202nd%20Floor%2C%20XION%20Mall%2C%20Hinjewadi%2C%20Pune%2C%20Maharashtra%20411057'
+const supportEmail = 'Support@pridecircuit.in'
+const gmailComposeUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(supportEmail)}`
 
 const sections = [
   [
@@ -17,7 +19,9 @@ const sections = [
       </p>
       <p>
         <strong>Support email:</strong>{' '}
-        <a href="mailto:Support@pridecircuit.in">Support@pridecircuit.in</a>
+        <a href={gmailComposeUrl} target="_blank" rel="noreferrer">
+          {supportEmail}
+        </a>
       </p>
       <p>
         <strong>Contact number:</strong>{' '}
@@ -61,7 +65,10 @@ const sections = [
       <p><strong>Legal business name / Proprietor:</strong> Pravin Rameshrao Banait</p>
       <p><strong>Business type:</strong> Proprietorship</p>
       <p><strong>GSTIN:</strong> 27AFUPB6009F2ZG</p>
-      <p><strong>Website:</strong> pridecircuit.in</p>
+      <p>
+        <strong>Website:</strong>{' '}
+        <a href="https://pridecircuit.in/">https://pridecircuit.in/</a>
+      </p>
       <p>
         <strong>Business activity:</strong> Online sale of electronic
         components, modules, and related products.
