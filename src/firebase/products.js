@@ -2,9 +2,12 @@ import {
   collection,
   deleteField,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
+  query,
   runTransaction,
+  where,
 } from 'firebase/firestore'
 import { auth, db, FIREBASE_STORAGE_BUCKET } from './firebase'
 import {
@@ -20,6 +23,22 @@ import {
 
 const productsCollection = collection(db, 'products')
 const productSkuCounterReference = doc(db, 'skuCounters', 'products')
+
+export async function getProductBySlugOrId(identifier) {
+  const normalizedIdentifier = String(identifier || '')
+  if (!normalizedIdentifier) return null
+
+  const slugSnapshot = await getDocs(
+    query(productsCollection, where('slug', '==', normalizedIdentifier)),
+  )
+  const slugDocument = slugSnapshot.docs[0]
+  if (slugDocument) return { ...slugDocument.data(), id: slugDocument.id }
+
+  const productSnapshot = await getDoc(doc(productsCollection, normalizedIdentifier))
+  return productSnapshot.exists()
+    ? { ...productSnapshot.data(), id: productSnapshot.id }
+    : null
+}
 
 const PRODUCT_LISTENER_RETRY_MIN_MS = 1_000
 const PRODUCT_LISTENER_RETRY_MAX_MS = 30_000

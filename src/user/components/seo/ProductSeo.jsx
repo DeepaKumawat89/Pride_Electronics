@@ -1,12 +1,10 @@
 import { useEffect } from 'react'
 import { getProductBasePrice } from '../../../utils/productPricing'
+import { getProductPath } from '../../../utils/slugify'
 
 const SITE_URL = 'https://pridecircuit.in'
 
 const textValue = (value) => String(value || '').replace(/\s+/g, ' ').trim()
-
-const productPath = (productId) =>
-  `/product/${encodeURIComponent(String(productId || ''))}`
 
 const setMeta = (attribute, name, content) => {
   let element = document.head.querySelector(`meta[${attribute}="${name}"]`)
@@ -50,7 +48,7 @@ export default function ProductSeo({ product }) {
     const description =
       textValue(product.description).slice(0, 160) ||
       `Shop ${name} from Pride Circuit.`
-    const canonicalUrl = `${SITE_URL}${productPath(product.id)}`
+    const canonicalUrl = `${SITE_URL}${getProductPath(product)}`
     const images = [
       product.image,
       ...(Array.isArray(product.images) ? product.images : []),

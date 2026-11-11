@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { getProductPath } from '../../../utils/slugify'
 
 const SITE_URL = 'https://pridecircuit.in'
 
@@ -63,7 +64,7 @@ export default function CatalogSeo({ category = 'All', products = [] }) {
       .map((product, index) => ({
         '@type': 'ListItem',
         position: index + 1,
-        url: `${SITE_URL}/product/${encodeURIComponent(String(product.id))}`,
+        url: `${SITE_URL}${getProductPath(product)}`,
         name: textValue(product.name),
       }))
     const structuredData = document.createElement('script')

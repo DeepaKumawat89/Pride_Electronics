@@ -78,6 +78,8 @@ import {
 } from './utils/checkoutSelection'
 import { createOrderMoment } from '../utils/orderTimestamps'
 import { getProductMinimumOrderQuantity } from '../utils/productMoq'
+import { getProductPath, slugify } from '../utils/slugify'
+import { getProductBySlugOrId } from '../firebase/products'
 
 const PRODUCT_HASH_PREFIX = '#product-'
 const PRODUCTS_HASH_PREFIX = '#products'
@@ -130,12 +132,7 @@ function parseProductsHash(hash) {
   }
 }
 
-const publicSlug = (value) =>
-  String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
+const publicSlug = slugify
 
 function parsePublicPath(pathname) {
   const path = String(pathname || '').replace(/\/+$/, '') || '/'
@@ -147,6 +144,12 @@ function parsePublicPath(pathname) {
     }
   }
   if (path.startsWith('/product/')) {
+    if (path.startsWith('/product/id/')) {
+      return {
+        type: 'product',
+        productId: decodeURIComponent(path.slice('/product/id/'.length)),
+      }
+    }
     return {
       type: 'product',
       productId: decodeURIComponent(path.slice('/product/'.length)),
@@ -314,7 +317,7 @@ export default function UserApp({
   }, [cartPersistence, likedIds, savedAddresses, savedPayments])
 
   useEffect(() => {
-    const handleHistoryBack = (event) => {
+    const handleHistoryBack = async (event) => {
       const shouldResetScroll =
         event?.type === 'popstate' || !historyRouteSynced.current
       historyRouteSynced.current = true
@@ -360,10 +363,16 @@ export default function UserApp({
       const publicPath = parsePublicPath(window.location.pathname)
       if (publicPath?.type === 'product') {
         const pathProduct = products.find(
-          (product) => String(product.id) === publicPath.productId,
+          (product) =>
+            String(product.id) === publicPath.productId ||
+            String(product.slug || '') === publicPath.productId,
         )
-        if (!pathProduct) {
+        let resolvedProduct = pathProduct
+        if (!resolvedProduct) {
           if (productsLoading) return
+          resolvedProduct = await getProductBySlugOrId(publicPath.productId)
+        }
+        if (!resolvedProduct) {
           window.history.replaceState(null, '', '/')
           productHistoryActive.current = false
           setSelectedProduct(null)
@@ -375,7 +384,7 @@ export default function UserApp({
           return
         }
         productHistoryActive.current = true
-        setSelectedProduct(pathProduct)
+        setSelectedProduct(resolvedProduct)
         setReviewsOpen(window.location.hash === '#reviews')
         setProductsOpen(false)
         setContentPage(null)
@@ -520,7 +529,7 @@ export default function UserApp({
           window.history.replaceState(
             { prideProduct: historyProduct.id },
             '',
-            `/product/${encodeURIComponent(historyProduct.id)}${isReviewsPage ? '#reviews' : ''}`,
+            `${getProductPath(historyProduct)}${isReviewsPage ? '#reviews' : ''}`,
           )
           setSelectedProduct(historyProduct)
           setReviewsOpen(isReviewsPage)
@@ -1035,7 +1044,7 @@ export default function UserApp({
     if (!productHistoryActive.current)
       productReturnSection.current = accountSection
     productHistoryActive.current = true
-    const productPath = `/product/${encodeURIComponent(product.id)}`
+    const productPath = getProductPath(product)
     if (window.location.pathname !== productPath || window.location.hash)
       window.history.pushState({ prideProduct: product.id }, '', productPath)
     setSelectedProduct(product)
@@ -1061,8 +1070,9 @@ export default function UserApp({
 
   const navigateToReviews = () => {
     if (!liveSelectedProduct) return
-    const reviewsPath = `/product/${encodeURIComponent(liveSelectedProduct.id)}#reviews`
-    if (window.location.pathname !== `/product/${encodeURIComponent(liveSelectedProduct.id)}` || window.location.hash !== '#reviews')
+    const productPath = getProductPath(liveSelectedProduct)
+    const reviewsPath = `${productPath}#reviews`
+    if (window.location.pathname !== productPath || window.location.hash !== '#reviews')
       window.history.pushState(
         { prideProductReviews: liveSelectedProduct.id },
         '',

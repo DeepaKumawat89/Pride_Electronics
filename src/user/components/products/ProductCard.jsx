@@ -1,6 +1,7 @@
 import { Heart, ShoppingBag, Star, Zap } from 'lucide-react'
 import { formatCurrency, hasValidPrice } from '../../utils/currency'
 import { getProductBasePrice } from '../../../utils/productPricing'
+import { getProductPath } from '../../../utils/slugify'
 
 export default function ProductCard({
   product,
@@ -13,7 +14,7 @@ export default function ProductCard({
   const sellingPrice = getProductBasePrice(product)
   const priceAvailable = hasValidPrice(sellingPrice)
   const purchasable = Number(product.stock) > 0 && priceAvailable
-  const productPath = `/product/${encodeURIComponent(String(product.id))}`
+  const productPath = getProductPath(product)
   const availability =
     product.stock <= 0
       ? 'Out of stock'

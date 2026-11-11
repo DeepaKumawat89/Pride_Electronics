@@ -1,5 +1,6 @@
 const { getFirestore } = require('firebase-admin/firestore')
 const { onRequest } = require('firebase-functions/v2/https')
+const { slugify } = require('./shared/slugify')
 
 const SITE_URL = 'https://pridecircuit.in'
 const db = getFirestore()
@@ -11,13 +12,6 @@ const escapeXml = (value) =>
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&apos;')
-
-const slugify = (value) =>
-  String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
 
 const lastModified = (value) => {
   const date = typeof value?.toDate === 'function' ? value.toDate() : new Date(value || 0)
@@ -60,6 +54,7 @@ exports.sitemap = onRequest(
       const publicProducts = productsSnapshot.docs
         .map((document) => ({
           id: document.id,
+          slug: String(document.data()?.slug || '').trim(),
           categoryId: String(document.data()?.categoryId || ''),
           category: String(document.data()?.category || '').trim(),
           subcategoryId: String(document.data()?.subcategoryId || ''),
@@ -107,7 +102,7 @@ exports.sitemap = onRequest(
         { path: '/products' },
         ...categoryPaths.map((path) => ({ path })),
         ...publicProducts.map((product) => ({
-          path: `/product/${encodeURIComponent(product.id)}`,
+          path: `/product/${encodeURIComponent(product.slug || product.id)}`,
           lastmod: product.lastmod,
         })),
       ]
