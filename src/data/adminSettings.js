@@ -1,17 +1,23 @@
+import { publicBusinessInformation } from './business.js'
+
 export const initialAdminSettings = {
   store: {
-    name: 'Pride Electronics',
-    supportEmail: 'support@prideelectronics.in',
-    supportPhone: '+91 98765 43210',
+    name: publicBusinessInformation.brandName,
+    registeredTradeName: publicBusinessInformation.registeredTradeName,
+    proprietor: publicBusinessInformation.proprietor,
+    gstin: publicBusinessInformation.gstin,
+    operationalAddress: publicBusinessInformation.operationalAddress,
+    supportEmail: publicBusinessInformation.supportEmail,
+    supportPhone: publicBusinessInformation.phone,
     timezone: 'Asia/Kolkata',
     currency: 'INR',
     orderPrefix: 'ORD',
   },
   payment: {
-    razorpayEnabled: true,
+    onlinePaymentsEnabled: false,
     testMode: true,
     autoCapture: true,
-    codEnabled: false,
+    codEnabled: true,
     cardsEnabled: true,
     upiEnabled: true,
     netBankingEnabled: true,
@@ -29,10 +35,10 @@ export const initialAdminSettings = {
   email: {
     enabled: true,
     provider: 'SMTP',
-    fromName: 'Pride Electronics',
-    fromEmail: 'orders@prideelectronics.in',
-    replyTo: 'support@prideelectronics.in',
-    smtpHost: 'smtp.prideelectronics.in',
+    fromName: 'Pride Circuit',
+    fromEmail: '',
+    replyTo: publicBusinessInformation.supportEmail,
+    smtpHost: '',
     smtpPort: 587,
     encryption: 'TLS',
     username: '',

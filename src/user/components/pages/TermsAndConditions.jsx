@@ -161,28 +161,23 @@ const sections = [
     ),
   },
   {
-    title: '7. Online Payments',
+    title: '7. Payments',
     content: (
       <>
         <p>
-          The website&apos;s currently integrated online payment gateway is
-          <strong> Razorpay</strong>. Available payment methods are shown during
-          checkout and may depend on configured options, provider availability,
-          authentication requirements, transaction limits, and risk checks.
+          The website currently offers <strong>Cash on Delivery</strong>. Any
+          available payment method is shown during checkout before an order is
+          placed. No online payment gateway is currently integrated.
         </p>
         <p>
-          By proceeding with payment, you authorise the payment provider and
-          relevant bank, card network, UPI service, wallet, or other payment
-          participant to process the final amount displayed at checkout. Their
-          terms and privacy practices also apply to information processed on
-          their systems.
+          If an online payment option is introduced, the applicable provider
+          and terms will be disclosed on the website before customers are asked
+          to use that option.
         </p>
         <p>
-          Pride Circuit verifies payment status before completing a prepaid
-          order. A bank debit or payment authorisation does not necessarily mean
-          the website has received a successful, verified payment. Contact
-          support with the available transaction reference if a payment is
-          pending, failed, duplicated, or debited without an order confirmation.
+          Cash on Delivery orders remain subject to order acceptance, product
+          availability, delivery serviceability, and the final amount shown at
+          checkout.
         </p>
         <p>
           Never disclose a card security code, UPI PIN, online-banking password,
@@ -369,7 +364,7 @@ const sections = [
         </p>
         <p>
           For questions, complaints, or order support, email{' '}
-          <a href="mailto:Support@pridecircuit.in">Support@pridecircuit.in</a>.
+          <a href="mailto:support@pridecircuit.in">support@pridecircuit.in</a>.
           Include the order number for an order-related request, but do not send
           passwords, PINs, one-time passwords, or complete payment-card details.
         </p>

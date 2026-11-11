@@ -7,7 +7,7 @@ import {
 } from '@firebase/rules-unit-testing'
 import { deleteObject, getBytes, ref, uploadBytes } from 'firebase/storage'
 
-const projectId = 'demo-pride-electronics'
+const projectId = 'demo-pride-circuit'
 const bucket = `${projectId}.appspot.com`
 let testEnvironment
 

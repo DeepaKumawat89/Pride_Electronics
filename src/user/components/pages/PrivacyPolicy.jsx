@@ -88,19 +88,17 @@ const sections = [
     '5. Payments',
     <>
       <p>
-        The website&apos;s currently implemented online checkout uses
-        <strong> Razorpay</strong>. Razorpay and participating banks, card
-        networks, UPI services, wallet providers, or other payment participants
-        may process the information required to create, authenticate, complete,
-        verify, reconcile, or refund a transaction.
+        The website currently offers Cash on Delivery and does not send checkout
+        data to an online payment gateway. If online payments are enabled in the
+        future, this policy will be updated to identify the payment provider and
+        explain the related processing before that option is made available.
       </p>
       <p>
-        Pride Circuit receives and retains transaction references and status
-        information needed to connect a payment to an order. Complete card
-        numbers, card security codes, UPI PINs, online-banking passwords, and
-        one-time passwords entered in the payment interface are handled by the
-        payment provider and are not intentionally collected or stored by Pride
-        Circuit.
+        Pride Circuit stores the order and payment status information required
+        to fulfil and account for Cash on Delivery orders. Pride Circuit does
+        not ask customers to provide card security codes, UPI PINs,
+        online-banking passwords, or one-time passwords through the website or
+        customer support.
       </p>
     </>,
   ],
@@ -108,7 +106,7 @@ const sections = [
     '6. Cookies, Browser Storage, and Analytics',
     <>
       <p>
-        Firebase, Google Analytics, Google sign-in, App Check, Razorpay, and
+        Firebase, Google Analytics, Google sign-in, App Check, and
         related services may use cookies, browser storage, device identifiers,
         or similar technologies for authentication, security, fraud prevention,
         checkout, analytics, and service operation.
@@ -132,7 +130,6 @@ const sections = [
       <p>We may share personal data only as reasonably necessary with:</p>
       <ul>
         <li>Google and Firebase for authentication, hosting, databases, functions, storage, analytics, and service protection.</li>
-        <li>Razorpay and payment participants for payment processing, verification, reconciliation, disputes, and refunds.</li>
         <li>Shipping, courier, and fulfilment providers for dispatch, delivery, tracking, returns, and pickup.</li>
         <li>Service providers supporting communications, infrastructure, security, accounting, or professional advice.</li>
         <li>Government, regulatory, judicial, law-enforcement, or tax authorities when disclosure is legally required.</li>
@@ -196,7 +193,7 @@ const sections = [
       <p>
         You can update certain profile, address, and saved-payment-preference
         information through your account. For other requests, email{' '}
-        <a href="mailto:Support@pridecircuit.in">Support@pridecircuit.in</a>{' '}
+        <a href="mailto:support@pridecircuit.in">support@pridecircuit.in</a>{' '}
         with the subject &quot;Privacy Request&quot;. We may request reasonable
         information to verify your identity and protect the account before
         acting on a request.
@@ -216,7 +213,7 @@ const sections = [
         The website does not currently provide a self-service account-deletion
         control. To request deletion of your customer account and eligible
         personal data, email{' '}
-        <a href="mailto:Support@pridecircuit.in">Support@pridecircuit.in</a>{' '}
+        <a href="mailto:support@pridecircuit.in">support@pridecircuit.in</a>{' '}
         from the email address associated with the account using the subject
         &quot;Account Deletion Request&quot;.
       </p>
@@ -247,7 +244,7 @@ const sections = [
         performed through their services.
       </p>
       <p>
-        Firebase, Google, Razorpay, and other providers may process or store data
+        Firebase, Google, and other providers may process or store data
         in India or other locations where they or their service providers
         operate, subject to their service configuration, contractual terms, and
         applicable legal restrictions.
@@ -273,7 +270,7 @@ const sections = [
       <p>
         For privacy questions, rights requests, account-deletion requests, or
         grievances, email{' '}
-        <a href="mailto:Support@pridecircuit.in">Support@pridecircuit.in</a>.
+        <a href="mailto:support@pridecircuit.in">support@pridecircuit.in</a>.
       </p>
       <p>
         Include enough information to identify the relevant account or request,

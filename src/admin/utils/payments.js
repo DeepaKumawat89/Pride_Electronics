@@ -3,9 +3,9 @@ import { formatCurrency, parsePrice } from '../../user/utils/currency.js'
 const normalizedText = (value) => String(value || '').trim().toLowerCase()
 
 export const getPaymentTransactionId = (order) =>
-  order.razorpayPaymentId ||
   order.transactionId ||
   order.paymentId ||
+  order.razorpayPaymentId ||
   `PAY-${String(order.id || 'UNKNOWN').replace(/^ORD-?/i, '')}`
 
 export function getPaymentStatus(order, refund) {

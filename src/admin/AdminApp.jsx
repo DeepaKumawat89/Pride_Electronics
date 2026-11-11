@@ -279,6 +279,8 @@ export default function AdminApp({
       {permittedTab === 'tax-invoice' && (
         <TaxInvoicePage
           settings={invoiceSettings}
+          storeSettings={adminSettings.store}
+          pickupSettings={shippingSettings.pickup}
           loading={invoiceSettingsLoading}
           loadError={invoiceSettingsError}
           onUpdate={onUpdateInvoiceSettings}

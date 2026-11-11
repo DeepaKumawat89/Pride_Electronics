@@ -8,7 +8,7 @@ export default function Brand({ inverse = false, compact = false }) {
       </span>
       {!compact && <span className={`leading-none ${inverse ? 'text-white' : 'text-slate-950'}`}>
         <strong className="block text-base font-extrabold tracking-[-0.04em]">PRIDE</strong>
-        <span className={`text-[9px] font-bold tracking-[0.22em] ${inverse ? 'text-white/60' : 'text-slate-500'}`}>ELECTRONICS</span>
+        <span className={`text-[9px] font-bold tracking-[0.22em] ${inverse ? 'text-white/60' : 'text-slate-500'}`}>CIRCUIT</span>
       </span>}
     </div>
   )

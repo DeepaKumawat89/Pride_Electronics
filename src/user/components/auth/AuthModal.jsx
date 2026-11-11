@@ -189,7 +189,7 @@ export default function AuthModal({ initialMode = 'login', open, onClose, onSucc
   const description = mode === 'login'
     ? 'Sign in securely with your email and password.'
     : isSignup
-      ? 'Create your secure Pride Electronics account.'
+      ? 'Create your secure Pride Circuit account.'
       : 'Enter your account email and Firebase will send a secure reset link.'
 
   return (

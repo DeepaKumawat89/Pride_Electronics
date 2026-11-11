@@ -1,11 +1,21 @@
 export const initialShippingSettings = {
-  standardCharge: 99,
-  freeShippingThreshold: 999,
-  expressCharge: 199,
+  processingMinDays: 1,
+  processingMaxDays: 2,
+  standardEnabled: true,
+  standardCharge: 80,
+  freeShippingThreshold: 0,
+  expressEnabled: true,
+  expressCharge: 100,
   standardMinDays: 3,
   standardMaxDays: 5,
   expressMinDays: 1,
   expressMaxDays: 2,
+  expressServiceCities: ['Pune'],
+  porter: {
+    enabled: true,
+    bookedBy: 'customer',
+    paidBy: 'customer',
+  },
   deliveryAreas: [
     {
       id: 'area-india',
@@ -33,7 +43,8 @@ export const initialShippingSettings = {
   ],
   pickup: {
     enabled: true,
-    processingHours: 24,
-    address: 'Office No. 237, 2nd Floor, XION Mall, Hinjewadi, Pune, MH 411057',
+    processingHours: 12,
+    schedule: 'Monday–Saturday, 10:00 AM–6:00 PM',
+    address: 'Office No. 237, 2nd Floor, XION Mall, Hinjawadi, Pune – 411057',
   },
 }

@@ -86,7 +86,7 @@ const sections = [
       <p><strong>Business activity:</strong> Online sale of electronic components, modules, and related products.</p>
       <p>
         <strong>Office address:</strong> Office No. 237, 2nd Floor, XION Mall,
-        Hinjewadi, Pune, Maharashtra – 411057
+        Hinjawadi, Pune, Maharashtra – 411057
       </p>
       <p>
         <strong>Website:</strong>{' '}
@@ -104,16 +104,16 @@ const sections = [
       <p>
         <strong>Email:</strong>{' '}
         <a
-          href="https://mail.google.com/mail/?view=cm&fs=1&to=Support%40pridecircuit.in"
+          href="mailto:support@pridecircuit.in"
           target="_blank"
           rel="noreferrer"
         >
-          Support@pridecircuit.in
+          support@pridecircuit.in
         </a>
       </p>
       <p>
         <strong>Phone:</strong>{' '}
-        <a href="tel:8574859658">8574859658</a>
+        <a href="tel:9607126969">9607126969</a>
       </p>
       <p>
         Customers can also review our <a href="/#shipping-and-delivery-policy">Shipping &amp; Delivery Policy</a>,{' '}

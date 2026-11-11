@@ -21,7 +21,7 @@ import {
   where,
 } from 'firebase/firestore'
 
-const projectId = 'demo-pride-electronics'
+const projectId = 'demo-pride-circuit'
 let testEnvironment
 
 before(async () => {

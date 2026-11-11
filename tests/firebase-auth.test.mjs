@@ -20,7 +20,7 @@ const {
 } = require('firebase-admin/app')
 const { getAuth: getAdminAuth } = require('firebase-admin/auth')
 
-const projectId = 'demo-pride-electronics'
+const projectId = 'demo-pride-circuit'
 const emulatorOrigin = 'http://127.0.0.1:9099'
 let app
 let auth

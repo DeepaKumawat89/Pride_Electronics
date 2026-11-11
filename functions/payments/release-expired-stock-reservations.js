@@ -1,7 +1,7 @@
 const { onSchedule, region } = require('../shared/core')
 const {
   releaseExpiredStockReservationsHandler,
-} = require('./razorpay-handlers')
+} = require('./reservation-cleanup')
 
 const releaseExpiredStockReservations = onSchedule(
   {
@@ -14,4 +14,3 @@ const releaseExpiredStockReservations = onSchedule(
 )
 
 module.exports = { releaseExpiredStockReservations }
-

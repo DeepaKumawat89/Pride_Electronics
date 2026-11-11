@@ -37,7 +37,6 @@ import {
 import { sortCatalogProducts } from './utils/catalog'
 import { normalizeAddress } from './utils/address'
 import { getOrderDisplayId } from '../utils/orderIdentifiers'
-import { postRazorpayApi } from './utils/razorpay'
 import {
   emptyAccountState,
   removeSavedAddress,
@@ -86,7 +85,6 @@ const REVIEWS_HASH_SUFFIX = '-reviews'
 const CHECKOUT_HASH = '#checkout'
 const ORDER_SUCCESS_HASH = '#order-success'
 const ORDER_SUCCESS_SESSION_KEY = 'pride_last_successful_order'
-const PAYMENT_CONFIRMATION_SESSION_KEY = 'pride_pending_payment_confirmation'
 const INTENDED_ROUTE_SESSION_KEY = 'pride_intended_protected_route'
 const CHECKOUT_SELECTION_SESSION_KEY = 'pride_checkout_selection'
 const CONTENT_PAGE_HASHES = {
@@ -157,28 +155,6 @@ function parsePublicPath(pathname) {
   return null
 }
 
-function formatVerifiedPaymentMethod(payment, fallback, gatewayLabel = 'Razorpay Test Mode') {
-  if (!payment?.method) return fallback || 'Razorpay Test Mode'
-  const labels = {
-    card: 'Card',
-    upi: 'UPI',
-    netbanking: 'Net Banking',
-    wallet: 'Wallet',
-    emi: 'EMI',
-    paylater: 'Pay Later',
-  }
-  const provider = payment.bank || payment.wallet
-  const method = labels[payment.method] || payment.method
-  return `${method}${provider ? ` (${provider})` : ''} via ${gatewayLabel}`
-}
-
-function formatVerifiedPaymentStatus(status) {
-  if (status === 'captured') return 'Paid'
-  if (status === 'authorized') return 'Authorized'
-  if (!status) return 'Paid'
-  return status.charAt(0).toUpperCase() + status.slice(1)
-}
-
 function getSessionItems(key, fallback) {
   try {
     return JSON.parse(sessionStorage.getItem(key) || 'null') || fallback
@@ -228,15 +204,6 @@ export default function UserApp({
   )
   const [checkoutCouponCode, setCheckoutCouponCode] = useState('')
   const [successfulOrder, setSuccessfulOrder] = useState(null)
-  const [pendingPaymentConfirmation, setPendingPaymentConfirmation] = useState(() =>
-    getSessionItems(PAYMENT_CONFIRMATION_SESSION_KEY, null),
-  )
-  const [orderVerification, setOrderVerification] = useState(() =>
-    window.location.hash === ORDER_SUCCESS_HASH &&
-    getSessionItems(PAYMENT_CONFIRMATION_SESSION_KEY, null)
-      ? { status: 'verifying', message: '' }
-      : null,
-  )
   const [orderToViewId, setOrderToViewId] = useState(null)
   const [pendingCheckout, setPendingCheckout] = useState(false)
   const [pendingCart, setPendingCart] = useState(false)
@@ -273,7 +240,6 @@ export default function UserApp({
   const contentPageHistoryActive = useRef(false)
   const checkoutHistoryActive = useRef(false)
   const orderSuccessHistoryActive = useRef(false)
-  const paymentConfirmationInFlight = useRef(false)
   const activeUserUid = useRef(null)
   const historyRouteSynced = useRef(false)
 
@@ -294,7 +260,6 @@ export default function UserApp({
     accountSaveRevision.current += 1
     activeUserUid.current = null
     sessionStorage.removeItem(ORDER_SUCCESS_SESSION_KEY)
-    sessionStorage.removeItem(PAYMENT_CONFIRMATION_SESSION_KEY)
     sessionStorage.removeItem(CHECKOUT_SELECTION_SESSION_KEY)
     setOrders([])
     setUserReturns([])
@@ -303,8 +268,6 @@ export default function UserApp({
     setSavedPayments([])
     setCouponUsage({})
     setSuccessfulOrder(null)
-    setPendingPaymentConfirmation(null)
-    setOrderVerification(null)
     setOrderToViewId(null)
     setCheckoutOpen(false)
     setCheckoutSelection(null)
@@ -473,10 +436,7 @@ export default function UserApp({
       if (window.location.hash === ORDER_SUCCESS_HASH) {
         const savedOrder = getSessionItems(ORDER_SUCCESS_SESSION_KEY, null)
         if (savedOrder) {
-          sessionStorage.removeItem(PAYMENT_CONFIRMATION_SESSION_KEY)
           orderSuccessHistoryActive.current = true
-          setPendingPaymentConfirmation(null)
-          setOrderVerification(null)
           setSuccessfulOrder(savedOrder)
           setOrders((current) =>
             current.some((order) => order.id === savedOrder.id)
@@ -488,23 +448,9 @@ export default function UserApp({
           resetScroll()
           return
         }
-        const pendingConfirmation = getSessionItems(
-          PAYMENT_CONFIRMATION_SESSION_KEY,
-          null,
-        )
-        if (pendingConfirmation) {
-          orderSuccessHistoryActive.current = true
-          setPendingPaymentConfirmation(pendingConfirmation)
-          setOrderVerification({ status: 'verifying', message: '' })
-          setCheckoutOpen(false)
-          setAccountSection(null)
-          resetScroll()
-          return
-        }
       }
       if (orderSuccessHistoryActive.current) {
         setSuccessfulOrder(null)
-        setOrderVerification(null)
         orderSuccessHistoryActive.current = false
       }
       if (window.location.hash === CHECKOUT_HASH) {
@@ -1664,14 +1610,6 @@ export default function UserApp({
 
   const handlePlaceOrder = async (checkoutDetails = {}) => {
     const placedMoment = createOrderMoment()
-    const verifiedPayment = checkoutDetails.verifiedPayment
-    const verifiedAmount = Number(verifiedPayment?.amount)
-    const gatewayLabel = adminSettings.payment.testMode
-      ? 'Razorpay Test Mode'
-      : 'Razorpay'
-    const selectedPaymentMethod = checkoutDetails.payment?.type
-      ? `${checkoutDetails.payment.type} via ${gatewayLabel}`
-      : gatewayLabel
     const order = {
       clientRequestId: checkoutDetails.requestId,
       checkoutMode:
@@ -1680,11 +1618,7 @@ export default function UserApp({
       customer: user?.name || 'Pride customer',
       email: user?.email || '',
       date: placedMoment.date,
-      total: formatCurrency(
-        Number.isFinite(verifiedAmount)
-          ? verifiedAmount / 100
-          : checkoutDetails.total ?? cart.subtotal,
-      ),
+      total: formatCurrency(checkoutDetails.total ?? cart.subtotal),
       discount: checkoutDetails.discount || 0,
       deliveryCharges: checkoutDetails.shipping || 0,
       taxAmount: checkoutDetails.tax || 0,
@@ -1693,40 +1627,20 @@ export default function UserApp({
         (sum, item) => sum + item.quantity,
         0,
       ),
-      status: checkoutDetails.cod ? 'Pending' : 'Confirmed',
+      status: 'Pending',
       orderTime: placedMoment.time,
       deliveryDate:
         checkoutDetails.delivery?.estimatedDate || 'Being scheduled',
       deliveryOption: checkoutDetails.delivery?.name || 'Standard delivery',
-      paymentStatus: checkoutDetails.cod
-        ? 'Pending'
-        : formatVerifiedPaymentStatus(verifiedPayment?.status),
-      paymentDate: verifiedPayment?.createdAt
-        ? new Date(verifiedPayment.createdAt * 1000).toISOString()
-        : new Date().toISOString(),
+      paymentStatus: 'Pending',
+      paymentDate: null,
       shippingAddress: checkoutDetails.address || null,
       billingAddress:
         checkoutDetails.billingAddress || checkoutDetails.address || null,
       gstProfile: checkoutDetails.gstProfile || null,
       deliveryId: checkoutDetails.delivery?.id || 'standard',
-      paymentMethod: checkoutDetails.cod
-        ? 'Cash on Delivery'
-        : formatVerifiedPaymentMethod(
-            verifiedPayment,
-            checkoutDetails.razorpay ? selectedPaymentMethod : 'Online payment',
-            gatewayLabel,
-          ),
-      paymentEnvironment: checkoutDetails.cod
-        ? 'Cash on Delivery'
-        : gatewayLabel,
-      razorpayPaymentId:
-        verifiedPayment?.id ||
-        checkoutDetails.razorpay?.razorpay_payment_id ||
-        '',
-      razorpayOrderId:
-        verifiedPayment?.orderId ||
-        checkoutDetails.razorpay?.razorpay_order_id ||
-        '',
+      paymentMethod: 'Cash on Delivery',
+      paymentEnvironment: 'Cash on Delivery',
       items: activeCheckoutItems.map(checkoutItemRequest),
     }
     const savedOrder = (await onNewOrder?.(order)) || order
@@ -1766,9 +1680,6 @@ export default function UserApp({
       )
     }
     sessionStorage.setItem(ORDER_SUCCESS_SESSION_KEY, JSON.stringify(savedOrder))
-    sessionStorage.removeItem(PAYMENT_CONFIRMATION_SESSION_KEY)
-    setPendingPaymentConfirmation(null)
-    setOrderVerification(null)
     orderSuccessHistoryActive.current = true
     window.history.replaceState(
       { prideOrderSuccess: savedOrder.id },
@@ -1784,64 +1695,6 @@ export default function UserApp({
     notify(`Order ${getOrderDisplayId(savedOrder)} placed successfully`)
     return savedOrder
   }
-
-  const confirmAuthorizedPayment = async (confirmation = pendingPaymentConfirmation) => {
-    if (!confirmation || paymentConfirmationInFlight.current) return
-    paymentConfirmationInFlight.current = true
-    setOrderVerification({ status: 'verifying', message: '' })
-    try {
-      const verification = await postRazorpayApi('verify', confirmation.razorpay)
-      if (!verification.verified || !verification.payment) {
-        throw new Error('Your payment could not be verified. No order confirmation has been shown.')
-      }
-      await handlePlaceOrder({
-        ...confirmation.checkoutDetails,
-        razorpay: confirmation.razorpay,
-        verifiedPayment: verification.payment,
-      })
-    } catch (error) {
-      setOrderVerification({
-        status: 'error',
-        message: `${error.message || 'Payment verification is temporarily unavailable.'} You can retry safely without making another payment.`,
-      })
-    } finally {
-      paymentConfirmationInFlight.current = false
-    }
-  }
-
-  const handlePaymentAuthorized = (confirmation) => {
-    if (!confirmation || paymentConfirmationInFlight.current) return
-    sessionStorage.removeItem(ORDER_SUCCESS_SESSION_KEY)
-    sessionStorage.setItem(
-      PAYMENT_CONFIRMATION_SESSION_KEY,
-      JSON.stringify(confirmation),
-    )
-    setPendingPaymentConfirmation(confirmation)
-    setOrderVerification({ status: 'verifying', message: '' })
-    setSuccessfulOrder(null)
-    orderSuccessHistoryActive.current = true
-    checkoutHistoryActive.current = false
-    window.history.replaceState(
-      { pridePaymentVerification: confirmation.checkoutDetails?.requestId },
-      '',
-      `/${ORDER_SUCCESS_HASH}`,
-    )
-    setCheckoutOpen(false)
-    setAccountSection(null)
-    window.scrollTo({ top: 0, behavior: 'auto' })
-    void confirmAuthorizedPayment(confirmation)
-  }
-
-  useEffect(() => {
-    if (
-      authStatus === 'authenticated' &&
-      user &&
-      orderVerification?.status === 'verifying' &&
-      pendingPaymentConfirmation
-    ) {
-      void confirmAuthorizedPayment(pendingPaymentConfirmation)
-    }
-  }, [authStatus, orderVerification?.status, pendingPaymentConfirmation, user])
 
   const handleCancelUserOrder = async (orderId) => {
     const order = orders.find((item) => item.id === orderId)
@@ -1925,12 +1778,12 @@ export default function UserApp({
 
   return (
     <div className="customer-shell min-h-screen overflow-x-clip bg-[#f7f8f5] pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-16 lg:pb-0">
-      {!liveSelectedProduct && !ContentPage && !productsOpen && !checkoutOpen && !successfulOrder && !orderVerification && !accountSection && <HomeSeo />}
+      {!liveSelectedProduct && !ContentPage && !productsOpen && !checkoutOpen && !successfulOrder && !accountSection && <HomeSeo />}
       {liveSelectedProduct && <ProductSeo product={liveSelectedProduct} />}
       {!liveSelectedProduct && productsOpen && (
         <CatalogSeo category={category} products={filteredProducts} />
       )}
-      <AnnouncementBar shippingSettings={shippingSettings} />
+      <AnnouncementBar />
       <Header
         products={products}
         searchQuery={query}
@@ -1990,11 +1843,6 @@ export default function UserApp({
               </div>
             </div>
           </section>
-        ) : orderVerification && authStatus === 'authenticated' && user ? (
-          <OrderSuccessPage
-            verificationState={orderVerification}
-            onRetryVerification={() => confirmAuthorizedPayment()}
-          />
         ) : successfulOrder && authStatus === 'authenticated' && user ? (
           <OrderSuccessPage
             order={successfulOrder}
@@ -2014,7 +1862,6 @@ export default function UserApp({
             onPrepareCheckout={flushPendingAccountChanges}
             onBack={closeCheckout}
             onPlaceOrder={handlePlaceOrder}
-            onPaymentAuthorized={handlePaymentAuthorized}
             onUpdateQuantity={handleCheckoutUpdateQuantity}
             onRemoveItem={handleCheckoutRemoveItem}
             onOpenPolicy={handleOpenPolicy}

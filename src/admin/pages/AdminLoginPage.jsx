@@ -80,7 +80,7 @@ export default function AdminLoginPage({
               <Zap size={19} fill="currentColor" />
             </span>
             <div>
-              <p className="text-sm font-extrabold">Pride Electronics</p>
+              <p className="text-sm font-extrabold">Pride Circuit</p>
               <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#9bcaa6]">
                 Operations Console
               </p>

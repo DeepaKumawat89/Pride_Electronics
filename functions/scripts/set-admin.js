@@ -2,11 +2,10 @@ const { initializeApp } = require('firebase-admin/app')
 const { getAuth } = require('firebase-admin/auth')
 
 const projectId = process.env.GOOGLE_CLOUD_PROJECT || 'ecommerce-78081'
-const defaultAdminEmail = 'admin@prideelectronics.in'
-const email = String(process.argv[2] || defaultAdminEmail).trim().toLowerCase()
+const email = String(process.argv[2] || '').trim().toLowerCase()
 
 if (!email) {
-  throw new Error('Usage: npm run set-admin -- admin@prideelectronics.in')
+  throw new Error('Usage: npm run set-admin -- <existing-admin-email>')
 }
 
 initializeApp({ projectId })

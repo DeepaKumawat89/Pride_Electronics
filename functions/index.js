@@ -1,10 +1,4 @@
 const { updateUserProfile } = require('./authentication/update-user-profile')
-const { createRazorpayOrder } = require('./payments/create-razorpay-order')
-const { verifyRazorpayPayment } = require('./payments/verify-razorpay-payment')
-const {
-  releaseRazorpayReservation,
-} = require('./payments/release-razorpay-reservation')
-const { razorpayWebhook } = require('./payments/razorpay-webhook')
 const {
   releaseExpiredStockReservations,
 } = require('./payments/release-expired-stock-reservations')
@@ -26,10 +20,6 @@ const { sitemap } = require('./sitemap')
 
 module.exports = {
   updateUserProfile,
-  createRazorpayOrder,
-  verifyRazorpayPayment,
-  releaseRazorpayReservation,
-  razorpayWebhook,
   releaseExpiredStockReservations,
   placeOrder,
   saveAccountState,
@@ -43,4 +33,3 @@ module.exports = {
   updateCustomerStatus,
   sitemap,
 }
-

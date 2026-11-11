@@ -12,18 +12,13 @@ import {
 import {
   calculateCartPricing,
   paymentAmountMatchesCheckout,
-  toRazorpayAmount,
+  toPaymentAmount,
 } from '../src/user/utils/cart.js'
 import {
   createBuyNowSelection,
   removePurchasedItems as removePurchasedClientItems,
   resolveCheckoutSelection,
 } from '../src/user/utils/checkoutSelection.js'
-import {
-  createRazorpayDisplayConfig,
-  enabledRazorpayMethods,
-  preferredRazorpayMethod,
-} from '../src/user/utils/razorpayOptions.js'
 import { getAddressValidationError } from '../src/user/utils/address.js'
 
 const require = createRequire(import.meta.url)
@@ -32,7 +27,6 @@ const {
   itemSignature,
   normalizePaymentConfiguration,
   normalizeRequestedItems,
-  razorpayEnvironmentForKey,
 } = require('../functions/checkout.js')
 const {
   removePurchasedCartItems,
@@ -253,45 +247,26 @@ test('browser and backend totals use the same paise rounding', () => {
   assert.equal(Math.round(browser.total * 100), backend.totalPaise)
 })
 
-test('checkout accepts old and new Razorpay quote response shapes', () => {
-  assert.equal(toRazorpayAmount(18000), 1800000)
-  assert.equal(toRazorpayAmount(199.99), 19999)
+test('checkout compares rupee totals using integer paise', () => {
+  assert.equal(toPaymentAmount(18000), 1800000)
+  assert.equal(toPaymentAmount(199.99), 19999)
   assert.equal(paymentAmountMatchesCheckout(18000, 1800000, undefined), true)
   assert.equal(paymentAmountMatchesCheckout(18000, 1800000, 1800000), true)
   assert.equal(paymentAmountMatchesCheckout(18000, 1800000, 1800100), false)
   assert.equal(paymentAmountMatchesCheckout(18000, 1800100, 1800000), false)
 })
 
-test('checkout exposes only Razorpay methods enabled by Admin settings', () => {
-  const settings = {
-    upiEnabled: true,
-    cardsEnabled: false,
-    netBankingEnabled: true,
-    walletsEnabled: false,
-  }
-  assert.deepEqual(enabledRazorpayMethods(settings), ['upi', 'netbanking'])
-  assert.deepEqual(
-    createRazorpayDisplayConfig(settings).display.blocks.checkout.instruments,
-    [{ method: 'upi' }, { method: 'netbanking' }],
-  )
-  assert.equal(preferredRazorpayMethod({ type: 'Credit Card' }, settings), '')
-  assert.equal(preferredRazorpayMethod({ type: 'UPI' }, settings), 'upi')
-})
-
-test('Razorpay server settings match storefront defaults and credential mode', () => {
+test('server settings keep online payments disabled until gateway integration', () => {
   assert.deepEqual(normalizePaymentConfiguration(), {
-    razorpayEnabled: true,
+    onlinePaymentsEnabled: false,
     testMode: true,
     autoCapture: true,
-    codEnabled: false,
+    codEnabled: true,
     cardsEnabled: true,
     upiEnabled: true,
     netBankingEnabled: true,
     walletsEnabled: true,
   })
-  assert.equal(razorpayEnvironmentForKey('rzp_test_example'), 'test')
-  assert.equal(razorpayEnvironmentForKey('rzp_live_example'), 'live')
-  assert.equal(razorpayEnvironmentForKey('invalid'), '')
 })
 
 test('account-state backend keeps only bounded, masked user-owned data', () => {

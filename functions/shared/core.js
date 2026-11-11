@@ -12,7 +12,6 @@ const {
   normalizePaymentConfiguration,
   normalizeRequestedItems,
   payableAmountPaiseForQuote,
-  razorpayEnvironmentForKey,
   roundMoney,
   validateMinimumOrderQuantities,
 } = require('../checkout')
@@ -63,19 +62,9 @@ const requireActiveCustomer = async (request, { includeAuthUser = false } = {}) 
 
 const region = 'asia-south1'
 const callableOptions = { region, invoker: 'public' }
-const razorpayKeyId = defineSecret('RAZORPAY_KEY_ID')
-const razorpayKeySecret = defineSecret('RAZORPAY_KEY_SECRET')
-const razorpayWebhookSecret = defineSecret('RAZORPAY_WEBHOOK_SECRET')
-const razorpayCallableOptions = {
-  ...callableOptions,
-  secrets: [razorpayKeyId, razorpayKeySecret],
-}
 const PHONE_PATTERN = /^[6-9]\d{9}$/
 const PIN_CODE_PATTERN = /^[1-9]\d{5}$/
 const ORDER_REQUEST_PATTERN = /^[a-zA-Z0-9_-]{8,100}$/
-const RAZORPAY_ORDER_PATTERN = /^order_[a-zA-Z0-9]{6,100}$/
-const RAZORPAY_PAYMENT_PATTERN = /^pay_[a-zA-Z0-9]{6,100}$/
-const RAZORPAY_SIGNATURE_PATTERN = /^[a-fA-F0-9]{64}$/
 const STOCK_RESERVATION_TTL_MS = 15 * 60 * 1000
 const STOCK_RESERVATION_CLEANUP_LIMIT = 100
 const STOCK_RESERVATION_CLEANUP_BATCHES = 10
@@ -168,9 +157,6 @@ async function prepareNumberAllocation({
     },
   }
 }
-
-const razorpayAuthorization = () =>
-  `Basic ${Buffer.from(`${razorpayKeyId.value()}:${razorpayKeySecret.value()}`).toString('base64')}`
 
 const secureCompare = (received, expected) => {
   const receivedBuffer = Buffer.from(String(received || ''), 'utf8')
@@ -354,7 +340,6 @@ module.exports = {
   normalizePaymentConfiguration,
   normalizeRequestedItems,
   payableAmountPaiseForQuote,
-  razorpayEnvironmentForKey,
   roundMoney,
   validateMinimumOrderQuantities,
   removePurchasedCartItems,
@@ -369,16 +354,9 @@ module.exports = {
   requireActiveCustomer,
   region,
   callableOptions,
-  razorpayKeyId,
-  razorpayKeySecret,
-  razorpayWebhookSecret,
-  razorpayCallableOptions,
   PHONE_PATTERN,
   PIN_CODE_PATTERN,
   ORDER_REQUEST_PATTERN,
-  RAZORPAY_ORDER_PATTERN,
-  RAZORPAY_PAYMENT_PATTERN,
-  RAZORPAY_SIGNATURE_PATTERN,
   STOCK_RESERVATION_TTL_MS,
   STOCK_RESERVATION_CLEANUP_LIMIT,
   STOCK_RESERVATION_CLEANUP_BATCHES,
@@ -387,7 +365,6 @@ module.exports = {
   indiaOrderMoment,
   numberingPeriodsFor,
   prepareNumberAllocation,
-  razorpayAuthorization,
   secureCompare,
   normalizeOrderItems,
   variantForItem,
@@ -404,4 +381,3 @@ module.exports = {
   normalizePhone,
   validateProfile,
 }
-

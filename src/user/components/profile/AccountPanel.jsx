@@ -1305,7 +1305,7 @@ function OrderCard({ order, onSelect }) {
           <div className="mt-3 rounded-xl border border-slate-100 bg-white px-3 py-2.5 text-[9px]">
             <span className="font-bold uppercase tracking-wider text-slate-400">Delivery Method</span>
             <strong className="mt-0.5 block text-slate-700">{delivery?.label || 'Not recorded'}</strong>
-            {delivery?.method === 'office_pickup' && <span className="mt-0.5 block line-clamp-2 text-slate-500">Office No. 237, 2nd Floor, XION Mall, Hinjewadi, Pune, MH 411057.</span>}
+            {delivery?.method === 'office_pickup' && <span className="mt-0.5 block line-clamp-2 text-slate-500">Office No. 237, 2nd Floor, XION Mall, Hinjawadi, Pune – 411057.</span>}
           </div>
           <div
             className={`mt-4 flex w-fit items-center gap-2 rounded-full px-3 py-2 text-[9px] font-bold ${cancelled ? 'bg-red-50 text-red-600' : delivered ? 'bg-emerald-50 text-emerald-700' : 'bg-[#fff1c9] text-[#765400]'}`}

@@ -1,3 +1,5 @@
+import { publicBusinessInformation } from './business.js'
+
 export const DELIVERY_GST_TREATMENTS = Object.freeze([
   { value: 'fixed', label: 'Configured delivery GST rate' },
   { value: 'product-rates', label: 'Follow product GST rates' },
@@ -6,26 +8,29 @@ export const DELIVERY_GST_TREATMENTS = Object.freeze([
 
 export const initialInvoiceSettings = {
   business: {
-    legalName: '',
-    displayName: '',
+    legalName: publicBusinessInformation.registeredTradeName,
+    displayName: publicBusinessInformation.brandName,
+    proprietor: publicBusinessInformation.proprietor,
+    // Intentionally not embedded in the public Vite bundle. Load the verified
+    // registered supplier address from private settings/invoice for admin use.
     address: '',
-    phone: '',
-    email: '',
-    website: '',
-    pan: '',
+    phone: publicBusinessInformation.phone,
+    email: publicBusinessInformation.supportEmail,
+    website: publicBusinessInformation.website,
+    pan: 'AFUPB6009F',
   },
   tax: {
     gstEnabled: true,
-    gstin: '',
+    gstin: publicBusinessInformation.gstin,
     registrationType: 'Regular',
-    state: '',
-    stateCode: '',
+    state: 'Maharashtra',
+    stateCode: '27',
     shippingTaxTreatment: 'product-rates',
     shippingTaxRate: 18,
     pricesIncludeTax: false,
   },
   numbering: {
-    prefix: 'PE',
+    prefix: 'PC',
     nextNumber: 1001,
     padding: 5,
     includeFinancialYear: true,

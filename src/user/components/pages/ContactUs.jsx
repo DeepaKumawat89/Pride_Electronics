@@ -4,8 +4,8 @@ import LegalPageLayout from './LegalPageLayout'
 
 const pageTitle = 'Contact Pride Circuit | Customer Support & Business Details'
 const pageDescription = 'Contact Pride Circuit for product, order, payment, delivery, return, refund, or account support. View Pride Automation business details and the Pune operational office and pickup location.'
-const directionsUrl = 'https://www.google.com/maps/search/?api=1&query=Office%20No.%20237%2C%202nd%20Floor%2C%20XION%20Mall%2C%20Hinjewadi%2C%20Pune%2C%20Maharashtra%20411057'
-const supportEmail = 'Support@pridecircuit.in'
+const directionsUrl = 'https://www.google.com/maps/search/?api=1&query=Office%20No.%20237%2C%202nd%20Floor%2C%20XION%20Mall%2C%20Hinjawadi%2C%20Pune%2C%20Maharashtra%20411057'
+const supportEmail = 'support@pridecircuit.in'
 const gmailComposeUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(supportEmail)}`
 
 const sections = [
@@ -25,7 +25,7 @@ const sections = [
       </p>
       <p>
         <strong>Contact number:</strong>{' '}
-        <a href="tel:8574859658">8574859658</a>
+        <a href="tel:9607126969">9607126969</a>
       </p>
       <p>
         When contacting support about an order, include your name, registered
@@ -39,7 +39,7 @@ const sections = [
     '2. Operational Office & Product Pickup Location',
     <>
       <p>
-        <strong>Office No. 237, 2nd Floor, XION Mall, Hinjewadi, Pune, Maharashtra – 411057</strong>
+        <strong>Office No. 237, 2nd Floor, XION Mall, Hinjawadi, Pune, Maharashtra – 411057</strong>
       </p>
       <p>
         This is Pride Circuit&apos;s <strong>Operational Office &amp; Product
@@ -135,7 +135,7 @@ export default function ContactUs({ onBack }) {
     <LegalPageLayout
       title="Contact Us"
       description="Contact Pride Circuit for product, account, payment, order, delivery, return, refund, or privacy assistance."
-      updatedAt="October 22, 2026"
+      updatedAt="November 11, 2026"
       sections={sections}
       onBack={onBack}
       icon={Headphones}

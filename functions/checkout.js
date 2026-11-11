@@ -9,17 +9,40 @@ const GST_EXCLUSIVE_PRICING_MODEL = 'gst-exclusive-v1'
 const MINIMUM_ORDER_VALUE = 100
 const MINIMUM_ORDER_MESSAGE = 'Minimum order value is ₹100 (excluding GST and delivery charges).'
 const MINIMUM_ORDER_QUANTITIES = Object.freeze([1, 2, 5, 10, 20, 50, 100])
-const DELIVERY_METHODS = Object.freeze({
-  office_pickup: { name: 'Collect From Office', charge: 0 },
-  porter: { name: 'Through Porter', charge: 0 },
-  delivery_express: { name: 'Delivery Express', charge: 100 },
-})
 const DELIVERY_METHOD_ALIASES = Object.freeze({
   'office-pickup': 'office_pickup',
+  'standard-delivery': 'standard_delivery',
   'delivery-express': 'delivery_express',
 })
 const PORTER_NOTICE = 'Please book Porter yourself and pay the delivery charges directly to Porter. No delivery charges will be collected by Pride Circuit.'
-const OFFICE_PICKUP_ADDRESS = 'Office No. 237, 2nd Floor, XION Mall, Hinjewadi, Pune, MH 411057'
+const DEFAULT_PICKUP_ADDRESS = 'Office No. 237, 2nd Floor, XION Mall, Hinjawadi, Pune – 411057'
+const nonNegativeMoney = (value, fallback) => {
+  const amount = Number(value)
+  return Number.isFinite(amount) && amount >= 0 ? roundMoney(amount) : fallback
+}
+const deliveryConfigurationFor = (settings = {}) => ({
+  office_pickup: {
+    name: 'Office Pickup',
+    enabled: settings.pickup?.enabled !== false,
+    charge: 0,
+  },
+  porter: {
+    name: 'Porter',
+    enabled: settings.porter?.enabled !== false,
+    charge: 0,
+  },
+  standard_delivery: {
+    name: 'Standard Delivery',
+    enabled: settings.standardEnabled !== false,
+    charge: nonNegativeMoney(settings.standardCharge, 80),
+  },
+  delivery_express: {
+    name: 'Express Delivery',
+    enabled: settings.expressEnabled !== false,
+    charge: nonNegativeMoney(settings.expressCharge, 100),
+  },
+})
+const isPuneAddress = (address = {}) => normalizedText(address.city) === 'pune'
 const normalizedHsnCode = (value) => {
   const hsnCode = String(value || '').trim()
   return /^[0-9]{8}$/.test(hsnCode) ? hsnCode : ''
@@ -125,10 +148,10 @@ const taxComponentsFor = (taxableValue, gstRate, supplyType) => {
 }
 
 const DEFAULT_PAYMENT_CONFIGURATION = Object.freeze({
-  razorpayEnabled: true,
+  onlinePaymentsEnabled: false,
   testMode: true,
   autoCapture: true,
-  codEnabled: false,
+  codEnabled: true,
   cardsEnabled: true,
   upiEnabled: true,
   netBankingEnabled: true,
@@ -142,13 +165,6 @@ function normalizePaymentConfiguration(value = {}) {
       typeof value?.[key] === 'boolean' ? value[key] : fallback,
     ]),
   )
-}
-
-function razorpayEnvironmentForKey(keyId) {
-  const normalized = String(keyId || '').trim()
-  if (normalized.startsWith('rzp_test_')) return 'test'
-  if (normalized.startsWith('rzp_live_')) return 'live'
-  return ''
 }
 
 const appliesToProduct = (coupon, product) => {
@@ -214,6 +230,7 @@ function calculateOrderQuote({
   taxSettings = {},
   deliveryId = '',
   supplyType = 'intra-state',
+  shippingAddress = {},
 }) {
   const normalizedSupplyType = supplyType === 'inter-state'
     ? 'inter-state'
@@ -359,22 +376,44 @@ function calculateOrderQuote({
     Math.max(0, Math.min(rawCouponDiscount, maximumDiscount, eligibleSubtotal)),
   )
   const requestedDeliveryId = DELIVERY_METHOD_ALIASES[deliveryId] || deliveryId
-  if (!Object.hasOwn(DELIVERY_METHODS, requestedDeliveryId)) {
+  const deliveryMethods = deliveryConfigurationFor(shippingSettings)
+  if (!Object.hasOwn(deliveryMethods, requestedDeliveryId)) {
     const error = new Error('Select a valid delivery method.')
     error.code = 'invalid-delivery-method'
     throw error
   }
   const normalizedDeliveryId = requestedDeliveryId
-  const deliveryMethod = DELIVERY_METHODS[normalizedDeliveryId]
+  const deliveryMethod = deliveryMethods[normalizedDeliveryId]
+  if (!deliveryMethod.enabled) {
+    const error = new Error('The selected delivery method is not currently available.')
+    error.code = 'delivery-method-unavailable'
+    throw error
+  }
+  if (normalizedDeliveryId === 'delivery_express' && !isPuneAddress(shippingAddress)) {
+    const error = new Error('Express Delivery is available only for Pune delivery addresses.')
+    error.code = 'express-delivery-not-eligible'
+    throw error
+  }
   const shipping = deliveryMethod.charge
   const deliveryDetails = normalizedDeliveryId === 'office_pickup'
     ? {
-        pickupAddress: OFFICE_PICKUP_ADDRESS,
-        instructions: 'Collect your order after Pride Circuit confirms that it is ready.',
+        pickupAddress: String(shippingSettings.pickup?.address || DEFAULT_PICKUP_ADDRESS),
+        processingHours: Math.max(1, Number(shippingSettings.pickup?.processingHours || 12)),
+        schedule: String(shippingSettings.pickup?.schedule || 'Monday–Saturday, 10:00 AM–6:00 PM'),
+        instructions: 'Collect only after Pride Circuit confirms that the order is ready.',
       }
     : normalizedDeliveryId === 'porter'
       ? { instructions: PORTER_NOTICE, chargesCollectedByPrideCircuit: false }
-      : { baseCharge: 100, gstRate: 18, gstAmount: 18 }
+      : {
+          baseCharge: shipping,
+          estimatedMinDays: normalizedDeliveryId === 'delivery_express'
+            ? Math.max(1, Number(shippingSettings.expressMinDays || 1))
+            : Math.max(1, Number(shippingSettings.standardMinDays || 3)),
+          estimatedMaxDays: normalizedDeliveryId === 'delivery_express'
+            ? Math.max(1, Number(shippingSettings.expressMaxDays || 2))
+            : Math.max(1, Number(shippingSettings.standardMaxDays || 5)),
+          ...(normalizedDeliveryId === 'delivery_express' ? { serviceArea: 'Pune only' } : {}),
+        }
   let allocatedDiscount = 0
   const quotedItems = items.map((item, index) => {
     const grossAmount = roundMoney(item.price * item.qty)
@@ -462,6 +501,11 @@ function calculateOrderQuote({
   const shippingTaxRate = shippingTaxTreatment === 'fixed'
     ? Number(shippingTaxBreakdown[0]?.gstRate || 0)
     : 0
+  if (shipping > 0) {
+    deliveryDetails.gstAmount = shippingTax
+    deliveryDetails.gstTreatment = shippingTaxTreatment
+    if (shippingTaxTreatment === 'fixed') deliveryDetails.gstRate = shippingTaxRate
+  }
   const tax = roundMoney(productTax + shippingTax)
   const cgst = roundMoney(
     quotedItems.reduce((sum, item) => sum + Number(item.cgst || 0), 0) +
@@ -642,6 +686,5 @@ module.exports = {
   normalizeRequestedItems,
   validateMinimumOrderQuantities,
   payableAmountPaiseForQuote,
-  razorpayEnvironmentForKey,
   roundMoney,
 }

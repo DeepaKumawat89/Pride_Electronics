@@ -4,16 +4,11 @@ const {
   adminAuth,
   HttpsError,
   onCall,
-  razorpayCallableOptions,
+  callableOptions,
   requireActiveCustomer,
   validateProfile,
 } = require('../shared/core')
 const { placeOrderHandler } = require('../orders/place-order-handler')
-const {
-  createRazorpayOrderHandler,
-  verifyRazorpayPaymentHandler,
-  releaseRazorpayReservationHandler,
-} = require('../payments/razorpay-handlers')
 const { saveAccountStateHandler } = require('../account/save-account-state')
 const { removeCartItemsHandler } = require('../account/remove-cart-items')
 const { getMyCouponUsageHandler } = require('../account/get-my-coupon-usage')
@@ -21,7 +16,7 @@ const { createReturnHandler } = require('../orders/create-return')
 const { cancelOrderHandler } = require('../orders/cancel-order')
 const { submitOrderFeedbackHandler } = require('../orders/submit-order-feedback')
 
-const updateUserProfile = onCall(razorpayCallableOptions, async (request) => {
+const updateUserProfile = onCall(callableOptions, async (request) => {
   const operation = String(request.data?.operation || '')
   const operationRequest = operation
     ? { ...request, data: request.data?.payload || {} }
@@ -38,15 +33,6 @@ const updateUserProfile = onCall(razorpayCallableOptions, async (request) => {
   if (operation === 'cancelOrder') return cancelOrderHandler(operationRequest)
   if (operation === 'submitOrderFeedback') {
     return submitOrderFeedbackHandler(operationRequest)
-  }
-  if (operation === 'createRazorpayOrder') {
-    return createRazorpayOrderHandler(operationRequest)
-  }
-  if (operation === 'verifyRazorpayPayment') {
-    return verifyRazorpayPaymentHandler(operationRequest)
-  }
-  if (operation === 'releaseRazorpayReservation') {
-    return releaseRazorpayReservationHandler(operationRequest)
   }
   if (operation) {
     throw new HttpsError('invalid-argument', 'Unsupported account operation.')
@@ -114,4 +100,3 @@ const updateUserProfile = onCall(razorpayCallableOptions, async (request) => {
 
 
 module.exports = { updateUserProfile }
-

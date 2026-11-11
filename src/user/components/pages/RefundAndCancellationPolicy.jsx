@@ -2,8 +2,8 @@ import { useEffect } from 'react'
 import { RefreshCcw } from 'lucide-react'
 import LegalPageLayout from './LegalPageLayout'
 
-const SUPPORT_EMAIL = 'Support@pridecircuit.in'
-const SUPPORT_PHONE = '8574859658'
+const SUPPORT_EMAIL = 'support@pridecircuit.in'
+const SUPPORT_PHONE = '9607126969'
 
 const sections = [
   [
@@ -164,18 +164,18 @@ const sections = [
     '9. Refund Method and Processing',
     <>
       <p>
-        Online payments are currently processed through Razorpay. An approved
-        prepaid refund is returned to the original payment method through the
-        payment gateway. Pride Circuit will not ask for a card PIN, CVV, UPI
+        The website currently accepts Cash on Delivery. The method for an
+        approved refund will be communicated after the return or cancellation
+        is reviewed. Pride Circuit will not ask for a card PIN, CVV, UPI
         PIN, one-time password, or complete card number to process a refund.
       </p>
       <p>
         For a return, refund processing begins after approval and any required
         receipt and inspection of the product. The current customer interface
         states that eligible refunds are processed within 5–7 business days.
-        Once initiated, the bank, card issuer, UPI provider, or other payment
-        provider may require additional time to show the credit. A gateway
-        refund reference will be shared or investigated where available.
+        Once initiated, the receiving bank or payment service may require
+        additional time to show the credit. A refund reference will be shared
+        or investigated where available.
       </p>
       <p>
         The website records cancellations and approved return refunds for
@@ -208,21 +208,18 @@ const sections = [
     </>,
   ],
   [
-    '11. Failed, Pending, or Duplicate Payments',
+    '11. Payment Issues',
     <>
       <p>
-        A payment deduction without a successful Pride Circuit order
-        confirmation should be reported with the payment date, amount, payment
-        method, gateway transaction reference, and any order reference shown.
-        Do not share confidential payment credentials.
+        The website currently offers Cash on Delivery and does not collect an
+        online checkout payment. Do not send money in response to an
+        unsolicited payment link or share confidential payment credentials.
       </p>
       <p>
-        Pride Circuit will check the order and gateway records. A captured
-        payment that cannot be matched to a completed order, including certain
-        payments completed after a stock reservation expired, may be refunded
-        automatically or escalated for review. A verified duplicate or excess
-        captured payment will be refunded through its original payment route.
-        Bank or provider posting time applies after initiation.
+        If you believe a payment was requested or collected incorrectly,
+        contact Pride Circuit support with the available order reference, date,
+        amount, and non-confidential transaction information so the issue can be
+        reviewed.
       </p>
     </>,
   ],

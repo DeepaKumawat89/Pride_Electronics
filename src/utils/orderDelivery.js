@@ -1,4 +1,4 @@
-export const OFFICE_PICKUP_ADDRESS = 'Office No. 237, 2nd Floor, XION Mall, Hinjewadi, Pune, MH 411057'
+export const OFFICE_PICKUP_ADDRESS = 'Office No. 237, 2nd Floor, XION Mall, Hinjawadi, Pune – 411057'
 
 const methodAliases = {
   office_pickup: 'office_pickup',
@@ -6,6 +6,9 @@ const methodAliases = {
   'collect from office': 'office_pickup',
   porter: 'porter',
   'through porter': 'porter',
+  standard_delivery: 'standard_delivery',
+  'standard-delivery': 'standard_delivery',
+  'standard delivery': 'standard_delivery',
   delivery_express: 'delivery_express',
   'delivery-express': 'delivery_express',
   'delivery express': 'delivery_express',
@@ -15,6 +18,7 @@ const methodAliases = {
 const labels = {
   office_pickup: 'Office Pickup',
   porter: 'Porter',
+  standard_delivery: 'Standard Delivery',
   delivery_express: 'Express Delivery',
 }
 
@@ -45,7 +49,7 @@ export function getOrderDeliverySnapshot(order = {}) {
   const gst = Number(stored.gst ?? order.shippingTax ?? 0)
   const address = method === 'office_pickup'
     ? stored.address || order.deliveryDetails?.pickupAddress || ''
-    : method === 'delivery_express'
+    : ['standard_delivery', 'delivery_express'].includes(method)
       ? stored.address || order.shippingAddress || null
       : null
 

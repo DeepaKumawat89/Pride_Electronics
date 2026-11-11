@@ -1,7 +1,7 @@
 import { getApplicablePricingTier } from '../../utils/productPricing.js'
 
-export const FREE_SHIPPING_THRESHOLD = 999
-export const STANDARD_SHIPPING_CHARGE = 99
+export const FREE_SHIPPING_THRESHOLD = 0
+export const STANDARD_SHIPPING_CHARGE = 80
 export const MINIMUM_ORDER_VALUE = 100
 export const MINIMUM_ORDER_MESSAGE = 'Minimum order value is ₹100 (excluding GST and delivery charges).'
 
@@ -26,7 +26,7 @@ const taxComponentsFor = (taxableValue, gstRate, supplyType) => {
   return { cgst, sgst, igst: 0, gstAmount }
 }
 
-export const toRazorpayAmount = (amountInRupees) =>
+export const toPaymentAmount = (amountInRupees) =>
   Math.round(Number(amountInRupees) * 100)
 
 export const paymentAmountMatchesCheckout = (
@@ -34,7 +34,7 @@ export const paymentAmountMatchesCheckout = (
   orderAmount,
   quoteTotalPaise,
 ) => {
-  const checkoutAmountPaise = toRazorpayAmount(checkoutTotal)
+  const checkoutAmountPaise = toPaymentAmount(checkoutTotal)
   const gatewayAmountPaise = Number(orderAmount)
   const quotedAmountPaise = quoteTotalPaise == null
     ? gatewayAmountPaise
@@ -91,7 +91,7 @@ export function authoritativePricingFromQuote(quote = {}, gatewayAmount) {
   const expectedTotal = roundMoney(
     pricing.taxableSubtotal + pricing.shipping + pricing.tax,
   )
-  const expectedTotalPaise = toRazorpayAmount(expectedTotal)
+  const expectedTotalPaise = toPaymentAmount(expectedTotal)
   const lineTaxTotal = roundMoney(
     pricing.lineTaxes.reduce((sum, item) => sum + Number(item.lineTax || 0), 0),
   )
@@ -278,10 +278,17 @@ export function calculateCartPricing(
     ...validatedCoupon,
     discount: roundMoney(validatedCoupon.discount),
   }
-  const normalizedDeliveryId = ['office_pickup', 'porter', 'delivery_express'].includes(deliveryId)
+  const normalizedDeliveryId = ['office_pickup', 'porter', 'standard_delivery', 'delivery_express'].includes(deliveryId)
     ? deliveryId
     : 'office_pickup'
-  const shipping = normalizedDeliveryId === 'delivery_express' ? 100 : 0
+  const configuredShippingCharge = normalizedDeliveryId === 'standard_delivery'
+    ? Number(shippingSettings.standardCharge ?? STANDARD_SHIPPING_CHARGE)
+    : normalizedDeliveryId === 'delivery_express'
+      ? Number(shippingSettings.expressCharge ?? 100)
+      : 0
+  const shipping = Number.isFinite(configuredShippingCharge)
+    ? roundMoney(Math.max(0, configuredShippingCharge))
+    : 0
   let allocatedDiscount = 0
   const lineTaxes = items.map(({ product, quantity }, index) => {
     const tier = getApplicablePricingTier(product, quantity)

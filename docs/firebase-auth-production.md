@@ -23,7 +23,7 @@ Before deploying production authentication:
    `VITE_FIREBASE_APP_CHECK_SITE_KEY`; both Hosting workflows inject it into
    the Vite production build.
 7. Create the single administrator as an Email/Password user in the Firebase
-   console with the login email `admin@prideelectronics.in`. Generate a unique
+   console with the intended administrator login email. Generate a unique
    password of at least 16 characters with a password manager; never store it
    in this repository, an environment file, or chat.
 8. Assign the server-only custom claim with Application Default Credentials or

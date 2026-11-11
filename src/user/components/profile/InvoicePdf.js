@@ -118,10 +118,13 @@ export async function createInvoicePdfDocument(
   const invoiceDate = serverInvoice.invoiceDate
   const invoiceBusiness = {
     legalName: String(serverInvoice.seller?.legalName || 'Business name unavailable'),
+    displayName: String(serverInvoice.seller?.displayName || serverInvoice.seller?.legalName || 'Business name unavailable'),
+    proprietor: String(serverInvoice.seller?.proprietor || ''),
     addressLines: String(serverInvoice.seller?.address || 'Address unavailable'),
     phone: String(serverInvoice.seller?.phone || 'Phone unavailable'),
     email: String(serverInvoice.seller?.email || 'Email unavailable'),
     gstin: String(serverInvoice.seller?.gstin || 'Not available'),
+    pan: String(serverInvoice.seller?.pan || 'Not available'),
   }
   const billing = {
     name: serverInvoice.buyer?.gst?.legalName || serverInvoice.buyer?.billing?.fullName || serverInvoice.buyer?.name,
@@ -181,8 +184,8 @@ export async function createInvoicePdfDocument(
     const detailsTop = 14.5
     const logoWidth = 82
     const logoHeight = logoWidth * (289 / 865)
-    const businessX = 146
-    const contactTextX = businessX + 3.5
+    const businessX = 140
+    const businessWidth = pageWidth - margin - businessX
 
     pdf.setDrawColor(...COLORS.green)
     pdf.setLineWidth(0.75)
@@ -207,37 +210,39 @@ export async function createInvoicePdfDocument(
     }
 
     pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(11)
+    pdf.setFontSize(11.5)
     pdf.setTextColor(0, 0, 0)
-    pdf.text(invoiceBusiness.legalName, businessX, detailsTop + 3)
+    pdf.text(invoiceBusiness.displayName, businessX, detailsTop + 3)
+
+    let businessY = detailsTop + 6.8
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(7)
+    pdf.text(invoiceBusiness.legalName, businessX, businessY)
 
     pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(6.8)
+    pdf.setFontSize(6.4)
     pdf.setTextColor(...COLORS.muted)
-    const addressLines = pdf.splitTextToSize(invoiceBusiness.addressLines, 49).slice(0, 2)
-    pdf.text(addressLines, contactTextX, detailsTop + 8)
-    pdf.text(invoiceBusiness.phone, contactTextX, detailsTop + 16.5)
-    pdf.text(invoiceBusiness.email, contactTextX, detailsTop + 21)
-
-    pdf.setDrawColor(0, 0, 0)
-    pdf.setLineWidth(0.35)
-    pdf.circle(businessX + 0.8, detailsTop + 7.1, 0.8, 'S')
-    pdf.circle(businessX + 0.8, detailsTop + 7.1, 0.2, 'F')
-    pdf.line(businessX + 0.35, detailsTop + 7.8, businessX + 0.8, detailsTop + 9.1)
-    pdf.line(businessX + 1.25, detailsTop + 7.8, businessX + 0.8, detailsTop + 9.1)
-    pdf.line(businessX, detailsTop + 15.6, businessX + 1.6, detailsTop + 17.3)
-    pdf.line(businessX, detailsTop + 15.6, businessX + 0.5, detailsTop + 15.4)
-    pdf.line(businessX + 1.6, detailsTop + 17.3, businessX + 1.85, detailsTop + 16.8)
-    pdf.rect(businessX - 0.15, detailsTop + 19.6, 2.2, 1.6)
-    pdf.line(businessX - 0.15, detailsTop + 19.6, businessX + 0.95, detailsTop + 20.5)
-    pdf.line(businessX + 2.05, detailsTop + 19.6, businessX + 0.95, detailsTop + 20.5)
+    if (invoiceBusiness.proprietor) {
+      businessY += 3.2
+      pdf.text(`Proprietor: ${invoiceBusiness.proprietor}`, businessX, businessY)
+    }
+    businessY += 3.3
+    const addressLines = pdf.splitTextToSize(invoiceBusiness.addressLines, businessWidth).slice(0, 4)
+    pdf.text(addressLines, businessX, businessY)
+    businessY += Math.max(1, addressLines.length) * 2.7 + 1.2
+    pdf.text(`Phone: ${invoiceBusiness.phone}`, businessX, businessY)
+    businessY += 3.2
+    pdf.text(`Email: ${invoiceBusiness.email}`, businessX, businessY)
 
     pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(6.9)
+    pdf.setFontSize(6.6)
     pdf.setTextColor(0, 0, 0)
-    pdf.text(`GSTIN: ${invoiceBusiness.gstin}`, businessX, detailsTop + 25.5)
+    businessY += 3.5
+    pdf.text(`GSTIN: ${invoiceBusiness.gstin}`, businessX, businessY)
+    businessY += 3.2
+    pdf.text(`PAN: ${invoiceBusiness.pan}`, businessX, businessY)
 
-    y = 46.5
+    y = Math.max(49, businessY + 4)
     pdf.setDrawColor(...COLORS.line)
     pdf.setLineWidth(0.35)
     pdf.line(margin, y, pageWidth - margin, y)
@@ -493,6 +498,13 @@ export async function createInvoicePdfDocument(
     ) {
       deliveryMethod = 'Collect from Office'
       showDeliveryCharges = false
+    } else if (
+      deliveryIdentifier === 'standard_delivery'
+      || deliveryIdentifier === 'standard-delivery'
+      || deliveryIdentifier.includes('standard delivery')
+    ) {
+      deliveryMethod = 'Standard Delivery'
+      showDeliveryCharges = true
     } else if (
       deliveryIdentifier === 'delivery_express'
       || deliveryIdentifier === 'delivery-express'

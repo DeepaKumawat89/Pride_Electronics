@@ -245,24 +245,28 @@ function App() {
         setMarketingSettings(mergeSetting(initialMarketingSettings, value)), reportError),
       subscribeToSetting('shipping', (value) =>
         setShippingSettings(mergeSetting(initialShippingSettings, value)), reportError),
-      subscribeToSetting('invoice', (value) => {
-        const settings = mergeSetting(initialInvoiceSettings, value)
-        setInvoiceSettings({
-          ...settings,
-          tax: { ...settings.tax, gstEnabled: true, pricesIncludeTax: false },
-        })
-        setInvoiceSettingsError('')
-        setInvoiceSettingsLoading(false)
-      }, (error) => {
-        setInvoiceSettingsError(error.message || 'Unable to load tax and business details.')
-        setInvoiceSettingsLoading(false)
-      }),
-      subscribeToSetting('storefront', (value) =>
+      subscribeToSetting('storefront', (value) => {
         setAdminSettings((current) => ({
           ...current,
           store: { ...initialAdminSettings.store, ...(value?.store || {}) },
           payment: { ...initialAdminSettings.payment, ...(value?.payment || {}) },
-        })), reportError),
+        }))
+        setInvoiceSettings((current) => ({
+          ...current,
+          tax: {
+            ...initialInvoiceSettings.tax,
+            ...(value?.tax || {}),
+            gstEnabled: true,
+            pricesIncludeTax: false,
+          },
+        }))
+        setInvoiceSettingsError('')
+        setInvoiceSettingsLoading(false)
+      }, (error) => {
+        reportError(error)
+        setInvoiceSettingsError(error.message || 'Unable to load public tax settings.')
+        setInvoiceSettingsLoading(false)
+      }),
     ]
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
   }, [])
@@ -348,6 +352,10 @@ function App() {
       setCustomersList([])
       setReturnsList([])
       setAdminReviews([])
+      setInvoiceSettings((current) => ({
+        ...initialInvoiceSettings,
+        tax: { ...initialInvoiceSettings.tax, ...current.tax },
+      }))
     }
     const unsubscribeAuth = onIdTokenChanged(auth, async (user) => {
       const revision = ++authRevision
@@ -376,6 +384,14 @@ function App() {
         subscribeToCollection('reviews', setAdminReviews, ignoreUnauthorized, { sort: true }),
         subscribeToSetting('admin', (value) =>
           setAdminSettings(mergeSetting(initialAdminSettings, value)), ignoreUnauthorized),
+        subscribeToSetting('invoice', (value) => {
+          setInvoiceSettings(mergeSetting(initialInvoiceSettings, value))
+          setInvoiceSettingsError('')
+          setInvoiceSettingsLoading(false)
+        }, (error) => {
+          setInvoiceSettingsError(error.message || 'Unable to load private invoice settings.')
+          setInvoiceSettingsLoading(false)
+        }),
       ]
     })
     return () => {
@@ -412,10 +428,24 @@ function App() {
     setMarketingSettings,
     'marketing',
   )
-  const updateInvoiceSettings = async (settings) => {
-    const saved = await saveInvoiceSettings(settings)
-    if (saved) setInvoiceSettings(mergeSetting(initialInvoiceSettings, saved))
-    return saved
+  const updateInvoiceSettings = async (settings, operationalAddress) => {
+    const saved = await saveInvoiceSettings(settings, operationalAddress)
+    if (saved?.settings) {
+      setInvoiceSettings(mergeSetting(initialInvoiceSettings, saved.settings))
+    }
+    if (saved?.store) {
+      setAdminSettings((current) => ({
+        ...current,
+        store: { ...current.store, ...saved.store },
+      }))
+    }
+    if (saved?.pickup) {
+      setShippingSettings((current) => ({
+        ...current,
+        pickup: { ...current.pickup, ...saved.pickup },
+      }))
+    }
+    return saved?.settings
   }
   const handleUpdateMaintenance = async (enabled) => {
     const savedEnabled = await updateMaintenanceMode(enabled)

@@ -19,7 +19,7 @@ export default function LegalPageLayout({
   sections,
   onBack,
   icon: Icon = FileText,
-  eyebrow = 'Pride Electronics',
+  eyebrow = 'Pride Circuit',
   hideIntro = false,
   hideSectionNavigation = false,
   showAboutBreadcrumb = false,

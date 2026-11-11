@@ -161,7 +161,7 @@ export default function Header({
             <button
               type="button"
               onClick={goHome}
-              aria-label="Pride Electronics home"
+              aria-label="Pride Circuit home"
               className="shrink-0"
             >
               <img

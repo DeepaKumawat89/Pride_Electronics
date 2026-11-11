@@ -381,7 +381,7 @@ export default function OrderDetailsView({
             <dl className="mt-4 space-y-3 text-[10px]">
               {deliveryMethod ? <>
                 <div><dt className="text-slate-400">Delivery Method</dt><dd className="mt-0.5 font-bold text-[#397a4a]">{deliveryMethod.label}</dd></div>
-                {deliveryMethod.method === 'office_pickup' && <div><dt className="text-slate-400">Office address</dt><dd className="mt-0.5 max-w-md font-semibold leading-5 text-slate-600">Office No. 237, 2nd Floor, XION Mall, Hinjewadi, Pune, MH 411057.</dd></div>}
+                {deliveryMethod.method === 'office_pickup' && <div><dt className="text-slate-400">Office address</dt><dd className="mt-0.5 max-w-md font-semibold leading-5 text-slate-600">Office No. 237, 2nd Floor, XION Mall, Hinjawadi, Pune – 411057.</dd></div>}
               </> : <div><dt className="text-slate-400">Delivery Method</dt><dd className="mt-0.5 font-semibold text-slate-500">Not recorded for this order</dd></div>}
               <div><dt className="text-slate-400">{delivered ? 'Delivered on' : 'Estimated delivery'}</dt><dd className="mt-0.5 font-bold text-slate-700">{order.deliveryDate || 'Being scheduled'}</dd></div>
             </dl>
@@ -390,8 +390,8 @@ export default function OrderDetailsView({
               <dl className="mt-4 space-y-3 text-[10px]">
                 <div><dt className="text-slate-400">Payment method</dt><dd className="mt-0.5 font-bold text-slate-700">{order.paymentMethod || 'Online payment'}</dd></div>
                 <div><dt className="text-slate-400">Payment status</dt><dd className="mt-0.5 font-bold text-emerald-700">{order.paymentStatus || 'Paid'}</dd></div>
-                {(order.razorpayPaymentId || order.transactionId) && (
-                  <div><dt className="text-slate-400">Transaction ID</dt><dd className="mt-0.5 break-all font-mono text-[9px] font-semibold text-slate-600">{order.razorpayPaymentId || order.transactionId}</dd></div>
+                {(order.transactionId || order.razorpayPaymentId) && (
+                  <div><dt className="text-slate-400">Transaction ID</dt><dd className="mt-0.5 break-all font-mono text-[9px] font-semibold text-slate-600">{order.transactionId || order.razorpayPaymentId}</dd></div>
                 )}
                 {order.trackingId && (
                   <div><dt className="text-slate-400">Tracking ID</dt><dd className="mt-0.5 break-all font-mono text-[9px] font-semibold text-slate-600">{order.trackingId}</dd></div>
@@ -406,7 +406,7 @@ export default function OrderDetailsView({
               {financials.discount > 0 && (
                 <SummaryRow label="Coupon discount" value={`− ${formatCurrency(financials.discount)}`} muted />
               )}
-              {deliveryMethod?.method === 'delivery_express' && financials.delivery > 0 && (
+              {['standard_delivery', 'delivery_express'].includes(deliveryMethod?.method) && financials.delivery > 0 && (
                 <SummaryRow label="Delivery charges" value={formatCurrency(financials.delivery)} />
               )}
               {financials.gstBreakdown?.supplyType === 'intra-state' ? (
@@ -498,7 +498,7 @@ export default function OrderDetailsView({
           <div className="mt-4 flex flex-wrap gap-2">
             {helpActions.map(([label, Icon]) =>
               label === 'Contact Support' ? (
-                <a key={label} href={`mailto:support@prideelectronics.in?subject=${encodeURIComponent(`Help with order ${orderDisplayId}`)}`} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2.5 text-[9px] font-extrabold text-slate-600 transition hover:border-[#75916f] hover:text-[#253329]"><Icon size={14} />{label}</a>
+                <a key={label} href={`mailto:support@pridecircuit.in?subject=${encodeURIComponent(`Help with order ${orderDisplayId}`)}`} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2.5 text-[9px] font-extrabold text-slate-600 transition hover:border-[#75916f] hover:text-[#253329]"><Icon size={14} />{label}</a>
               ) : (
                 <button key={label} type="button" onClick={() => setActiveAction((current) => current === label ? '' : label)} className={`inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-[9px] font-extrabold transition ${activeAction === label ? 'border-[#75916f] bg-[#eef4e8] text-[#253329]' : 'border-slate-200 text-slate-600 hover:border-[#75916f]'}`}><Icon size={14} />{label}</button>
               ),
@@ -538,7 +538,7 @@ export default function OrderDetailsView({
           {activeAction && !['Return Product', 'Cancel Order'].includes(activeAction) && (
             <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-[10px] leading-5 text-slate-500">Tell our support team about your {activeAction.toLowerCase()} request for order {orderDisplayId}.</p>
-              <a href={`mailto:support@prideelectronics.in?subject=${encodeURIComponent(`${activeAction} - ${orderDisplayId}`)}`} className="w-fit rounded-full bg-[#253329] px-4 py-2.5 text-[9px] font-extrabold text-white">Contact Support</a>
+              <a href={`mailto:support@pridecircuit.in?subject=${encodeURIComponent(`${activeAction} - ${orderDisplayId}`)}`} className="w-fit rounded-full bg-[#253329] px-4 py-2.5 text-[9px] font-extrabold text-white">Contact Support</a>
             </div>
           )}
         </div>

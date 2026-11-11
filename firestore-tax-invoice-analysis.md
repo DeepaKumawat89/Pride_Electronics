@@ -62,7 +62,7 @@ Firestore native mode, `asia-south1`).
   line tax, delivery allocation, combined GST, total, and integer paise before
   creating a gateway order.
 - The browser validates the same authoritative quote components before showing
-  or accepting a Razorpay total. Orders and invoices copy that server quote,
+  or accepting a client-supplied payment total. Orders and invoices copy that server quote,
   and the placement transaction verifies invoice, gateway, and quote paise are
   equal.
 - The checkout summary renders combined `productTax + shippingTax` as one

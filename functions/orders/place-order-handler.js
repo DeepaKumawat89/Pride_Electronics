@@ -1,6 +1,5 @@
 const {
   FieldValue,
-  Timestamp,
   db,
   adminAuth,
   HttpsError,
@@ -11,24 +10,21 @@ const {
   validateShippingAddress,
   normalizeGstProfile,
   normalizeInvoiceSettings,
-  normalizePaymentConfiguration,
   calculateOrderQuote,
   checkoutError,
   supplyTypeFor,
   validateMinimumOrderQuantities,
   validateActiveCoupon,
-  payableAmountPaiseForQuote,
   roundMoney,
   prepareNumberAllocation,
   numberingPeriodsFor,
   createInvoiceSnapshot,
   inventoryForItem,
+  inventoryUpdateFor,
   variantForItem,
   syncVariantReservedStock,
-  itemSignature,
   formatOrderTotal,
   indiaOrderMoment,
-  timestampMillis,
   ORDER_REQUEST_PATTERN,
   removePurchasedCartItems,
 } = require('../shared/core')
@@ -52,8 +48,8 @@ async function placeOrderHandler(request) {
   if (!ORDER_REQUEST_PATTERN.test(requestId)) {
     throw new HttpsError('invalid-argument', 'Restart checkout and try again.')
   }
-  let shippingAddress = validateShippingAddress(submittedOrder.shippingAddress)
-  let billingAddress = submittedOrder.billingAddress
+  const shippingAddress = validateShippingAddress(submittedOrder.shippingAddress)
+  const billingAddress = submittedOrder.billingAddress
     ? validateShippingAddress(submittedOrder.billingAddress)
     : shippingAddress
   let gstProfile
@@ -62,7 +58,7 @@ async function placeOrderHandler(request) {
   } catch (error) {
     throw new HttpsError('invalid-argument', error.message)
   }
-  let checkoutMode = submittedOrder.checkoutMode === 'buy-now'
+  const checkoutMode = submittedOrder.checkoutMode === 'buy-now'
     ? 'buy-now'
     : 'cart'
   const orderReference = db.doc(`orders/${uid}_${requestId}`)
@@ -85,23 +81,17 @@ async function placeOrderHandler(request) {
     }
     const invoiceSettingsReference = db.doc('settings/invoice')
     const shippingSettingsReference = db.doc('settings/shipping')
-    const storefrontSettingsReference = db.doc('settings/storefront')
     const userReference = db.doc(`users/${uid}`)
     const [
       invoiceSettingsDocument,
       shippingSettingsDocument,
-      storefrontSettingsDocument,
       userDocument,
     ] =
       await Promise.all([
         transaction.get(invoiceSettingsReference),
         transaction.get(shippingSettingsReference),
-        transaction.get(storefrontSettingsReference),
         transaction.get(userReference),
       ])
-    const paymentConfiguration = normalizePaymentConfiguration(
-      storefrontSettingsDocument.data()?.payment,
-    )
     if (!invoiceSettingsDocument.exists) {
       throw new HttpsError(
         'failed-precondition',
@@ -109,81 +99,14 @@ async function placeOrderHandler(request) {
       )
     }
     const isCashOnDelivery = /cash|cod/i.test(submittedOrder.paymentMethod || '')
-    if (isCashOnDelivery && paymentConfiguration.codEnabled !== true) {
-      throw new HttpsError('failed-precondition', 'Cash on Delivery is not available.')
-    }
-    if (!isCashOnDelivery && paymentConfiguration.razorpayEnabled !== true) {
-      throw new HttpsError('failed-precondition', 'Online payment is not available.')
-    }
-    let paymentIntentReference = null
-    let paymentIntent = null
-    let stockReservationReference = null
     if (!isCashOnDelivery) {
-      const razorpayOrderId = String(submittedOrder.razorpayOrderId || '').trim()
-      const razorpayPaymentId = String(submittedOrder.razorpayPaymentId || '').trim()
-      if (!razorpayOrderId || !razorpayPaymentId) {
-        throw new HttpsError('failed-precondition', 'A verified payment is required.')
-      }
-      paymentIntentReference = db.doc(`paymentIntents/${razorpayOrderId}`)
-      const paymentIntentDocument = await transaction.get(paymentIntentReference)
-      paymentIntent = paymentIntentDocument.data()
-      if (
-        !paymentIntentDocument.exists ||
-        paymentIntent.userId !== uid ||
-        paymentIntent.requestId !== requestId ||
-        paymentIntent.paymentId !== razorpayPaymentId ||
-        paymentIntent.verified !== true ||
-        paymentIntent.consumed === true ||
-        !['authorized', 'captured'].includes(paymentIntent.paymentStatus)
-      ) {
-        throw new HttpsError('failed-precondition', 'The payment could not be verified for this order.')
-      }
-      if (!paymentIntent.reservationId) {
-        throw new HttpsError('failed-precondition', 'The payment has no stock reservation.')
-      }
-      stockReservationReference = db.doc(
-        `stockReservations/${paymentIntent.reservationId}`,
+      throw new HttpsError(
+        'failed-precondition',
+        'Online payment is not available yet. Select Cash on Delivery.',
       )
-      const stockReservationDocument = await transaction.get(stockReservationReference)
-      const stockReservation = stockReservationDocument.data()
-      const paymentCreatedAt = Number(paymentIntent.payment?.createdAt || 0) * 1000
-      if (
-        !stockReservationDocument.exists ||
-        stockReservation.userId !== uid ||
-        stockReservation.requestId !== requestId ||
-        stockReservation.status !== 'payment-verified' ||
-        stockReservation.itemSignature !== itemSignature(items) ||
-        paymentCreatedAt <= 0 ||
-        paymentCreatedAt > timestampMillis(stockReservation.expiresAt)
-      ) {
-        throw new HttpsError(
-          'failed-precondition',
-          'The verified payment does not have an active stock reservation.',
-        )
-      }
-      if (paymentIntent.checkoutOrder) {
-        checkoutMode = paymentIntent.checkoutOrder.checkoutMode === 'buy-now'
-          ? 'buy-now'
-          : 'cart'
-        shippingAddress = validateShippingAddress(
-          paymentIntent.checkoutOrder.shippingAddress,
-        )
-        billingAddress = paymentIntent.checkoutOrder.billingAddress
-          ? validateShippingAddress(paymentIntent.checkoutOrder.billingAddress)
-          : shippingAddress
-        try {
-          gstProfile = normalizeGstProfile(
-            paymentIntent.checkoutOrder.gstProfile,
-            billingAddress,
-          )
-        } catch (error) {
-          throw new HttpsError('failed-precondition', error.message)
-        }
-      }
     }
 
     productDocuments.forEach((productDocument, index) => {
-      if (!isCashOnDelivery) return
       const product = productDocument.data()
       const variants = Array.isArray(product?.variants) ? product.variants : []
       const variant = variantForItem(product, items[index])
@@ -210,29 +133,17 @@ async function placeOrderHandler(request) {
     let couponDocument = null
     let couponUsageReference = null
     let couponUsage = 0
-    const couponCode = String(
-      isCashOnDelivery
-        ? submittedOrder.couponCode || ''
-        : paymentIntent?.quote?.couponCode || '',
-    ).trim().toUpperCase()
+    const couponCode = String(submittedOrder.couponCode || '').trim().toUpperCase()
     if (couponCode) {
-      if (isCashOnDelivery) {
-        const couponQuery = db.collection('coupons').where('code', '==', couponCode).limit(1)
-        const couponResult = await transaction.get(couponQuery)
-        couponDocument = couponResult.docs[0] || null
-      } else if (paymentIntent?.quote?.couponId) {
-        const couponReference = db.doc(`coupons/${paymentIntent.quote.couponId}`)
-        const couponSnapshot = await transaction.get(couponReference)
-        couponDocument = couponSnapshot.exists ? couponSnapshot : null
-      }
-      if (isCashOnDelivery && !couponDocument) validateActiveCoupon(null)
+      const couponQuery = db.collection('coupons').where('code', '==', couponCode).limit(1)
+      const couponResult = await transaction.get(couponQuery)
+      couponDocument = couponResult.docs[0] || null
+      if (!couponDocument) validateActiveCoupon(null)
       if (couponDocument) {
         couponUsageReference = db.doc(`couponUsages/${couponDocument.id}_${uid}`)
         const couponUsageDocument = await transaction.get(couponUsageReference)
         couponUsage = Number(couponUsageDocument.data()?.count || 0)
-        if (isCashOnDelivery) {
-          validateActiveCoupon(couponDocument.data(), couponUsage)
-        }
+        validateActiveCoupon(couponDocument.data(), couponUsage)
       }
     }
 
@@ -247,46 +158,29 @@ async function placeOrderHandler(request) {
       throw checkoutError(error)
     }
     let quote
-    if (isCashOnDelivery) {
-      try {
-        const taxSettings = normalizeInvoiceSettings(invoiceSettingsDocument.data() || {}).tax
-        quote = calculateOrderQuote({
-          requestedItems: items,
-          products,
-          coupon: couponDocument
-            ? { id: couponDocument.id, ...couponDocument.data() }
-            : null,
-          couponCode,
-          shippingSettings: shippingSettingsDocument.data() || {},
-          taxSettings,
-          deliveryId: submittedOrder.deliveryId,
-          supplyType: supplyTypeFor(taxSettings, shippingAddress),
-        })
-      } catch (error) {
-        throw checkoutError(error)
-      }
-      if (Number(submittedOrder.expectedTotalPaise) !== Number(quote.totalPaise)) {
-        throw new HttpsError(
-          'failed-precondition',
-          'Your cart total changed while checking out. Review the updated cart and try again.',
-        )
-      }
-    } else {
-      quote = cleanObject(paymentIntent.quote)
-      let authoritativeAmount
-      try {
-        authoritativeAmount = payableAmountPaiseForQuote(quote)
-      } catch {
-        throw new HttpsError('data-loss', 'The stored checkout total is inconsistent.')
-      }
-      if (
-        !Array.isArray(quote.items) ||
-        quote.itemSignature !== itemSignature(items) ||
-        authoritativeAmount !== Number(paymentIntent.amount) ||
-        authoritativeAmount !== Number(paymentIntent.payment?.amount)
-      ) {
-        throw new HttpsError('failed-precondition', 'The paid checkout details do not match this order.')
-      }
+    try {
+      const taxSettings = normalizeInvoiceSettings(invoiceSettingsDocument.data() || {}).tax
+      quote = calculateOrderQuote({
+        requestedItems: items,
+        products,
+        coupon: couponDocument
+          ? { id: couponDocument.id, ...couponDocument.data() }
+          : null,
+        couponCode,
+        shippingSettings: shippingSettingsDocument.data() || {},
+        taxSettings,
+        deliveryId: submittedOrder.deliveryId,
+        supplyType: supplyTypeFor(taxSettings, shippingAddress),
+        shippingAddress,
+      })
+    } catch (error) {
+      throw checkoutError(error)
+    }
+    if (Number(submittedOrder.expectedTotalPaise) !== Number(quote.totalPaise)) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Your cart total changed while checking out. Review the updated cart and try again.',
+      )
     }
 
     const numberingPeriods = numberingPeriodsFor(now)
@@ -318,8 +212,7 @@ async function placeOrderHandler(request) {
     )
 
     const inventoryUpdates = new Map()
-    if (isCashOnDelivery) {
-      quote.items.forEach((quotedItem, index) => {
+    quote.items.forEach((quotedItem, index) => {
         const productDocument = productDocuments[index]
         const product = inventoryUpdates.get(productDocument.id) || cleanObject(productDocument.data())
         const quantity = quotedItem.qty
@@ -350,14 +243,13 @@ async function placeOrderHandler(request) {
           createdAt: now,
           updatedAt: now,
         })
-      })
-      inventoryUpdates.forEach((product, productId) => {
-        transaction.update(
-          db.doc(`products/${productId}`),
-          inventoryUpdateFor(product, now),
-        )
-      })
-    }
+    })
+    inventoryUpdates.forEach((product, productId) => {
+      transaction.update(
+        db.doc(`products/${productId}`),
+        inventoryUpdateFor(product, now),
+      )
+    })
 
     if (couponDocument) {
       transaction.update(couponDocument.ref, {
@@ -377,37 +269,9 @@ async function placeOrderHandler(request) {
       )
     }
 
-    if (paymentIntentReference) {
-      transaction.update(paymentIntentReference, {
-        consumed: true,
-        consumedByOrderId: orderReference.id,
-        reservationStatus: 'consumed',
-        consumedAt: now,
-        updatedAt: now,
-      })
-    }
-    if (stockReservationReference) {
-      transaction.update(stockReservationReference, {
-        status: 'consumed',
-        orderId: orderReference.id,
-        consumedAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-      })
-    }
-
-    const verifiedPayment = paymentIntent?.payment || {}
-    const paymentStatus = isCashOnDelivery
-      ? 'Pending'
-      : verifiedPayment.status === 'captured'
-        ? 'Paid'
-        : 'Authorized'
-    const orderStatus = isCashOnDelivery ? 'Pending' : 'Confirmed'
-    const paymentEnvironment = paymentIntent?.environment === 'live'
-      ? 'Razorpay'
-      : 'Razorpay Test Mode'
-    const paymentMethod = isCashOnDelivery
-      ? 'Cash on Delivery'
-      : `${String(verifiedPayment.method || 'Online payment').toUpperCase()} via ${paymentEnvironment}`
+    const paymentStatus = 'Pending'
+    const orderStatus = 'Pending'
+    const paymentMethod = 'Cash on Delivery'
     const invoiceSettings = normalizeInvoiceSettings(
       invoiceSettingsDocument.exists ? invoiceSettingsDocument.data() : {},
     )
@@ -450,8 +314,8 @@ async function placeOrderHandler(request) {
         payment: {
           method: paymentMethod,
           status: paymentStatus,
-          transactionId: isCashOnDelivery ? '' : String(paymentIntent.paymentId),
-          paidAt: isCashOnDelivery ? '' : now,
+          transactionId: '',
+          paidAt: '',
         },
       })
     } catch (error) {
@@ -459,11 +323,7 @@ async function placeOrderHandler(request) {
     }
     const invoiceTotalPaise = Math.round(Number(invoice.amounts.total) * 100)
     if (
-      invoiceTotalPaise !== Number(quote.totalPaise) ||
-      (!isCashOnDelivery && (
-        invoiceTotalPaise !== Number(paymentIntent.amount) ||
-        invoiceTotalPaise !== Number(verifiedPayment.amount)
-      ))
+      invoiceTotalPaise !== Number(quote.totalPaise)
     ) {
       throw new HttpsError(
         'data-loss',
@@ -496,7 +356,7 @@ async function placeOrderHandler(request) {
       gst: Number(quote.shippingTax || 0),
       address: quote.deliveryId === 'office_pickup'
         ? String(quote.deliveryDetails?.pickupAddress || '')
-        : quote.deliveryId === 'delivery_express'
+        : ['standard_delivery', 'delivery_express'].includes(quote.deliveryId)
           ? cleanObject(shippingAddress)
           : null,
       instructions: quote.deliveryId === 'porter'
@@ -554,13 +414,11 @@ async function placeOrderHandler(request) {
       gstProfile,
       gstBreakdown: invoice.tax,
       paymentStatus,
-      paymentAmountPaise: isCashOnDelivery ? 0 : Number(verifiedPayment.amount),
-      paymentCurrency: isCashOnDelivery ? 'INR' : String(verifiedPayment.currency || 'INR'),
-      paymentDate: isCashOnDelivery ? null : now,
+      paymentAmountPaise: 0,
+      paymentCurrency: 'INR',
+      paymentDate: null,
       paymentMethod,
-      paymentEnvironment: isCashOnDelivery ? 'Cash on Delivery' : paymentEnvironment,
-      razorpayPaymentId: isCashOnDelivery ? '' : String(paymentIntent.paymentId),
-      razorpayOrderId: isCashOnDelivery ? '' : String(paymentIntent.id),
+      paymentEnvironment: 'Cash on Delivery',
       createdAt: now,
       updatedAt: now,
       statusHistory: [
@@ -602,4 +460,3 @@ async function placeOrderHandler(request) {
 
 
 module.exports = { placeOrderHandler }
-

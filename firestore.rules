@@ -14,8 +14,9 @@ rules_version = '2';
 // writes authoritative order, payment, tax, and embedded invoice snapshots.
 // categories, subcategories, coupons, settings, reviews: storefront/config
 // data with collection-specific read restrictions and admin/backend writes.
-// settings/invoice: public seller/tax information used for checkout display;
-// writes are backend-only after callable admin authorization and validation.
+// settings/invoice: private supplier, registered-address, and tax information;
+// reads are admin-only and writes use callable admin authorization/validation.
+// Public checkout tax fields belong in settings/storefront.tax.
 // settings/maintenance: public storefront availability with one required
 // Boolean field, enabled; only custom-claim administrators may create/update it.
 // refunds, inventoryHistory: admin-only operational records.
@@ -315,7 +316,6 @@ service cloud.firestore {
       allow read: if isAdmin() || settingId in [
         'marketing',
         'shipping',
-        'invoice',
         'storefront',
         'maintenance'
       ];

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle,
   ArrowLeft,
@@ -25,38 +25,21 @@ import {
   productMeetsMinimumOrderQuantity,
 } from '../../../utils/productMoq'
 import {
-  authoritativePricingFromQuote,
   calculateCartPricing,
   MINIMUM_ORDER_MESSAGE,
   MINIMUM_ORDER_VALUE,
-  paymentAmountMatchesCheckout,
 } from '../../utils/cart'
 import { getAddressValidationError, normalizeAddress } from '../../utils/address'
 import { getIndianStateCode } from '../../utils/indianLocations'
-import { loadRazorpayCheckout, postRazorpayApi } from '../../utils/razorpay'
-import {
-  createRazorpayDisplayConfig,
-  preferredRazorpayMethod,
-} from '../../utils/razorpayOptions'
 import { initialShippingSettings } from '../../../data/shipping'
 import {
   getGstDetailsError,
   initialInvoiceSettings,
   normalizeGstin,
 } from '../../../data/invoice'
-import { initialAdminSettings } from '../../../data/adminSettings'
-
-const createPaymentReceipt = () => `pride_${Date.now()}`
 const createCheckoutRequestId = () =>
   globalThis.crypto?.randomUUID?.() ||
   `checkout_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`
-
-const reservationTimeoutSeconds = (expiresAt) => {
-  const remaining = Math.floor(
-    (new Date(expiresAt || 0).getTime() - Date.now()) / 1000,
-  )
-  return remaining >= 180 ? Math.min(900, remaining) : 0
-}
 
 const createEstimatedDeliveryDate = (days) => {
   const date = new Date()
@@ -73,29 +56,43 @@ const formatCheckoutCurrency = (value) =>
   }).format(Number(value) || 0)
 
 const PORTER_NOTICE = 'Please book Porter yourself and pay the delivery charges directly to Porter. No delivery charges will be collected by Pride Circuit.'
-const OFFICE_PICKUP_ADDRESS = 'Office No. 237, 2nd Floor, XION Mall, Hinjewadi, Pune, MH 411057'
+const OFFICE_PICKUP_ADDRESS = 'Office No. 237, 2nd Floor, XION Mall, Hinjawadi, Pune – 411057'
 
-const deliveryMethods = [
+const createDeliveryMethods = (shippingSettings, expressEligible) => [
   {
     id: 'office_pickup',
     name: 'Collect From Office',
     icon: Store,
-    description: 'Collect your order after we confirm that it is ready.',
-    detail: OFFICE_PICKUP_ADDRESS,
+    description: `Ready within ${Number(shippingSettings.pickup?.processingHours || 12)} hours; collect after confirmation.`,
+    detail: `${shippingSettings.pickup?.address || OFFICE_PICKUP_ADDRESS}. ${shippingSettings.pickup?.schedule || 'Monday–Saturday, 10:00 AM–6:00 PM'}.`,
+    enabled: shippingSettings.pickup?.enabled !== false,
   },
   {
     id: 'porter',
     name: 'Through Porter',
     icon: Package,
-    description: 'Arrange a Porter pickup after your order is shipped.',
+    description: 'Arrange a Porter pickup after we confirm that your order is ready.',
     detail: PORTER_NOTICE,
+    enabled: shippingSettings.porter?.enabled !== false,
+  },
+  {
+    id: 'standard_delivery',
+    name: 'Standard Delivery',
+    icon: Truck,
+    description: `${shippingSettings.standardMinDays || 3}–${shippingSettings.standardMaxDays || 5} business days after dispatch.`,
+    detail: `₹${Number(shippingSettings.standardCharge ?? 80).toLocaleString('en-IN')} plus applicable GST.`,
+    enabled: shippingSettings.standardEnabled !== false,
   },
   {
     id: 'delivery_express',
     name: 'Delivery Express',
     icon: Truck,
-    description: 'Fast delivery arranged by Pride Circuit.',
-    detail: 'Pride Circuit will arrange express delivery to your selected address.',
+    description: `${shippingSettings.expressMinDays || 1}–${shippingSettings.expressMaxDays || 2} business days after dispatch.`,
+    detail: expressEligible
+      ? `Pune address eligible. ₹${Number(shippingSettings.expressCharge ?? 100).toLocaleString('en-IN')} plus applicable GST.`
+      : 'Available only when the selected delivery city is Pune.',
+    enabled: shippingSettings.expressEnabled !== false,
+    disabled: !expressEligible,
   },
 ]
 
@@ -124,21 +121,17 @@ export default function CheckoutPage({
   initialCouponCode = '',
   coupons = [],
   savedAddresses = [],
-  savedPayments = [],
   user,
   onSaveAddress,
   onPrepareCheckout,
   onBack,
   onPlaceOrder,
-  onPaymentAuthorized,
   onUpdateQuantity,
   onRemoveItem,
   onOpenPolicy,
   checkoutMode = 'cart',
   shippingSettings = initialShippingSettings,
   taxSettings = initialInvoiceSettings.tax,
-  paymentSettings = initialAdminSettings.payment,
-  storeName = initialAdminSettings.store.name,
 }) {
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -147,21 +140,6 @@ export default function CheckoutPage({
   const checkoutRequestId = useRef(createCheckoutRequestId())
   const paymentInFlight = useRef(false)
   const [orderConfirmationAttempt, setOrderConfirmationAttempt] = useState(null)
-
-  const releaseCheckoutReservation = async (
-    reason,
-    requestId = checkoutRequestId.current,
-  ) => {
-    if (checkoutRequestId.current === requestId) {
-      checkoutRequestId.current = createCheckoutRequestId()
-    }
-    try {
-      await postRazorpayApi('release', { requestId, reason })
-    } catch {
-      // The scheduled backend cleanup remains the backstop if this best-effort
-      // release cannot reach Firebase (for example, when the browser is offline).
-    }
-  }
 
   // 2 separate page view state ('address' = Page 1: Address & GST, 'summary' = Page 2: Order Summary)
   const [activePage, setActivePage] = useState('address')
@@ -202,33 +180,29 @@ export default function CheckoutPage({
   const [couponAttempted, setCouponAttempted] = useState(Boolean(initialCouponCode))
   const [paymentError, setPaymentError] = useState('')
   const [paying, setPaying] = useState(false)
-  const [authoritativePricing, setAuthoritativePricing] = useState(null)
   const [deliveryId, setDeliveryId] = useState('office_pickup')
 
-  const defaultPayment = savedPayments.find((payment) => payment.isDefault) || savedPayments[0]
-  const onlinePaymentEnabled = paymentSettings.razorpayEnabled && [
-    paymentSettings.cardsEnabled,
-    paymentSettings.upiEnabled,
-    paymentSettings.netBankingEnabled,
-    paymentSettings.walletsEnabled,
-  ].some(Boolean)
-
-  const paymentMode = onlinePaymentEnabled ? 'online' : 'cod'
   const primaryActionLabel = orderConfirmationAttempt
     ? 'Confirm Order'
-    : paymentMode === 'online'
-      ? 'Pay Now'
-      : 'Place Order'
-
-  useEffect(() => {
-    if (!onlinePaymentEnabled) return
-    void loadRazorpayCheckout()
-  }, [onlinePaymentEnabled])
+    : 'Place Order'
 
   // Active delivery address computation
   const selectedDeliveryAddress = useManualDeliveryAddress
     ? normalizeAddress(deliveryAddressForm)
     : (savedAddresses.find((address) => address.id === deliveryAddressId) || defaultDeliveryAddress)
+  const expressEligible = String(selectedDeliveryAddress?.city || '').trim().toLowerCase() === 'pune'
+  const deliveryMethods = useMemo(
+    () => createDeliveryMethods(shippingSettings, expressEligible)
+      .filter((method) => method.enabled),
+    [expressEligible, shippingSettings],
+  )
+
+  useEffect(() => {
+    const selectedMethod = deliveryMethods.find((method) => method.id === deliveryId)
+    if (selectedMethod && !selectedMethod.disabled) return
+    const fallback = deliveryMethods.find((method) => !method.disabled)
+    if (fallback) setDeliveryId(fallback.id)
+  }, [deliveryId, deliveryMethods])
 
   // Active billing address computation
   const selectedBillingAddress = billingSameAsDelivery
@@ -257,9 +231,7 @@ export default function CheckoutPage({
     deliveryId,
   )
 
-  const checkoutPricing = authoritativePricing
-    ? { ...pricing, ...authoritativePricing }
-    : pricing
+  const checkoutPricing = pricing
   const checkoutTotal = checkoutPricing.total
   const minimumOrderNotMet = checkoutPricing.taxableSubtotal < MINIMUM_ORDER_VALUE
   const minimumQuantityViolation = items.find(
@@ -435,6 +407,10 @@ export default function CheckoutPage({
       setPage1Error(MINIMUM_ORDER_MESSAGE)
       return
     }
+    if (deliveryId === 'delivery_express' && !expressEligible) {
+      setPage1Error('Express Delivery is available only for Pune delivery addresses.')
+      return
+    }
 
     // Capture immutable checkout addresses before Firebase account snapshots or
     // later form edits can change the saved-address collection beneath step 2.
@@ -538,28 +514,12 @@ export default function CheckoutPage({
     if (orderConfirmationAttempt) {
       paymentInFlight.current = true
       setPaying(true)
-      let confirmationAttempt = orderConfirmationAttempt
       try {
-        if (!confirmationAttempt.cod && !confirmationAttempt.verifiedPayment) {
-          const verification = await postRazorpayApi(
-            'verify',
-            confirmationAttempt.razorpay,
-          )
-          if (!verification.verified) {
-            throw new Error('Payment verification is still pending.')
-          }
-          confirmationAttempt = {
-            ...confirmationAttempt,
-            verifiedPayment: verification.payment,
-          }
-        }
-        await onPlaceOrder(confirmationAttempt)
+        await onPlaceOrder(orderConfirmationAttempt)
       } catch (error) {
-        setOrderConfirmationAttempt(confirmationAttempt)
+        setOrderConfirmationAttempt(orderConfirmationAttempt)
         setPaymentError(
-          orderConfirmationAttempt.cod
-            ? `${error.message || 'Order confirmation is temporarily unavailable.'} Retry confirmation; the same order will not be created twice.`
-            : `${error.message || 'Order confirmation is temporarily unavailable.'} Retry confirmation without paying again.`,
+          `${error.message || 'Order confirmation is temporarily unavailable.'} Retry confirmation; the same order will not be created twice.`,
         )
         paymentInFlight.current = false
         setPaying(false)
@@ -586,7 +546,7 @@ export default function CheckoutPage({
       address: checkoutDeliveryAddress,
       billingAddress: checkoutBillingAddress,
       gstProfile: checkoutAddresses?.gstProfile || null,
-      payment: { type: paymentMode === 'online' ? 'Online Payment' : 'Cash on Delivery' },
+      payment: { type: 'Cash on Delivery' },
       discount: checkoutPricing.couponDiscount,
       shipping: checkoutPricing.shipping,
       tax: checkoutPricing.tax,
@@ -596,8 +556,12 @@ export default function CheckoutPage({
       delivery: {
         id: deliveryId,
         name: deliveryMethods.find((method) => method.id === deliveryId)?.name,
-        estimatedDate: deliveryId === 'delivery_express'
-          ? createEstimatedDeliveryDate(2)
+        estimatedDate: ['standard_delivery', 'delivery_express'].includes(deliveryId)
+          ? createEstimatedDeliveryDate(
+              deliveryId === 'delivery_express'
+                ? Number(shippingSettings.expressMaxDays || 2)
+                : Number(shippingSettings.standardMaxDays || 5),
+            )
           : 'To be coordinated',
         ...(deliveryId === 'office_pickup' ? { pickupAddress: OFFICE_PICKUP_ADDRESS } : {}),
         ...(deliveryId === 'porter' ? { instructions: PORTER_NOTICE } : {}),
@@ -616,123 +580,14 @@ export default function CheckoutPage({
       return
     }
 
-    if (paymentMode === 'cod' || !onlinePaymentEnabled) {
-      const codCheckout = { ...checkoutDetails, cod: true }
-      try {
-        await onPlaceOrder(codCheckout)
-      } catch (error) {
-        setOrderConfirmationAttempt(codCheckout)
-        setPaymentError(
-          `${error.message || 'Unable to confirm the order.'} Retry confirmation; the same order will not be created twice.`,
-        )
-        paymentInFlight.current = false
-        setPaying(false)
-      }
-      return
-    }
-
+    const codCheckout = { ...checkoutDetails, cod: true }
     try {
-      const [loaded, paymentOrder] = await Promise.all([
-        loadRazorpayCheckout(),
-        postRazorpayApi('orders', {
-          requestId: checkoutRequestId.current,
-          checkoutMode: checkoutMode === 'buy-now' ? 'buy-now' : 'cart',
-          items: items.map(({ product, quantity }) => ({
-            productId: product.id,
-            ...(product.selectedVariantId ? { variantId: product.selectedVariantId } : {}),
-            quantity,
-          })),
-          couponCode: pricing.coupon.status === 'applied' ? appliedCoupon : '',
-          deliveryId,
-          deliveryDate: checkoutDetails.delivery.estimatedDate,
-          shippingAddress: checkoutDetails.address,
-          billingAddress: checkoutDetails.billingAddress,
-          gstProfile: checkoutDetails.gstProfile,
-          receipt: createPaymentReceipt(),
-        }),
-      ])
-      if (!loaded) {
-        throw new Error(
-          'Secure payment checkout could not be loaded. Check your connection or browser settings and try again.',
-        )
-      }
-
-      const { environment, keyId, order, quote, reservation } = paymentOrder
-      const verifiedPricing = authoritativePricingFromQuote(quote, order.amount)
-      const serverTotalPaise = verifiedPricing.totalPaise
-      if (!paymentAmountMatchesCheckout(checkoutTotal, order.amount, serverTotalPaise)) {
-        setAuthoritativePricing(verifiedPricing)
-        throw new Error(
-          'Your verified checkout total changed before payment. Review the updated amount and press Pay Now again.',
-        )
-      }
-      const checkoutTimeout = reservationTimeoutSeconds(reservation?.expiresAt)
-      if (!checkoutTimeout) {
-        throw new Error('The stock reservation expired before payment could begin. Try again.')
-      }
-
-      const preferredMethod = preferredRazorpayMethod(
-        defaultPayment,
-        paymentSettings,
-      )
-      const razorpay = new window.Razorpay({
-        key: keyId,
-        amount: order.amount,
-        currency: order.currency,
-        name: storeName,
-        description: `Order checkout for ${items.length} ${items.length === 1 ? 'item' : 'items'}`,
-        order_id: order.id,
-        prefill: {
-          name: user?.name || checkoutDeliveryAddress.fullName || '',
-          email: user?.email || '',
-          contact: user?.mobile || checkoutDeliveryAddress.phone || '',
-        },
-        ...(preferredMethod ? { method: preferredMethod } : {}),
-        notes: { checkout: `${storeName} ${environment === 'test' ? 'Test Mode' : 'Checkout'}` },
-        theme: { color: '#253329', backdrop_color: '#17211d' },
-        retry: { enabled: false },
-        timeout: checkoutTimeout,
-        config: createRazorpayDisplayConfig(paymentSettings),
-        modal: {
-          backdropclose: false,
-          escape: true,
-          ondismiss: () => {
-            setPaymentError('Payment was cancelled. Your order was not placed.')
-            paymentInFlight.current = false
-            setPaying(false)
-            void releaseCheckoutReservation(
-              'Customer dismissed Razorpay checkout',
-              checkoutDetails.requestId,
-            )
-          },
-        },
-        handler: (response) => {
-          if (!onPaymentAuthorized) {
-            setPaymentError('Payment confirmation is temporarily unavailable. Please contact support if an amount was debited.')
-            paymentInFlight.current = false
-            setPaying(false)
-            return
-          }
-          onPaymentAuthorized({ checkoutDetails, razorpay: response })
-        },
-      })
-
-      razorpay.on('payment.failed', () => {
-        setPaymentError('Payment failed. No order was placed. Please try again.')
-        paymentInFlight.current = false
-        setPaying(false)
-        void releaseCheckoutReservation(
-          'Razorpay reported payment failure',
-          checkoutDetails.requestId,
-        )
-      })
-      razorpay.open()
+      await onPlaceOrder(codCheckout)
     } catch (error) {
-      await releaseCheckoutReservation(
-        'Payment checkout could not be started',
-        checkoutDetails.requestId,
+      setOrderConfirmationAttempt(codCheckout)
+      setPaymentError(
+        `${error.message || 'Unable to confirm the order.'} Retry confirmation; the same order will not be created twice.`,
       )
-      setPaymentError(error.message || 'Unable to place the order.')
       paymentInFlight.current = false
       setPaying(false)
     }
@@ -1421,14 +1276,14 @@ export default function CheckoutPage({
                   <p className="text-[10px] text-slate-500">Choose how you would like to receive your order.</p>
                 </div>
               </div>
-              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {deliveryMethods.map((method) => {
                   const Icon = method.icon
                   const selected = deliveryId === method.id
                   return (
                     <label
                       key={method.id}
-                      className={`cursor-pointer rounded-2xl border-2 p-4 transition ${selected ? 'border-[#397a4a] bg-[#f3f8f3] shadow-sm' : 'border-slate-100 bg-[#fafbfa] hover:border-slate-300'}`}
+                      className={`${method.disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'} rounded-2xl border-2 p-4 transition ${selected ? 'border-[#397a4a] bg-[#f3f8f3] shadow-sm' : 'border-slate-100 bg-[#fafbfa] hover:border-slate-300'}`}
                     >
                       <span className="flex items-start gap-3">
                         <input
@@ -1436,6 +1291,7 @@ export default function CheckoutPage({
                           name="delivery-method"
                           value={method.id}
                           checked={selected}
+                           disabled={method.disabled}
                           onChange={() => {
                             setDeliveryId(method.id)
                             setAuthoritativePricing(null)
@@ -1549,14 +1405,17 @@ export default function CheckoutPage({
                   <SummaryRow label="Coupon Discount" value={`−${formatCheckoutCurrency(checkoutPricing.couponDiscount)}`} accent />
                 )}
 
-                {deliveryId === 'delivery_express' && (
+                {checkoutPricing.shipping > 0 && (
                   <SummaryRow
                     label="Delivery Charges"
                     value={formatCheckoutCurrency(checkoutPricing.shipping)}
                   />
                 )}
 
-                <SummaryRow label="GST" value={formatCheckoutCurrency(checkoutPricing.tax)} />
+                <SummaryRow label="Product GST" value={formatCheckoutCurrency(checkoutPricing.productTax)} />
+                {checkoutPricing.shippingTax > 0 && (
+                  <SummaryRow label="Delivery GST" value={formatCheckoutCurrency(checkoutPricing.shippingTax)} />
+                )}
               </div>
 
               <div className="my-4 h-px bg-slate-100" />
@@ -1631,9 +1490,7 @@ export default function CheckoutPage({
                 {paying
                   ? orderConfirmationAttempt
                     ? 'Confirming Order…'
-                    : paymentMode === 'online'
-                      ? 'Opening Secure Payment…'
-                      : 'Placing Order…'
+                    : 'Placing Order…'
                   : `${primaryActionLabel} · ${formatCurrency(checkoutTotal)}`}
               </button>
             </section>

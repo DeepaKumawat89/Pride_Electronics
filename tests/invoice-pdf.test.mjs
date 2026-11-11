@@ -15,8 +15,9 @@ test('server invoice snapshot produces a downloadable PDF document', async () =>
     invoiceDate: '2026-10-14T08:00:00.000Z',
     invoiceSettings: {
       business: {
-        legalName: 'PRIDE ELECTRONICS',
-        displayName: 'Pride Electronics',
+        legalName: 'PRIDE CIRCUIT',
+        displayName: 'Pride Circuit',
+        proprietor: 'Test Proprietor',
         address: '42 Silicon Avenue, Pune, Maharashtra 411057',
         phone: '+91 98765 43210',
         email: 'support@example.com',
@@ -55,7 +56,7 @@ test('server invoice snapshot produces a downloadable PDF document', async () =>
       fullName: 'Pride Customer', phone: '9876543210', line1: 'Billing address',
       city: 'Pune', state: 'Maharashtra', pincode: '411001',
     },
-    payment: { method: 'UPI via Razorpay', status: 'Paid', transactionId: 'pay_123456' },
+    payment: { method: 'Online payment', status: 'Paid', transactionId: 'payment_123456' },
   })
 
   const { pdf, invoiceNumber } = await createInvoicePdfDocument({

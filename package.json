@@ -1,5 +1,5 @@
 {
-  "name": "pride-electronics",
+  "name": "pride-circuit",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -16,11 +16,10 @@
     "test:variants": "node --test tests/product-variants.test.mjs",
     "test:ui": "node --test tests/browser-smoke.test.mjs",
     "test:admin": "node --test tests/admin-authorization.test.mjs",
-    "test:auth": "npx -y firebase-tools@14.19.1 emulators:exec --only auth --project demo-pride-electronics \"node --test tests/firebase-auth.test.mjs\"",
-    "test:rules": "npx -y firebase-tools@14.19.1 emulators:exec --only firestore --project demo-pride-electronics \"node --test tests/firestore.rules.test.mjs\"",
-    "test:inventory": "npx -y firebase-tools@14.19.1 emulators:exec --only auth,firestore --project demo-pride-electronics \"node --test tests/inventory-reservations.test.mjs\"",
+    "test:auth": "npx -y firebase-tools@14.19.1 emulators:exec --only auth --project demo-pride-circuit \"node --test tests/firebase-auth.test.mjs\"",
+    "test:rules": "npx -y firebase-tools@14.19.1 emulators:exec --only firestore --project demo-pride-circuit \"node --test tests/firestore.rules.test.mjs\"",
     "test:gst": "node --test tests/gst-invoice.test.mjs tests/invoice-pdf.test.mjs",
-    "test:storage": "npx -y firebase-tools@14.19.1 emulators:exec --only storage --project demo-pride-electronics \"node --test tests/storage.rules.test.mjs\""
+    "test:storage": "npx -y firebase-tools@14.19.1 emulators:exec --only storage --project demo-pride-circuit \"node --test tests/storage.rules.test.mjs\""
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

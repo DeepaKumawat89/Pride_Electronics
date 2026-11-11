@@ -18,10 +18,13 @@ export async function updateCustomerAccountStatus(userId, status) {
   return result.data
 }
 
-export async function updateInvoiceSettings(settings) {
+export async function updateInvoiceSettings(settings, operationalAddress) {
   try {
-    const result = await updateInvoiceSettingsRecord({ settings })
-    return result.data?.settings
+    const result = await updateInvoiceSettingsRecord({
+      settings,
+      operationalAddress,
+    })
+    return result.data
   } catch (error) {
     const messages = {
       'functions/invalid-argument': error?.message || 'Review the business and tax details, then try again.',

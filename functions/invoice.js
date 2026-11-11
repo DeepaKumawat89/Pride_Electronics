@@ -7,6 +7,7 @@ const DEFAULT_INVOICE_SETTINGS = {
   business: {
     legalName: '',
     displayName: '',
+    proprietor: '',
     address: '',
     phone: '',
     email: '',
@@ -24,7 +25,7 @@ const DEFAULT_INVOICE_SETTINGS = {
     pricesIncludeTax: false,
   },
   numbering: {
-    prefix: 'PE',
+    prefix: 'PC',
     nextNumber: 1001,
     padding: 5,
     includeFinancialYear: true,
@@ -75,6 +76,7 @@ const normalizeInvoiceSettings = (settings = {}) => {
     business: {
       legalName: text(settings.business?.legalName, 200),
       displayName: text(settings.business?.displayName, 200),
+      proprietor: text(settings.business?.proprietor, 200),
       address: text(settings.business?.address, 500),
       phone: text(settings.business?.phone, 30),
       email: text(settings.business?.email, 320).toLowerCase(),
@@ -118,7 +120,7 @@ const validateInvoiceSettings = (settings = {}) => {
   const validPan = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(business.pan)
   const validStateCode = /^[0-9]{2}$/.test(tax.stateCode) && tax.stateCode !== '00'
   if (
-    !business.legalName || !business.displayName || !business.address ||
+    !business.legalName || !business.displayName || !business.proprietor || !business.address ||
     !business.phone || !validEmail || !validPan ||
     !isValidGstin(tax.gstin) || tax.gstin.slice(0, 2) !== tax.stateCode ||
     tax.gstin.slice(2, 12) !== business.pan || !tax.state || !validStateCode ||
@@ -386,6 +388,7 @@ function createInvoiceSnapshot({
     seller: {
       legalName: text(settings.business.legalName, 200),
       displayName: text(settings.business.displayName, 200),
+      proprietor: text(settings.business.proprietor, 200),
       address: text(settings.business.address, 500),
       phone: text(settings.business.phone, 30),
       email: text(settings.business.email, 320),

@@ -1,4 +1,4 @@
-# Pride Electronics
+# Pride Circuit
 
 A responsive customer storefront and admin portal built with React, Vite, and Tailwind CSS.
 
@@ -26,14 +26,14 @@ Firebase project:
 firebase deploy --only firestore,storage,functions
 ```
 
-Before the first admin login, create `admin@prideelectronics.in` as an
-Email/Password user in Firebase Authentication. Then grant that account sole
+Before the first admin login, create the intended administrator as an
+Email/Password user in Firebase Authentication. Then grant that account
 admin access with Application Default Credentials or a service-account
 credential available to the Admin SDK:
 
 ```bash
 cd functions
-npm run set-admin
+  npm run set-admin -- <existing-admin-email>
 ```
 
 Runtime collections are `products`, `categories`, `coupons`, `reviews`,
@@ -43,35 +43,38 @@ and `couponUsages`. The legacy `_authPhoneIndex` remains backend-only for
 profile phone-number updates; login uses Firebase email/password or Google
 Authentication directly.
 Store configuration uses `settings/marketing`, `settings/shipping`,
-`settings/invoice`, `settings/storefront`, and `settings/admin`. Existing values can be entered and
+`settings/invoice`, `settings/storefront`, and `settings/admin`. The invoice
+document is admin/backend-only because it contains the registered supplier
+address; the validated public checkout tax fields are mirrored to
+`settings/storefront.tax`. Existing values can be entered and
 saved from the corresponding admin screens; subsequent updates are persisted
 to Firestore rather than browser storage.
 
 ## Production checkout deployment
 
-Online checkout reserves `products.reservedStock` in a Firestore transaction
-before a Razorpay order is created. Holds expire after 15 minutes. Checkout
-failure or dismissal releases them immediately, while the
-`releaseExpiredStockReservations` scheduled function is the offline/browser
-timeout backstop. Successful payment is confirmed only after the backend has
-verified the Razorpay signature, payment ID, order ID, amount, currency, and
-payment status. A captured payment that arrives after its hold was released is
-sent through the Razorpay refund API instead of creating an oversold order.
+The storefront currently accepts Cash on Delivery while the new online payment
+gateway is pending merchant verification and implementation. Order placement
+continues to calculate pricing and GST on the server, reserve inventory in the
+same Firestore transaction, create the invoice snapshot, and remove purchased
+cart items. The generic `releaseExpiredStockReservations` scheduled function
+remains available to clean up historical abandoned online-checkout holds.
 
 Deploy the index and backend before deploying the updated browser bundle:
 
 ```bash
 firebase deploy --only firestore:indexes
-firebase deploy --only functions:createRazorpayOrder,functions:verifyRazorpayPayment,functions:releaseRazorpayReservation,functions:razorpayWebhook,functions:releaseExpiredStockReservations,functions:placeOrder
+firebase deploy --only functions:releaseExpiredStockReservations,functions:placeOrder
 npm run build
 firebase deploy --only hosting
 ```
 
 The scheduled cleanup requires a billing-enabled Firebase project and the
-Cloud Scheduler API. Configure `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and
-`RAZORPAY_WEBHOOK_SECRET` with Firebase Functions secrets. In the Razorpay
-Dashboard, point the webhook at the deployed `razorpayWebhook` URL and subscribe
-to `payment.authorized`, `payment.captured`, and `payment.failed`.
+Cloud Scheduler API. No payment-gateway credentials are used by this codebase
+until the approved Cashfree integration is implemented separately.
+
+The production Razorpay retirement, secret cleanup, data-preservation rules,
+and safe targeted deployment sequence are documented in
+[`docs/cashfree-readiness-deployment.md`](docs/cashfree-readiness-deployment.md).
 
 ## Storefront structure
 
