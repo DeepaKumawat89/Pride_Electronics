@@ -170,6 +170,7 @@ export default function UserApp({
   products = [],
   productsLoading = false,
   productsError = '',
+  onRetryProducts,
   coupons = [],
   marketingSettings,
   shippingSettings,
@@ -370,7 +371,11 @@ export default function UserApp({
         let resolvedProduct = pathProduct
         if (!resolvedProduct) {
           if (productsLoading) return
-          resolvedProduct = await getProductBySlugOrId(publicPath.productId)
+          try {
+            resolvedProduct = await getProductBySlugOrId(publicPath.productId)
+          } catch {
+            return
+          }
         }
         if (!resolvedProduct) {
           window.history.replaceState(null, '', '/')
@@ -1785,6 +1790,16 @@ export default function UserApp({
   const protectedDataError =
     protectedAccountDataOpen &&
     (accountError || (catalogDataRequired ? productsError : ''))
+  const requestedPublicRoute = parsePublicPath(window.location.pathname)
+  const publicProductPending =
+    requestedPublicRoute?.type === 'product' &&
+    !liveSelectedProduct &&
+    productsLoading
+  const publicProductError =
+    requestedPublicRoute?.type === 'product' &&
+    !liveSelectedProduct &&
+    !productsLoading &&
+    productsError
 
   return (
     <div className="customer-shell min-h-screen overflow-x-clip bg-[#f7f8f5] pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-16 lg:pb-0">
@@ -1817,7 +1832,22 @@ export default function UserApp({
         hidePhoneNavigation={authOpen && !passwordResetActionRequested}
       />
       <main>
-        {protectedAuthPending || protectedDataPending ? (
+        {publicProductPending ? (
+          <section className="grid min-h-[55vh] place-items-center px-6 text-center" aria-live="polite" aria-busy="true">
+            <div>
+              <span className="mx-auto block size-9 animate-spin rounded-full border-4 border-[#75916f]/25 border-t-[#536a50]" />
+              <p className="mt-4 text-sm font-bold text-[#425443]">Loading product details…</p>
+            </div>
+          </section>
+        ) : publicProductError ? (
+          <section className="grid min-h-[55vh] place-items-center px-6 text-center">
+            <div className="max-w-md rounded-[28px] bg-white p-8 shadow-sm">
+              <h1 className="text-lg font-extrabold text-slate-900">Product details are temporarily unavailable</h1>
+              <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">We could not load the public catalog. Please retry in a moment.</p>
+              <button type="button" onClick={onRetryProducts} className="mt-5 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white">Retry loading</button>
+            </div>
+          </section>
+        ) : protectedAuthPending || protectedDataPending ? (
           <section
             className="grid min-h-[55vh] place-items-center px-6 text-center"
             aria-live="polite"
@@ -1917,6 +1947,9 @@ export default function UserApp({
             activeCategory={category}
             sortBy={sortBy}
             likedIds={user ? likedIds : []}
+            loading={productsLoading}
+            error={productsError}
+            onRetry={onRetryProducts}
             onBack={closeProducts}
             onQueryChange={setQuery}
             onSearchSubmit={handleProductsSearch}
@@ -1957,6 +1990,9 @@ export default function UserApp({
               onBuyNow={handleBuyNow}
               onView={navigateToProduct}
               offers={marketingSettings}
+              loading={productsLoading}
+              error={productsError}
+              onRetry={onRetryProducts}
               categoryNames={categories.filter((item) => item.enabled !== false).map((item) => item.name)}
             />
             <PromoBanner

@@ -217,6 +217,12 @@ test('subcategory catalog documents remain publicly readable', async () => {
   )
 })
 
+test('product catalog documents remain publicly listable without authentication', async () => {
+  const database = testEnvironment.unauthenticatedContext().firestore()
+  const snapshot = await assertSucceeds(getDocs(collection(database, 'products')))
+  assert.equal(snapshot.docs.some((item) => item.id === 'PRODUCT_1'), true)
+})
+
 test('orders are readable only by their owner and require an ownership query', async () => {
   const database = testEnvironment.authenticatedContext('UID_A').firestore()
 

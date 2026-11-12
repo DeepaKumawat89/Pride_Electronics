@@ -255,13 +255,16 @@ test('storefront and admin render responsively without browser console errors', 
     const catalog = await client.evaluate(`({
       text: document.body.innerText,
       searchInputs: document.querySelectorAll('input[aria-label="Search products"]').length,
-      cards: document.querySelectorAll('button[aria-label^="View details for"]').length,
+      cards: document.querySelectorAll('a[aria-label^="View details for"]').length,
       scrollWidth: document.documentElement.scrollWidth,
       width: window.innerWidth
     })`)
     assert.match(catalog.text, /All products/i)
     assert.ok(catalog.searchInputs > 0, 'Catalog search did not render')
-    assert.ok(catalog.cards > 0, 'The existing Firestore catalog did not render any product cards')
+    assert.ok(
+      catalog.cards > 0,
+      `The existing Firestore catalog did not render any product cards. Page text: ${catalog.text.slice(0, 1200)}`,
+    )
     assert.ok(catalog.scrollWidth <= catalog.width + 2, 'Catalog overflows horizontally')
     assert.doesNotMatch(catalog.text, /Unable to load|Something went wrong/i)
     const catalogScrollTop = await client.evaluate(`(() => {
@@ -279,9 +282,9 @@ test('storefront and admin render responsively without browser console errors', 
 
     if (catalog.cards > 0) {
       const cardOutOfStock = await client.evaluate(`/Out of stock/i.test(
-        document.querySelector('button[aria-label^="View details for"]')?.closest('article')?.innerText || ''
+        document.querySelector('a[aria-label^="View details for"]')?.closest('article')?.innerText || ''
       )`)
-      await client.evaluate(`document.querySelector('button[aria-label^="View details for"]').click()`)
+      await client.evaluate(`document.querySelector('a[aria-label^="View details for"]').click()`)
       await delay(2_000)
       const details = await client.evaluate(`({
         text: document.body.innerText,

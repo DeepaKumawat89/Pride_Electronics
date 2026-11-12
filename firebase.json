@@ -35,6 +35,34 @@
     ],
     "rewrites": [
       {
+        "source": "/",
+        "function": {
+          "functionId": "publicPage",
+          "region": "asia-south1"
+        }
+      },
+      {
+        "source": "/products",
+        "function": {
+          "functionId": "publicPage",
+          "region": "asia-south1"
+        }
+      },
+      {
+        "source": "/category/**",
+        "function": {
+          "functionId": "publicPage",
+          "region": "asia-south1"
+        }
+      },
+      {
+        "source": "/product/**",
+        "function": {
+          "functionId": "publicPage",
+          "region": "asia-south1"
+        }
+      },
+      {
         "source": "/sitemap.xml",
         "function": {
           "functionId": "sitemap",

@@ -17,6 +17,7 @@ const {
   updateCustomerStatus,
 } = require('./admin/update-customer-status')
 const { sitemap } = require('./sitemap')
+const { publicPage } = require('./public-pages')
 
 module.exports = {
   updateUserProfile,
@@ -32,4 +33,5 @@ module.exports = {
   updateInvoiceSettings,
   updateCustomerStatus,
   sitemap,
+  publicPage,
 }

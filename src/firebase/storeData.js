@@ -7,8 +7,16 @@ import {
   setDoc,
   where,
 } from 'firebase/firestore'
+import {
+  collection as liteCollection,
+  doc as liteDoc,
+  getDoc as liteGetDoc,
+  getDocs as liteGetDocs,
+  query as liteQuery,
+  where as liteWhere,
+} from 'firebase/firestore/lite'
 import { httpsCallable } from 'firebase/functions'
-import { db, userDb, userFunctions } from './firebase'
+import { db, publicDb, userDb, userFunctions } from './firebase'
 
 const accountStateGateway = httpsCallable(userFunctions, 'updateUserProfile')
 const removeCartItemsGateway = httpsCallable(userFunctions, 'removeCartItems')
@@ -34,6 +42,18 @@ const documentsFrom = (snapshot, sort = false) => {
   return sort ? byNewest(values) : values
 }
 
+export async function getPublicCollectionValues(collectionName, { sort = false } = {}) {
+  return documentsFrom(
+    await liteGetDocs(liteCollection(publicDb, collectionName)),
+    sort,
+  )
+}
+
+export async function getPublicSetting(settingName) {
+  const snapshot = await liteGetDoc(liteDoc(publicDb, 'settings', settingName))
+  return snapshot.exists() ? snapshot.data() : null
+}
+
 export function subscribeToCollection(
   collectionName,
   onValues,
@@ -55,6 +75,17 @@ export const subscribeToPublishedReviews = (onValues, onError) =>
     sort: true,
     constraints: [where('status', '==', 'Published')],
   })
+
+export const getPublishedReviews = async () =>
+  documentsFrom(
+    await liteGetDocs(
+      liteQuery(
+        liteCollection(publicDb, 'reviews'),
+        liteWhere('status', '==', 'Published'),
+      ),
+    ),
+    true,
+  )
 
 export function subscribeToSetting(settingName, onValue, onError) {
   return onSnapshot(

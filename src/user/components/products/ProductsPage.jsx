@@ -52,6 +52,9 @@ export default function ProductsPage({
   activeCategory,
   sortBy,
   likedIds,
+  loading,
+  error,
+  onRetry,
   onBack,
   onQueryChange,
   onSearchSubmit,
@@ -73,6 +76,11 @@ export default function ProductsPage({
         ? 'Search results'
         : 'All products'
   const resultDescription = `${filteredProducts.length} ${filteredProducts.length === 1 ? 'product' : 'products'}${query.trim() ? ` matching “${query.trim()}”` : ' available to explore'}.`
+  const catalogDescription = loading
+    ? 'Loading the current product collection…'
+    : error
+      ? 'The current product collection is temporarily unavailable.'
+      : resultDescription
 
   return (
     <div className="min-h-[70vh]">
@@ -143,7 +151,9 @@ export default function ProductsPage({
                   {presentation.label || category.name}
                 </strong>
                 <span className="mt-1 block text-[10px] font-semibold text-slate-500">
-                  {productCount} {productCount === 1 ? 'product' : 'products'}
+                  {loading
+                    ? 'Loading products…'
+                    : `${productCount} ${productCount === 1 ? 'product' : 'products'}`}
                 </span>
               </button>
             )
@@ -175,8 +185,11 @@ export default function ProductsPage({
         categoryNames={categoryNames}
         eyebrow="Product collection"
         title={resultTitle}
-        description={resultDescription}
+        description={catalogDescription}
         showPromotions={false}
+        loading={loading}
+        error={error}
+        onRetry={onRetry}
       />
     </div>
   )

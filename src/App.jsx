@@ -18,6 +18,7 @@ import {
 import {
   createProduct,
   createProductId,
+  getProducts,
   removeProduct,
   saveProduct,
   saveProducts,
@@ -34,15 +35,18 @@ import {
 } from './firebase/productImages'
 import { auth } from './firebase/firebase'
 import {
+  getPublicCollectionValues,
+  getPublishedReviews,
+  getPublicSetting,
   removeRecord,
   saveRecord,
   saveRecords,
   saveSetting,
   subscribeToCollection,
-  subscribeToPublishedReviews,
   subscribeToSetting,
 } from './firebase/storeData'
 import {
+  getMaintenanceMode,
   getInitialMaintenanceState,
   subscribeToMaintenanceMode,
   updateMaintenanceMode,
@@ -163,6 +167,7 @@ function App() {
   const [productsList, setProductsList] = useState([])
   const [productsLoading, setProductsLoading] = useState(true)
   const [productsError, setProductsError] = useState('')
+  const [productsLoadAttempt, setProductsLoadAttempt] = useState(0)
   const [ordersList, setOrdersList] = useState([])
   const [refundsList, setRefundsList] = useState([])
   const [customersList, setCustomersList] = useState([])
@@ -198,54 +203,86 @@ function App() {
     return () => window.removeEventListener('popstate', syncPortalWithLocation)
   }, [])
 
-  useEffect(
-    () =>
-      subscribeToMaintenanceMode(
-        (enabled) => {
-          setMaintenanceEnabled(enabled)
-          setMaintenanceError('')
-          setMaintenanceLoading(false)
-        },
-        (error) => {
-          setMaintenanceError(
-            error?.message || 'Unable to confirm the current website status.',
-          )
-          setMaintenanceLoading(false)
-        },
-      ),
-    [initialMaintenanceState],
-  )
-
-  useEffect(
-    () =>
-      subscribeToProducts(
-        (products) => {
-          setProductsList(products)
-          setProductsError('')
-          setProductsLoading(false)
-        },
-        (error) => {
-          setProductsError(
-            error.message || 'Unable to load products from Firestore.',
-          )
-          setProductsLoading(false)
-        },
-      ),
-    [],
-  )
+  useEffect(() => {
+    let active = true
+    const onValue = (enabled) => {
+      if (!active) return
+      setMaintenanceEnabled(enabled)
+      setMaintenanceError('')
+      setMaintenanceLoading(false)
+    }
+    const onError = (error) => {
+      if (!active) return
+      setMaintenanceError(
+        error?.message || 'Unable to confirm the current website status.',
+      )
+      setMaintenanceLoading(false)
+    }
+    if (activePortal === 'admin' && adminAuthenticated) {
+      const unsubscribe = subscribeToMaintenanceMode(onValue, onError)
+      return () => {
+        active = false
+        unsubscribe()
+      }
+    }
+    void getMaintenanceMode()
+      .then(onValue)
+      .catch(onError)
+      .finally(() => {
+        if (active) setMaintenanceLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [activePortal, adminAuthenticated, initialMaintenanceState])
 
   useEffect(() => {
-    const reportError = (error) =>
-      setProductsError(error.message || 'Unable to load store data from Firestore.')
-    const unsubscribers = [
-      subscribeToCollection('coupons', setCouponsList, reportError),
-      subscribeToCollection('categories', setCategoriesList, reportError),
-      subscribeToCollection('subcategories', setSubcategoriesList, reportError),
-      subscribeToSetting('marketing', (value) =>
-        setMarketingSettings(mergeSetting(initialMarketingSettings, value)), reportError),
-      subscribeToSetting('shipping', (value) =>
-        setShippingSettings(mergeSetting(initialShippingSettings, value)), reportError),
-      subscribeToSetting('storefront', (value) => {
+    let active = true
+    const onProducts = (products) => {
+      if (!active) return
+      setProductsList(products)
+      setProductsError('')
+      setProductsLoading(false)
+      if (activePortal === 'user') {
+        document.documentElement.dataset.prideAppReady = 'true'
+      }
+    }
+    const onError = (error) => {
+      if (!active) return
+      setProductsError(
+        error?.message || 'Unable to load products from Firestore.',
+      )
+      setProductsLoading(false)
+    }
+
+    // Public catalog data is not collaborative state. A one-shot read avoids
+    // depending on Firestore's long-lived Listen channel during crawler renders.
+    // Authenticated admins retain real-time inventory updates.
+    if (activePortal === 'admin' && adminAuthenticated) {
+      const unsubscribe = subscribeToProducts(onProducts, onError)
+      return () => {
+        active = false
+        unsubscribe()
+      }
+    }
+
+    void getProducts().then(onProducts).catch(onError)
+    return () => {
+      active = false
+    }
+  }, [activePortal, adminAuthenticated, productsLoadAttempt])
+
+  useEffect(() => {
+    const reportError = (error) => {
+      if (activePortal === 'admin') {
+        setProductsError(error.message || 'Unable to load store data from Firestore.')
+      }
+    }
+    const applyMarketing = (value) =>
+      setMarketingSettings(mergeSetting(initialMarketingSettings, value))
+    const applyShipping = (value) =>
+      setShippingSettings(mergeSetting(initialShippingSettings, value))
+    const applyStorefront = (value) => {
         setAdminSettings((current) => ({
           ...current,
           store: { ...initialAdminSettings.store, ...(value?.store || {}) },
@@ -262,24 +299,64 @@ function App() {
         }))
         setInvoiceSettingsError('')
         setInvoiceSettingsLoading(false)
-      }, (error) => {
+      }
+    const reportStorefrontError = (error) => {
         reportError(error)
         setInvoiceSettingsError(error.message || 'Unable to load public tax settings.')
         setInvoiceSettingsLoading(false)
-      }),
-    ]
-    return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
-  }, [])
+      }
+
+    if (activePortal === 'admin' && adminAuthenticated) {
+      const unsubscribers = [
+        subscribeToCollection('coupons', setCouponsList, reportError),
+        subscribeToCollection('categories', setCategoriesList, reportError),
+        subscribeToCollection('subcategories', setSubcategoriesList, reportError),
+        subscribeToSetting('marketing', applyMarketing, reportError),
+        subscribeToSetting('shipping', applyShipping, reportError),
+        subscribeToSetting('storefront', applyStorefront, reportStorefrontError),
+      ]
+      return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
+    }
+
+    let active = true
+    void Promise.all([
+      getPublicCollectionValues('coupons'),
+      getPublicCollectionValues('categories'),
+      getPublicCollectionValues('subcategories'),
+      getPublicSetting('marketing'),
+      getPublicSetting('shipping'),
+      getPublicSetting('storefront'),
+    ])
+      .then(([coupons, categories, subcategories, marketing, shipping, storefront]) => {
+        if (!active) return
+        setCouponsList(coupons)
+        setCategoriesList(categories)
+        setSubcategoriesList(subcategories)
+        applyMarketing(marketing)
+        applyShipping(shipping)
+        applyStorefront(storefront)
+      })
+      .catch((error) => {
+        if (active) reportStorefrontError(error)
+      })
+    return () => {
+      active = false
+    }
+  }, [activePortal, adminAuthenticated])
 
   useEffect(() => {
     if (activePortal !== 'user') return undefined
-    return subscribeToPublishedReviews(
-      setPublicReviews,
-      (error) =>
-        setProductsError(
-          error.message || 'Unable to load product reviews from Firestore.',
-        ),
-    )
+    let active = true
+    void getPublishedReviews()
+      .then((reviews) => {
+        if (active) setPublicReviews(reviews)
+      })
+      .catch(() => {
+        if (active) setPublicReviews([])
+      })
+    return () => {
+      active = false
+    }
   }, [activePortal])
 
   useEffect(() => {
@@ -1061,6 +1138,11 @@ function App() {
             products={storefrontProducts}
             productsLoading={productsLoading}
             productsError={productsError}
+            onRetryProducts={() => {
+              setProductsLoading(true)
+              setProductsError('')
+              setProductsLoadAttempt((attempt) => attempt + 1)
+            }}
             coupons={couponsList}
             marketingSettings={marketingSettings}
             shippingSettings={shippingSettings}

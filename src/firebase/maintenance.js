@@ -1,5 +1,6 @@
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
-import { db } from './firebase'
+import { doc as liteDoc, getDoc as liteGetDoc } from 'firebase/firestore/lite'
+import { db, publicDb } from './firebase'
 
 const maintenanceReference = doc(db, 'settings', 'maintenance')
 const MAINTENANCE_CACHE_KEY = 'pride_maintenance_status'
@@ -54,6 +55,13 @@ export function subscribeToMaintenanceMode(onValue, onError) {
     },
     onError,
   )
+}
+
+export async function getMaintenanceMode() {
+  const snapshot = await liteGetDoc(liteDoc(publicDb, 'settings', 'maintenance'))
+  const enabled = snapshot.exists() && snapshot.data()?.enabled === true
+  writeMaintenanceCache(enabled)
+  return enabled
 }
 
 export async function updateMaintenanceMode(enabled) {

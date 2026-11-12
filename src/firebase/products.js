@@ -2,14 +2,19 @@ import {
   collection,
   deleteField,
   doc,
-  getDoc,
   getDocs,
   onSnapshot,
-  query,
   runTransaction,
-  where,
 } from 'firebase/firestore'
-import { auth, db, FIREBASE_STORAGE_BUCKET } from './firebase'
+import {
+  collection as liteCollection,
+  doc as liteDoc,
+  getDoc as liteGetDoc,
+  getDocs as liteGetDocs,
+  query as liteQuery,
+  where as liteWhere,
+} from 'firebase/firestore/lite'
+import { auth, db, FIREBASE_STORAGE_BUCKET, publicDb } from './firebase'
 import {
   assertValidHsnCode,
   assertValidProductForCreate,
@@ -22,19 +27,22 @@ import {
 } from '../utils/productSku'
 
 const productsCollection = collection(db, 'products')
+const publicProductsCollection = liteCollection(publicDb, 'products')
 const productSkuCounterReference = doc(db, 'skuCounters', 'products')
 
 export async function getProductBySlugOrId(identifier) {
   const normalizedIdentifier = String(identifier || '')
   if (!normalizedIdentifier) return null
 
-  const slugSnapshot = await getDocs(
-    query(productsCollection, where('slug', '==', normalizedIdentifier)),
+  const slugSnapshot = await liteGetDocs(
+    liteQuery(publicProductsCollection, liteWhere('slug', '==', normalizedIdentifier)),
   )
   const slugDocument = slugSnapshot.docs[0]
   if (slugDocument) return { ...slugDocument.data(), id: slugDocument.id }
 
-  const productSnapshot = await getDoc(doc(productsCollection, normalizedIdentifier))
+  const productSnapshot = await liteGetDoc(
+    liteDoc(publicProductsCollection, normalizedIdentifier),
+  )
   return productSnapshot.exists()
     ? { ...productSnapshot.data(), id: productSnapshot.id }
     : null
@@ -158,6 +166,16 @@ const sortProducts = (products) =>
   [...products].sort((first, second) =>
     String(second.createdAt || '').localeCompare(String(first.createdAt || '')),
   )
+
+export async function getProducts() {
+  const snapshot = await liteGetDocs(publicProductsCollection)
+  return sortProducts(
+    snapshot.docs.map((snapshotDocument) => ({
+      ...snapshotDocument.data(),
+      id: snapshotDocument.id,
+    })),
+  )
+}
 
 export function subscribeToProducts(onProducts, onError) {
   let active = true

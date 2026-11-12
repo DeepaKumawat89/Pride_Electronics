@@ -6,6 +6,7 @@ import {
 } from 'firebase/app-check'
 import { getAuth } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
+import { getFirestore as getLiteFirestore } from 'firebase/firestore/lite'
 import { getFunctions } from 'firebase/functions'
 import { getStorage } from 'firebase/storage'
 
@@ -32,10 +33,14 @@ const userApp = getApps().some(
 
 const viteEnvironment = import.meta.env || {}
 const appCheckSiteKey = viteEnvironment.VITE_FIREBASE_APP_CHECK_SITE_KEY
-if (typeof window !== 'undefined' && appCheckSiteKey) {
-  const debugToken = viteEnvironment.VITE_FIREBASE_APP_CHECK_DEBUG_TOKEN
-  if (viteEnvironment.DEV && debugToken) {
-    self.FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken
+const appCheckDebugToken = viteEnvironment.VITE_FIREBASE_APP_CHECK_DEBUG_TOKEN
+const shouldInitializeAppCheck =
+  typeof window !== 'undefined' &&
+  appCheckSiteKey &&
+  (!viteEnvironment.DEV || appCheckDebugToken)
+if (shouldInitializeAppCheck) {
+  if (viteEnvironment.DEV && appCheckDebugToken) {
+    self.FIREBASE_APPCHECK_DEBUG_TOKEN = appCheckDebugToken
   }
   initializeAppCheck(app, {
     provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
@@ -52,6 +57,7 @@ export const userAuth = getAuth(userApp)
 export const userFunctions = getFunctions(userApp, 'asia-south1')
 export const adminFunctions = getFunctions(app, 'asia-south1')
 export const db = getFirestore(app)
+export const publicDb = getLiteFirestore(app)
 export const userDb = getFirestore(userApp)
 export const storage = getStorage(app)
 export const userStorage = getStorage(userApp)

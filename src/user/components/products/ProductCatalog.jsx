@@ -49,6 +49,9 @@ export default function ProductCatalog({
   title = 'Trending right now',
   description = 'Our most-loved tech, chosen by customers.',
   showPromotions = true,
+  loading = false,
+  error = '',
+  onRetry,
 }) {
   const availableCategories = ['All', ...categoryNames]
   const [subcategory, setSubcategory] = useState('All')
@@ -205,7 +208,24 @@ export default function ProductCatalog({
         </div>
       )}
 
-      {visibleProducts.length ? (
+      {loading ? (
+        <div className="py-10 sm:py-14" aria-live="polite" aria-busy="true">
+          <div className="rounded-3xl border border-slate-200 bg-white px-6 py-12 text-center shadow-sm">
+            <span className="mx-auto block size-9 animate-spin rounded-full border-4 border-[#75916f]/25 border-t-[#536a50]" />
+            <p className="mt-4 text-sm font-extrabold text-slate-800">Loading products…</p>
+          </div>
+        </div>
+      ) : error ? (
+        <div className="py-10 sm:py-14" role="alert">
+          <div className="rounded-3xl border border-amber-200 bg-amber-50 px-6 py-10 text-center">
+            <p className="text-lg font-extrabold text-slate-800">Products are temporarily unavailable</p>
+            <p className="mx-auto mt-2 max-w-xl text-sm text-slate-600">The catalog could not be loaded. This is a connection problem, not an empty search result.</p>
+            {onRetry && (
+              <button type="button" onClick={onRetry} className="mt-5 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white transition hover:bg-[#397a4a]">Retry loading</button>
+            )}
+          </div>
+        </div>
+      ) : visibleProducts.length ? (
         <div className="storefront-product-grid mt-8 grid grid-cols-2 gap-x-3 gap-y-10 sm:gap-x-5 md:grid-cols-3 xl:grid-cols-4">
           {visibleProducts.map((product, index) => (
             <div
