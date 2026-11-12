@@ -5,6 +5,7 @@ import Header from './components/layout/Header'
 import Footer from './components/layout/Footer'
 import HeroSection from './components/home/HeroSection'
 import CategoryStrip from './components/home/CategoryStrip'
+import AllCategoriesPage from './components/categories/AllCategoriesPage'
 import BenefitsStrip from './components/home/BenefitsStrip'
 import PromoBanner from './components/home/PromoBanner'
 import HomeScrollReveal from './components/home/HomeScrollReveal'
@@ -13,6 +14,7 @@ import ProductDetailsPage from './components/products/ProductDetailsPage'
 import ProductSeo from './components/seo/ProductSeo'
 import HomeSeo from './components/seo/HomeSeo'
 import CatalogSeo from './components/seo/CatalogSeo'
+import CategoriesSeo from './components/seo/CategoriesSeo'
 import ProductReviewsPage from './components/products/ProductReviewsPage'
 import ProductsPage from './components/products/ProductsPage'
 import AboutUs from './components/pages/AboutUs'
@@ -136,6 +138,7 @@ const publicSlug = slugify
 
 function parsePublicPath(pathname) {
   const path = String(pathname || '').replace(/\/+$/, '') || '/'
+  if (path === '/categories') return { type: 'categories' }
   if (path === '/products') return { type: 'products', categorySlug: '' }
   if (path.startsWith('/category/')) {
     return {
@@ -193,6 +196,7 @@ export default function UserApp({
   const [category, setCategory] = useState('All')
   const [sortBy, setSortBy] = useState('popular')
   const [productsOpen, setProductsOpen] = useState(false)
+  const [categoriesOpen, setCategoriesOpen] = useState(false)
   const [contentPage, setContentPage] = useState(null)
   const [likedIds, setLikedIds] = useState([])
   const likedIdsRef = useRef(likedIds)
@@ -339,6 +343,7 @@ export default function UserApp({
         setCheckoutOpen(false)
         setSuccessfulOrder(null)
         setAccountSection(null)
+        setCategoriesOpen(false)
         setAuthOpen(true)
         return
       }
@@ -347,6 +352,7 @@ export default function UserApp({
         setSelectedProduct(null)
         setReviewsOpen(false)
         setProductsOpen(false)
+        setCategoriesOpen(false)
         setContentPage(null)
         if (protectedRoute.page === 'checkout') {
           checkoutHistoryActive.current = true
@@ -362,6 +368,19 @@ export default function UserApp({
         return
       }
       const publicPath = parsePublicPath(window.location.pathname)
+      if (publicPath?.type === 'categories') {
+        setCategoriesOpen(true)
+        setSuccessfulOrder(null)
+        setCheckoutOpen(false)
+        setSelectedProduct(null)
+        setReviewsOpen(false)
+        setProductsOpen(false)
+        setContentPage(null)
+        setAccountSection(null)
+        resetScroll()
+        return
+      }
+      setCategoriesOpen(false)
       if (publicPath?.type === 'product') {
         const pathProduct = products.find(
           (product) =>
@@ -830,6 +849,7 @@ export default function UserApp({
     setSelectedProduct(null)
     setReviewsOpen(false)
     setProductsOpen(false)
+    setCategoriesOpen(false)
     setContentPage(null)
     setAccountSection(null)
   }
@@ -857,6 +877,7 @@ export default function UserApp({
     setSelectedProduct(null)
     setReviewsOpen(false)
     setProductsOpen(false)
+    setCategoriesOpen(false)
     setAccountSection(null)
     setContentPage(page)
     window.scrollTo({ top: 0, behavior: 'auto' })
@@ -895,6 +916,7 @@ export default function UserApp({
     setSelectedProduct(null)
     setReviewsOpen(false)
     setContentPage(null)
+    setCategoriesOpen(false)
     setAccountSection(null)
     setQuery(nextQuery)
     setCategory(nextCategory)
@@ -902,9 +924,68 @@ export default function UserApp({
     window.scrollTo({ top: 0, behavior: 'auto' })
   }
 
+  const navigateToCategory = (selectedCategory) => {
+    const nextCategory = selectedCategory?.name || String(selectedCategory || '')
+    if (!nextCategory) return
+    if (!productsOpen) {
+      productsReturnCatalog.current = { query, category }
+    }
+    window.history.pushState(
+      {
+        prideProducts: true,
+        prideProductsReturn: true,
+        category: nextCategory,
+      },
+      '',
+      `/category/${encodeURIComponent(publicSlug(nextCategory))}`,
+    )
+    productsHistoryActive.current = true
+    setSuccessfulOrder(null)
+    setCheckoutOpen(false)
+    setSelectedProduct(null)
+    setReviewsOpen(false)
+    setContentPage(null)
+    setCategoriesOpen(false)
+    setAccountSection(null)
+    setQuery('')
+    setCategory(nextCategory)
+    setProductsOpen(true)
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }
+
+  const navigateToCategories = () => {
+    if (window.location.pathname !== '/categories' || window.location.hash) {
+      window.history.pushState(
+        { prideCategories: true, prideCategoriesReturn: true },
+        '',
+        '/categories',
+      )
+    }
+    setSuccessfulOrder(null)
+    setCheckoutOpen(false)
+    setSelectedProduct(null)
+    setReviewsOpen(false)
+    setProductsOpen(false)
+    setContentPage(null)
+    setAccountSection(null)
+    setCategoriesOpen(true)
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }
+
+  const closeCategories = () => {
+    if (window.history.state?.prideCategoriesReturn) {
+      window.history.back()
+      return
+    }
+    navigateHome()
+  }
+
   const closeProducts = () => {
+    const currentPublicPath = parsePublicPath(window.location.pathname)
     if (
-      parseProductsHash(window.location.hash) &&
+      (parseProductsHash(window.location.hash) ||
+        currentPublicPath?.type === 'products' ||
+        currentPublicPath?.type === 'category') &&
       window.history.state?.prideProductsReturn
     ) {
       window.history.back()
@@ -1054,6 +1135,7 @@ export default function UserApp({
       window.history.pushState({ prideProduct: product.id }, '', productPath)
     setSelectedProduct(product)
     setReviewsOpen(false)
+    setCategoriesOpen(false)
     setAccountSection(null)
     window.scrollTo({ top: 0, behavior: 'auto' })
   }
@@ -1130,6 +1212,7 @@ export default function UserApp({
     setSelectedProduct(null)
     setReviewsOpen(false)
     setProductsOpen(false)
+    setCategoriesOpen(false)
     setContentPage(null)
     if (route.page === 'checkout') {
       checkoutHistoryActive.current = true
@@ -1803,7 +1886,8 @@ export default function UserApp({
 
   return (
     <div className="customer-shell min-h-screen overflow-x-clip bg-[#f7f8f5] pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-16 lg:pb-0">
-      {!liveSelectedProduct && !ContentPage && !productsOpen && !checkoutOpen && !successfulOrder && !accountSection && <HomeSeo />}
+      {!liveSelectedProduct && !ContentPage && !productsOpen && !categoriesOpen && !checkoutOpen && !successfulOrder && !accountSection && <HomeSeo />}
+      {categoriesOpen && <CategoriesSeo />}
       {liveSelectedProduct && <ProductSeo product={liveSelectedProduct} />}
       {!liveSelectedProduct && productsOpen && (
         <CatalogSeo category={category} products={filteredProducts} />
@@ -1818,7 +1902,7 @@ export default function UserApp({
         wishlistCount={user ? likedIds.length : 0}
         accountSection={accountSection}
         productsOpen={productsOpen}
-        contentPageOpen={Boolean(ContentPage)}
+        contentPageOpen={Boolean(ContentPage) || categoriesOpen}
         onHome={navigateHome}
         onProductsOpen={() => navigateToProducts('All')}
         onCartOpen={navigateToCart}
@@ -1935,6 +2019,13 @@ export default function UserApp({
             taxSettings={invoiceSettings.tax}
             reviews={selectedProductReviews}
           />
+        ) : categoriesOpen ? (
+          <AllCategoriesPage
+            categories={categories}
+            products={products}
+            onBack={closeCategories}
+            onSelect={navigateToCategory}
+          />
         ) : ContentPage ? (
           <ContentPage onBack={closeContentPage} />
         ) : productsOpen ? (
@@ -1971,9 +2062,11 @@ export default function UserApp({
               }
             />
             <CategoryStrip
+              categories={categories}
+              products={products}
               promotions={marketingSettings?.categoryPromotions}
-              managedCategories={categories}
-              onSelect={(nextCategory) => navigateToProducts(nextCategory)}
+              onSelect={navigateToCategory}
+              onViewAll={navigateToCategories}
             />
             <BenefitsStrip shippingSettings={shippingSettings} />
             <ProductCatalog

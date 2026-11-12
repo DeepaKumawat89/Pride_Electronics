@@ -71,6 +71,11 @@ test('only an admin claim can mutate product images', async () => {
     }),
   )
   await assertSucceeds(uploadBytes(ref(admin, productPath), image, productMetadata))
+  await assertSucceeds(
+    getBytes(
+      ref(testEnvironment.unauthenticatedContext().storage(bucket), productPath),
+    ),
+  )
   await assertSucceeds(deleteObject(ref(admin, productPath)))
 })
 

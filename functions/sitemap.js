@@ -188,6 +188,7 @@ exports.sitemap = onRequest(
       const urlsByPath = new Map()
       addUrl(urlsByPath, '/', homeLastmod)
       addUrl(urlsByPath, '/products', catalogLastmod)
+      addUrl(urlsByPath, '/categories', publicCategoryLastmod)
 
       const categoryLastmodBySlug = new Map()
       categories

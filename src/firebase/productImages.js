@@ -12,6 +12,8 @@ export const MIN_PRODUCT_IMAGES = 1
 export const MAX_PRODUCT_IMAGES = 3
 export const MAX_PRODUCT_IMAGE_SIZE = 20 * 1024 * 1024
 const MAX_STORED_PRODUCT_IMAGE_SIZE = 10 * 1024 * 1024
+const PRODUCT_THUMBNAIL_MAX_DIMENSION = 640
+const PRODUCT_THUMBNAIL_QUALITY = 0.76
 
 const productImagePathPattern =
   /^products\/[^/]+\/[^/]+\.(?:jpg|jpeg|png|webp)$/i
@@ -122,6 +124,10 @@ export async function uploadProductImages(productId, files, { prefix = '' } = {}
   try {
     for (const [index, file] of files.entries()) {
       const optimizedImage = await optimizeProductImage(file)
+      const thumbnailImage = await optimizeProductImage(file, {
+        maxDimension: PRODUCT_THUMBNAIL_MAX_DIMENSION,
+        quality: PRODUCT_THUMBNAIL_QUALITY,
+      })
       if (optimizedImage.size >= MAX_STORED_PRODUCT_IMAGE_SIZE) {
         throw new Error(`${file.name} could not be optimized below 10 MB.`)
       }
@@ -129,8 +135,14 @@ export async function uploadProductImages(productId, files, { prefix = '' } = {}
       if (contentHashes.has(hash)) continue
       contentHashes.add(hash)
       const safePrefix = String(prefix || '').replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 80)
-      const path = `products/${productId}/${safePrefix}${String(index + 1).padStart(2, '0')}-${createImageId()}.webp`
+      const imageId = createImageId()
+      const baseName = `${safePrefix}${String(index + 1).padStart(2, '0')}-${imageId}`
+      const path = `products/${productId}/${baseName}.webp`
+      const thumbnailPath = `products/${productId}/${baseName}-thumb.webp`
       const imageReference = ref(storage, path)
+      const thumbnailReference = ref(storage, thumbnailPath)
+      const upload = { path, url: '', thumbnailPath, thumbnailUrl: '' }
+      uploads.push(upload)
       await uploadBytes(imageReference, optimizedImage, {
         contentType: 'image/webp',
         cacheControl: 'public,max-age=31536000,immutable',
@@ -140,17 +152,27 @@ export async function uploadProductImages(productId, files, { prefix = '' } = {}
           originalName: String(file.name || 'product-image').slice(0, 200),
         },
       })
-      const upload = { path, url: '' }
-      uploads.push(upload)
+      await uploadBytes(thumbnailReference, thumbnailImage, {
+        contentType: 'image/webp',
+        cacheControl: 'public,max-age=31536000,immutable',
+        customMetadata: {
+          adminUid: user.uid,
+          sourcePath: path,
+          variant: 'thumbnail',
+        },
+      })
       upload.url = await getDownloadURL(imageReference)
+      upload.thumbnailUrl = await getDownloadURL(thumbnailReference)
     }
     return {
       paths: uploads.map((upload) => upload.path),
       urls: uploads.map((upload) => upload.url),
+      thumbnailPaths: uploads.map((upload) => upload.thumbnailPath),
+      thumbnailUrls: uploads.map((upload) => upload.thumbnailUrl),
     }
   } catch (error) {
     await removeProductImages(
-      uploads.map((upload) => upload.path),
+      uploads.flatMap((upload) => [upload.path, upload.thumbnailPath]),
       { ignoreErrors: true, skipAuthorizationCheck: true },
     )
     throw productImageError(error, 'upload')
@@ -187,12 +209,19 @@ export async function copyProductImages(productId, images = [], paths = []) {
       const copied = await uploadProductImages(productId, [file], {
         prefix: `copy-${index + 1}-`,
       })
-      copiedPaths.push(...copied.paths)
-      records.push({ path: copied.paths[0], url: copied.urls[0] })
+      copiedPaths.push(...copied.paths, ...copied.thumbnailPaths)
+      records.push({
+        path: copied.paths[0],
+        url: copied.urls[0],
+        thumbnailPath: copied.thumbnailPaths[0],
+        thumbnailUrl: copied.thumbnailUrls[0],
+      })
     }
     return {
       paths: records.map((record) => record.path),
       urls: records.map((record) => record.url),
+      thumbnailPaths: records.map((record) => record.thumbnailPath),
+      thumbnailUrls: records.map((record) => record.thumbnailUrl),
     }
   } catch (error) {
     await removeProductImages(copiedPaths, {

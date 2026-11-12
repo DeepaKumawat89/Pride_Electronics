@@ -1,5 +1,6 @@
 import { ArrowRight, CheckCircle2, Play, Sparkles } from 'lucide-react'
 import { initialMarketingSettings } from '../../../data/marketing'
+import StorefrontImage from '../common/StorefrontImage'
 
 export default function HeroSection({
   onShopNow,
@@ -41,7 +42,16 @@ export default function HeroSection({
             <p className="mt-1 text-sm font-extrabold text-slate-900">{banner.productName}</p>
             <p className="mt-0.5 text-xs font-bold text-[#ff5c35]">{banner.productPrice}</p>
           </div>
-          <img src={banner.image} alt={banner.productName} className="absolute bottom-[-70px] right-[-40px] h-[370px] w-[520px] rotate-[-8deg] object-contain mix-blend-multiply drop-shadow-[0_35px_30px_rgba(23,33,29,0.28)] sm:right-4 lg:bottom-[-35px] lg:right-[-30px] lg:h-[560px] lg:w-[680px]" />
+          <StorefrontImage
+            src={banner.image}
+            alt={banner.productName}
+            width="680"
+            height="560"
+            loading="eager"
+            fetchPriority="high"
+            decoding="async"
+            className="absolute bottom-[-70px] right-[-40px] h-[370px] w-[520px] rotate-[-8deg] object-contain mix-blend-multiply drop-shadow-[0_35px_30px_rgba(23,33,29,0.28)] sm:right-4 lg:bottom-[-35px] lg:right-[-30px] lg:h-[560px] lg:w-[680px]"
+          />
           <span className="absolute bottom-8 right-5 rounded-full bg-[#ffb000] px-4 py-3 text-center text-[10px] font-extrabold uppercase leading-3 text-slate-950 shadow-lg sm:right-12 lg:bottom-14 lg:right-16">Save<br/><span className="text-base">{banner.discountLabel}</span></span>
         </div>
       </div>

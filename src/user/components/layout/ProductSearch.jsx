@@ -7,6 +7,7 @@ import {
 } from '../../utils/productSearch'
 import { getProductBasePrice } from '../../../utils/productPricing'
 import { formatCurrency } from '../../utils/currency'
+import StorefrontImage from '../common/StorefrontImage'
 
 export default function ProductSearch({
   products,
@@ -144,9 +145,13 @@ export default function ProductSearch({
                     onClick={() => selectProduct(product)}
                     className="group flex w-full items-center gap-3 rounded-[18px] p-2 text-left transition hover:bg-[#f2f7f2]"
                   >
-                    <img
-                      src={product.image}
+                    <StorefrontImage
+                      src={product.thumbnail || product.image}
                       alt=""
+                      width="96"
+                      height="96"
+                      loading="lazy"
+                      decoding="async"
                       className="size-12 shrink-0 rounded-[14px] object-cover"
                     />
                     <span className="min-w-0 flex-1">
@@ -201,9 +206,13 @@ export default function ProductSearch({
                     onClick={() => selectProduct(product)}
                     className="flex items-center gap-2 rounded-xl p-2 text-[10px] font-bold text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
                   >
-                    <img
-                      src={product.image}
+                    <StorefrontImage
+                      src={product.thumbnail || product.image}
                       alt=""
+                      width="64"
+                      height="64"
+                      loading="lazy"
+                      decoding="async"
                       className="size-8 rounded-lg object-cover"
                     />
                     <span className="min-w-0 flex-1 truncate">

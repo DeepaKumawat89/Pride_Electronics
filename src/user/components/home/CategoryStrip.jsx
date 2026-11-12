@@ -1,52 +1,79 @@
-import { Cable, Headphones, Monitor, Watch, Zap } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
+import { useMemo } from 'react'
+import { productBelongsToCategory } from '../../../utils/catalogTaxonomy'
+import CategoryTile from '../categories/CategoryTile'
 
-const categoryDefinitions = [
-  { name: 'Audio', label: 'Audio & sound', icon: Headphones, color: 'bg-[#f3e4dd]' },
-  { name: 'Wearables', label: 'Smart wearables', icon: Watch, color: 'bg-[#e2ebf4]' },
-  { name: 'Peripherals', label: 'Workspace gear', icon: Monitor, color: 'bg-[#efe9d7]' },
-  { name: 'Components & DIY', label: 'Components & DIY', icon: Cable, color: 'bg-[#e5e1ef]' },
-  { name: 'Smart Power', label: 'Power & charging', icon: Zap, color: 'bg-[#dfeee4]' },
-]
+const HOME_CATEGORY_LIMIT = 10
 
-export default function CategoryStrip({ onSelect, promotions = [], managedCategories = null }) {
-  const configuredCategories = managedCategories || []
-  const baseCategories = Array.isArray(managedCategories)
-    ? categoryDefinitions.filter((category) =>
-        configuredCategories.some((item) => item.name === category.name),
+export default function CategoryStrip({
+  categories = [],
+  products = [],
+  promotions = [],
+  onSelect,
+  onViewAll,
+}) {
+  const featuredCategories = useMemo(() => {
+    const activeCategories = categories.filter((category) => {
+      const promotion = promotions.find(
+        (item) => item.name === category.name,
       )
-    : categoryDefinitions
-  const customCategories = configuredCategories
-    .filter((item) => !categoryDefinitions.some((category) => category.name === item.name))
-    .map((item) => ({ name: item.name, label: item.name, icon: Cable, color: 'bg-[#e5e1ef]' }))
-  const categories = [...baseCategories, ...customCategories]
-    .map((category) => ({
-      ...category,
-      ...(promotions.find((item) => item.name === category.name) || {}),
-      managedEnabled: configuredCategories.find((item) => item.name === category.name)?.enabled,
+      return category.enabled !== false && promotion?.enabled !== false
+    })
+    const ranked = activeCategories.map((category, sourceIndex) => ({
+      category,
+      sourceIndex,
+      productCount: products.filter((product) =>
+        productBelongsToCategory(product, category),
+      ).length,
     }))
-    .filter((category) => category.enabled !== false && category.managedEnabled !== false)
-  if (!categories.length) return null
+
+    return ranked
+      .sort(
+        (first, second) =>
+          second.productCount - first.productCount ||
+          first.sourceIndex - second.sourceIndex,
+      )
+      .slice(0, HOME_CATEGORY_LIMIT)
+  }, [categories, products, promotions])
+
+  if (!featuredCategories.length) return null
+
   return (
-    <section className="mx-auto max-w-[1440px] px-4 py-14 sm:px-6 lg:px-10 lg:py-20">
-      <div className="mb-7 flex items-end justify-between">
-        <div><p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#ff5c35]">Browse the store</p><h2 className="mt-2 text-2xl font-extrabold tracking-[-0.04em] sm:text-3xl">Shop by category</h2></div>
-        <button type="button" onClick={() => onSelect('All')} className="hidden text-xs font-bold text-slate-500 underline decoration-slate-300 underline-offset-4 sm:block">View all products</button>
+    <section className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 sm:py-10 lg:px-10 lg:py-12">
+      <div className="mb-4 flex items-end justify-between gap-4 sm:mb-5">
+        <div>
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#ff5c35] sm:text-xs">
+            Browse the store
+          </p>
+          <h2 className="mt-1.5 text-xl font-extrabold tracking-[-0.04em] text-slate-950 sm:text-2xl">
+            Shop by category
+          </h2>
+        </div>
+        <a
+          href="/categories"
+          onClick={(event) => {
+            if (!onViewAll) return
+            event.preventDefault()
+            onViewAll()
+          }}
+          className="group inline-flex shrink-0 items-center gap-1.5 text-[10px] font-extrabold text-[#397a4a] transition hover:text-[#ff5c35] sm:text-xs"
+        >
+          View All Categories
+          <ArrowRight size={14} className="transition group-hover:translate-x-0.5" />
+        </a>
       </div>
-      <div className="storefront-category-grid grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
-        {categories.map(({ name, label, icon: Icon, color }) => (
-          <button key={name} type="button" onClick={() => onSelect(name)} className={`${color} group flex min-h-36 flex-col items-start justify-between overflow-hidden rounded-3xl p-5 text-left transition duration-300 hover:-translate-y-1 hover:shadow-xl`}>
-            <span className="grid size-11 place-items-center rounded-2xl bg-white/75 text-slate-800 transition group-hover:rotate-[-5deg] group-hover:scale-110"><Icon size={22} /></span>
-            <span><strong className="block text-sm font-extrabold text-slate-900">{label}</strong><span className="mt-1 block text-[11px] font-semibold text-slate-500">Explore collection →</span></span>
-          </button>
+
+      <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:-mx-6 sm:px-6 lg:mx-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:px-0 lg:pb-0">
+        {featuredCategories.map(({ category, productCount }) => (
+          <CategoryTile
+            key={category.id}
+            category={category}
+            productCount={productCount}
+            compact
+            onSelect={onSelect}
+          />
         ))}
       </div>
-      <button
-        type="button"
-        onClick={() => onSelect('All')}
-        className="mt-4 h-11 w-full rounded-full border border-slate-200 bg-white text-xs font-extrabold text-slate-600 transition hover:border-[#ff5c35] hover:text-[#ff5c35] sm:hidden"
-      >
-        View all products
-      </button>
     </section>
   )
 }

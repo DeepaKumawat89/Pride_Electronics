@@ -49,6 +49,13 @@
         }
       },
       {
+        "source": "/categories",
+        "function": {
+          "functionId": "publicPage",
+          "region": "asia-south1"
+        }
+      },
+      {
         "source": "/category/**",
         "function": {
           "functionId": "publicPage",

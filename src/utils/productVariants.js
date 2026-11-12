@@ -23,6 +23,13 @@ export function normalizeProductVariant(variant = {}, index = 0) {
     image: cleanText(variant.image || variant.images?.[0]),
     images: Array.isArray(variant.images) ? variant.images.filter(Boolean) : [variant.image].filter(Boolean),
     imageStoragePaths: Array.isArray(variant.imageStoragePaths) ? variant.imageStoragePaths.filter(Boolean) : [],
+    thumbnail: cleanText(variant.thumbnail || variant.thumbnails?.[0]),
+    thumbnails: Array.isArray(variant.thumbnails)
+      ? variant.thumbnails.filter(Boolean)
+      : [variant.thumbnail].filter(Boolean),
+    thumbnailStoragePaths: Array.isArray(variant.thumbnailStoragePaths)
+      ? variant.thumbnailStoragePaths.filter(Boolean)
+      : [],
     technicalSpecifications: Array.isArray(variant.technicalSpecifications) ? variant.technicalSpecifications : [],
     customSpecifications: Array.isArray(variant.customSpecifications) ? variant.customSpecifications : [],
   }
@@ -69,6 +76,11 @@ export function productForVariant(product, variantId) {
     : Array.isArray(product.images) && product.images.length
       ? product.images
       : [product.image].filter(Boolean)
+  const thumbnails = variant.thumbnails.length
+    ? variant.thumbnails
+    : Array.isArray(product.thumbnails) && product.thumbnails.length
+      ? product.thumbnails
+      : images
   return {
     ...product,
     selectedVariantId: variant.id,
@@ -82,6 +94,8 @@ export function productForVariant(product, variantId) {
     reservedStock: variant.reservedStock,
     image: images[0] || product.image || '',
     images,
+    thumbnail: thumbnails[0] || images[0] || product.image || '',
+    thumbnails,
     technicalSpecifications: mergeSpecifications(
       product.technicalSpecifications,
       variant.technicalSpecifications,

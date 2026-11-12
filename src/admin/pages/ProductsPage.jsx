@@ -365,10 +365,18 @@ export default function ProductsPage({
     const imageStoragePaths = Array.isArray(product.imageStoragePaths)
       ? product.imageStoragePaths
       : []
+    const thumbnails = Array.isArray(product.thumbnails)
+      ? product.thumbnails
+      : []
+    const thumbnailStoragePaths = Array.isArray(product.thumbnailStoragePaths)
+      ? product.thumbnailStoragePaths
+      : []
     const storagePathOffset = Math.max(0, productImages.length - imageStoragePaths.length)
     setExistingImages(productImages.map((url, index) => ({
       url,
       path: imageStoragePaths[index - storagePathOffset] || '',
+      thumbnail: thumbnails[index] || url,
+      thumbnailPath: thumbnailStoragePaths[index] || '',
     })))
     setForm({
       ...blankProduct,
@@ -562,6 +570,11 @@ export default function ProductsPage({
       image: existingImages[0]?.url || '',
       images: existingImages.map((item) => item.url),
       imageStoragePaths: existingImages.map((item) => item.path || ''),
+      thumbnail: existingImages[0]?.thumbnail || existingImages[0]?.url || '',
+      thumbnails: existingImages.map((item) => item.thumbnail || item.url),
+      thumbnailStoragePaths: existingImages.map(
+        (item) => item.thumbnailPath || '',
+      ),
       videos: [],
       featured: editingProduct?.featured ?? true,
       enabled: form.enabled !== false,

@@ -2,6 +2,7 @@ import { Heart, ShoppingBag, Star, Zap } from 'lucide-react'
 import { formatCurrency, hasValidPrice } from '../../utils/currency'
 import { getProductBasePrice } from '../../../utils/productPricing'
 import { getProductPath } from '../../../utils/slugify'
+import StorefrontImage from '../common/StorefrontImage'
 
 export default function ProductCard({
   product,
@@ -10,6 +11,7 @@ export default function ProductCard({
   onAdd,
   onBuyNow,
   onView,
+  imagePriority = false,
 }) {
   const sellingPrice = getProductBasePrice(product)
   const priceAvailable = hasValidPrice(sellingPrice)
@@ -25,7 +27,16 @@ export default function ProductCard({
   return (
     <article className="group flex min-w-0 flex-col">
       <div className="relative aspect-[1/0.9] overflow-hidden rounded-[26px] bg-white">
-        <img src={product.image} alt={product.name} loading="lazy" decoding="async" className="size-full object-cover transition duration-500 group-hover:scale-105" />
+        <StorefrontImage
+          src={product.thumbnail || product.image}
+          alt={product.name}
+          width="640"
+          height="576"
+          loading={imagePriority ? 'eager' : 'lazy'}
+          fetchPriority={imagePriority ? 'high' : 'auto'}
+          decoding="async"
+          className="size-full object-cover transition duration-500 group-hover:scale-105"
+        />
         <a
           href={productPath}
           onClick={(event) => {

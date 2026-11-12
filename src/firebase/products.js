@@ -60,7 +60,15 @@ const NON_RETRYABLE_LISTENER_CODES = new Set([
   'unimplemented',
 ])
 
-const productImageFields = ['image', 'images', 'imageStoragePaths']
+const productImageGroups = [
+  { primary: 'image', urls: 'images', paths: 'imageStoragePaths' },
+  {
+    primary: 'thumbnail',
+    urls: 'thumbnails',
+    paths: 'thumbnailStoragePaths',
+    optional: true,
+  },
+]
 
 const requireAdminFirestoreAccess = async () => {
   const user = auth.currentUser
@@ -95,19 +103,29 @@ const parseFirebaseStorageDownloadUrl = (value) => {
   }
 }
 
-const assertCurrentStorageImageReferences = (value, label) => {
-  const presentFields = productImageFields.filter((field) =>
+const assertCurrentStorageImageReferences = (value, label, group) => {
+  const fields = [group.primary, group.urls, group.paths]
+  const presentFields = fields.filter((field) =>
     Object.prototype.hasOwnProperty.call(value || {}, field),
   )
-  if (!presentFields.length) return
-  if (presentFields.length !== productImageFields.length) {
-    throw new Error(`${label} image URL and Storage path fields must be saved together.`)
+  if (!presentFields.length && group.optional) return
+  if (presentFields.length !== fields.length) {
+    throw new Error(
+      `${label} ${group.optional ? 'thumbnail' : 'image'} URL and Storage path fields must be saved together.`,
+    )
   }
 
-  const images = Array.isArray(value.images) ? value.images : []
-  const paths = Array.isArray(value.imageStoragePaths) ? value.imageStoragePaths : []
+  const images = Array.isArray(value[group.urls]) ? value[group.urls] : []
+  const paths = Array.isArray(value[group.paths]) ? value[group.paths] : []
   if (images.length !== paths.length) {
-    throw new Error(`${label} image URLs and Storage paths are not aligned.`)
+    throw new Error(
+      `${label} ${group.optional ? 'thumbnail' : 'image'} URLs and Storage paths are not aligned.`,
+    )
+  }
+  if (images.length && value[group.primary] !== images[0]) {
+    throw new Error(
+      `${label} primary ${group.optional ? 'thumbnail' : 'image'} must match its first URL.`,
+    )
   }
 
   images.forEach((imageUrl, index) => {
@@ -120,18 +138,22 @@ const assertCurrentStorageImageReferences = (value, label) => {
       reference.path !== storagePath
     ) {
       throw new Error(
-        `${label} image ${index + 1} must reference ${FIREBASE_STORAGE_BUCKET} at its aligned Storage path.`,
+        `${label} ${group.optional ? 'thumbnail' : 'image'} ${index + 1} must reference ${FIREBASE_STORAGE_BUCKET} at its aligned Storage path.`,
       )
     }
   })
 }
 
 export const assertCurrentProductImageReferences = (product) => {
-  assertCurrentStorageImageReferences(product, 'Product')
-  if (!Array.isArray(product?.variants)) return
-  product.variants.forEach((variant, index) =>
-    assertCurrentStorageImageReferences(variant, `Variant ${index + 1}`),
+  productImageGroups.forEach((group) =>
+    assertCurrentStorageImageReferences(product, 'Product', group),
   )
+  if (!Array.isArray(product?.variants)) return
+  product.variants.forEach((variant, index) => {
+    productImageGroups.forEach((group) =>
+      assertCurrentStorageImageReferences(variant, `Variant ${index + 1}`, group),
+    )
+  })
 }
 
 const serializeProduct = (product) => {

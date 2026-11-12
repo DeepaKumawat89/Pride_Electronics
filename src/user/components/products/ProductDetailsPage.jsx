@@ -23,6 +23,7 @@ import {
   getProductDetailInformation,
 } from '../../utils/productDetails'
 import ProductCard from './ProductCard'
+import StorefrontImage from '../common/StorefrontImage'
 import ProductReviews from './ProductReviews'
 import { getDisplaySpecifications } from '../../../utils/productSpecifications'
 import { getProductReturnPolicyDisplay } from '../../../utils/productReturnPolicy'
@@ -222,7 +223,16 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
           <div className="grid lg:grid-cols-[1.08fr_.92fr]">
             <div className="bg-[#eef4ed] p-4 sm:p-6 lg:p-7">
               <div className="relative overflow-hidden rounded-[22px] bg-white sm:rounded-[26px]">
-                <img src={activeImage} alt={product.name} decoding="async" className="aspect-[4/3] size-full object-cover transition duration-500 lg:aspect-[11/10]" />
+                <StorefrontImage
+                  src={activeImage}
+                  alt={product.name}
+                  width="1200"
+                  height="900"
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                  className="aspect-[4/3] size-full object-cover transition duration-500 lg:aspect-[11/10]"
+                />
                 <span className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-slate-800 shadow-sm backdrop-blur">{product.badge}</span>
                 <div className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full bg-white/90 p-1.5 shadow-lg backdrop-blur">
                   <button type="button" onClick={() => onLike(product.id)} className={`grid size-9 place-items-center rounded-full transition ${liked ? 'bg-[#ff5c35] text-white' : 'text-slate-600 hover:bg-[#ffe9e2] hover:text-[#ff5c35]'}`} aria-label={liked ? 'Remove from wishlist' : 'Add to wishlist'} title={liked ? 'Remove from wishlist' : 'Add to wishlist'}>
@@ -239,7 +249,15 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                   <div className="absolute bottom-3 left-1/2 flex max-w-[58%] -translate-x-1/2 gap-1.5 rounded-2xl bg-white/85 p-1.5 shadow-xl backdrop-blur-md sm:bottom-4 sm:gap-2 sm:p-2">
                   {images.map((image, index) => (
                     <button key={`${image}-${index}`} type="button" onClick={() => setActiveImageIndex(index)} className={`size-10 shrink-0 overflow-hidden rounded-xl border-2 bg-white p-0.5 transition hover:-translate-y-0.5 sm:size-12 ${activeImageIndex === index ? 'border-[#ff5c35] shadow-md' : 'border-transparent opacity-75 hover:border-slate-200 hover:opacity-100'}`} aria-label={`View product image ${index + 1}`}>
-                      <img src={image} alt={`${product.name} view ${index + 1}`} loading="lazy" decoding="async" className="size-full rounded-lg object-cover" />
+                      <StorefrontImage
+                        src={displayProduct.thumbnails?.[index] || image}
+                        alt={`${product.name} view ${index + 1}`}
+                        width="96"
+                        height="96"
+                        loading="lazy"
+                        decoding="async"
+                        className="size-full rounded-lg object-cover"
+                      />
                     </button>
                   ))}
                   </div>

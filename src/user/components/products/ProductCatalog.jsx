@@ -20,6 +20,7 @@ import {
   ratingFilterOptions,
 } from '../../utils/catalog'
 import ProductCard from './ProductCard'
+import StorefrontImage from '../common/StorefrontImage'
 
 const sortOptions = [
   { value: 'recommended', label: 'Recommended' },
@@ -246,9 +247,13 @@ export default function ProductCatalog({
           {showFeatureCards && (flashSaleActive || offers?.deal?.enabled !== false) && (
             <div className="order-2 col-span-full grid gap-4 md:grid-cols-2 sm:gap-5">
               {flashSaleActive && <article className="group relative min-h-64 overflow-hidden rounded-[28px] bg-[#dcebdd] shadow-sm sm:min-h-72">
-                <img
-                  src={lifestyleProduct.image}
+                <StorefrontImage
+                  src={lifestyleProduct.thumbnail || lifestyleProduct.image}
                   alt=""
+                  width="640"
+                  height="576"
+                  loading="lazy"
+                  decoding="async"
                   className="absolute inset-y-0 right-0 h-full w-[58%] object-cover transition duration-700 group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-gradient-to-r from-[#dcebdd] via-[#dcebdd]/95 to-[#dcebdd]/10" />
@@ -274,9 +279,13 @@ export default function ProductCatalog({
               </article>}
 
               {offers?.deal?.enabled !== false && <article className="group relative min-h-64 overflow-hidden rounded-[28px] bg-slate-950 shadow-sm sm:min-h-72">
-                <img
-                  src={performanceProduct.image}
+                <StorefrontImage
+                  src={performanceProduct.thumbnail || performanceProduct.image}
                   alt=""
+                  width="640"
+                  height="576"
+                  loading="lazy"
+                  decoding="async"
                   className="absolute inset-y-0 right-0 h-full w-[62%] object-cover opacity-80 transition duration-700 group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/95 to-slate-950/15" />

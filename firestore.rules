@@ -135,6 +135,39 @@ service cloud.firestore {
           isValidProductImagePath(data.imageStoragePaths[2], productId));
     }
 
+    function hasValidProductThumbnails(data, productId) {
+      return !data.keys().hasAny([
+          'thumbnail', 'thumbnails', 'thumbnailStoragePaths'
+        ]) ||
+        (data.keys().hasAll([
+            'thumbnail', 'thumbnails', 'thumbnailStoragePaths'
+          ]) &&
+          data.thumbnail is string && data.thumbnail.size() <= 2000 &&
+          data.thumbnail.matches('^https://.*') &&
+          data.thumbnails is list &&
+          data.thumbnails.size() >= 1 && data.thumbnails.size() <= 3 &&
+          data.thumbnails.size() == data.images.size() &&
+          data.thumbnailStoragePaths is list &&
+          data.thumbnailStoragePaths.size() == data.thumbnails.size() &&
+          data.thumbnail == data.thumbnails[0] &&
+          data.thumbnails[0] is string &&
+          data.thumbnails[0].size() <= 2000 &&
+          data.thumbnails[0].matches('^https://.*') &&
+          (data.thumbnails.size() < 2 ||
+            (data.thumbnails[1] is string &&
+              data.thumbnails[1].size() <= 2000 &&
+              data.thumbnails[1].matches('^https://.*'))) &&
+          (data.thumbnails.size() < 3 ||
+            (data.thumbnails[2] is string &&
+              data.thumbnails[2].size() <= 2000 &&
+              data.thumbnails[2].matches('^https://.*'))) &&
+          isValidProductImagePath(data.thumbnailStoragePaths[0], productId) &&
+          (data.thumbnailStoragePaths.size() < 2 ||
+            isValidProductImagePath(data.thumbnailStoragePaths[1], productId)) &&
+          (data.thumbnailStoragePaths.size() < 3 ||
+            isValidProductImagePath(data.thumbnailStoragePaths[2], productId)));
+    }
+
     function hasValidReturnPolicy(data) {
       return !data.keys().hasAny(['returnPolicy']) ||
         (data.returnPolicy is map &&
@@ -184,6 +217,7 @@ service cloud.firestore {
         data.modelNumber is string && data.modelNumber.size() > 0 && data.modelNumber.size() <= 200 &&
         hasValidHsnCode(data) &&
         hasValidProductImages(data, productId) &&
+        hasValidProductThumbnails(data, productId) &&
         hasValidReturnPolicy(data) &&
         data.specs is list && data.specs.size() > 0 && data.specs.size() <= 100 &&
         (!data.keys().hasAny(['sku']) ||

@@ -34,6 +34,9 @@ const publicProduct = (document) => {
     brand: text(data.brand || data.manufacturer),
     sku: text(data.sku),
     image: safeImage(data.image || data.images?.[0]),
+    thumbnail: safeImage(
+      data.thumbnail || data.thumbnails?.[0] || data.image || data.images?.[0],
+    ),
     price: Number(data.price || data.basePrice || 0),
     stock: Math.max(0, Number(data.stock) || 0),
     enabled: data.enabled !== false,
@@ -90,15 +93,34 @@ async function loadCatalog() {
 const productPath = (product) =>
   `/product/${encodeURIComponent(product.slug || product.id)}`
 
-const productCards = (products) => products.map((product) => `
+const SEO_CATALOG_IMAGE_BUDGET = 24
+const SEO_EAGER_IMAGE_COUNT = 4
+
+const productCards = (products) => products.map((product, index) => `
   <article class="seo-card">
     <a href="${productPath(product)}">
-      <img src="${escapeHtml(product.image)}" alt="${escapeHtml(product.name)}" width="320" height="240" loading="lazy">
+      ${index < SEO_CATALOG_IMAGE_BUDGET
+        ? `<img src="${escapeHtml(product.thumbnail || product.image)}" alt="${escapeHtml(product.name)}" width="320" height="240" loading="${index < SEO_EAGER_IMAGE_COUNT ? 'eager' : 'lazy'}"${index < SEO_EAGER_IMAGE_COUNT ? ' fetchpriority="high"' : ''} decoding="async">`
+        : '<span class="seo-card-image-placeholder" aria-hidden="true"></span>'}
       <h2>${escapeHtml(product.name)}</h2>
     </a>
     <p>${escapeHtml(product.category)}${product.subcategory ? ` · ${escapeHtml(product.subcategory)}` : ''}</p>
     ${product.description ? `<p>${escapeHtml(product.description.slice(0, 180))}</p>` : ''}
   </article>`).join('')
+
+const categoryCards = (categories, products) => categories.map((category) => {
+  const productCount = products.filter(
+    (product) =>
+      product.categoryId === category.id ||
+      product.category.toLowerCase() === category.name.toLowerCase(),
+  ).length
+  const path = `/category/${encodeURIComponent(slugify(category.name))}`
+  return `
+    <article class="seo-card">
+      <a href="${path}"><h2>${escapeHtml(category.name)}</h2></a>
+      <p>${productCount} ${productCount === 1 ? 'product' : 'products'}</p>
+    </article>`
+}).join('')
 
 const pageHtml = ({ title, description, canonicalPath, content, schema, status = 200 }) => {
   const canonical = `${SITE_URL}${canonicalPath}`
@@ -117,6 +139,8 @@ const pageHtml = ({ title, description, canonicalPath, content, schema, status =
   <meta name="robots" content="${status === 200 ? 'index,follow' : 'noindex,follow'}">
   <link rel="canonical" href="${canonical}">
   <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png">
+  <link rel="preconnect" href="https://firebasestorage.googleapis.com" crossorigin>
+  <link rel="dns-prefetch" href="//firebasestorage.googleapis.com">
   <meta property="og:title" content="${safeTitle}">
   <meta property="og:description" content="${safeDescription}">
   <meta property="og:type" content="website">
@@ -125,7 +149,7 @@ const pageHtml = ({ title, description, canonicalPath, content, schema, status =
   <script type="application/ld+json">${schemaText}</script>
   <link rel="stylesheet" href="/assets/app.css">
   <style>
-    #root{display:none}.seo-fallback{font-family:Arial,sans-serif;max-width:1280px;margin:auto;padding:32px 20px;color:#172019}.seo-nav{display:flex;gap:16px;flex-wrap:wrap}.seo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;margin-top:28px}.seo-card{border:1px solid #dfe6df;border-radius:18px;padding:16px;background:#fff}.seo-card img{width:100%;height:180px;object-fit:contain}.seo-card a,.seo-nav a{color:#245c36}.seo-card h2{font-size:16px}.seo-card p{font-size:13px;line-height:1.5;color:#536057}html[data-pride-app-ready=true] #root{display:block}html[data-pride-app-ready=true] .seo-fallback{display:none}
+    #root{display:none}.seo-fallback{font-family:Arial,sans-serif;max-width:1280px;margin:auto;padding:32px 20px;color:#172019}.seo-nav{display:flex;gap:16px;flex-wrap:wrap}.seo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;margin-top:28px}.seo-card{border:1px solid #dfe6df;border-radius:18px;padding:16px;background:#fff}.seo-card img,.seo-card-image-placeholder{display:block;width:100%;height:180px;object-fit:contain}.seo-card-image-placeholder{background:#f2f5f1;border-radius:12px}.seo-card a,.seo-nav a{color:#245c36}.seo-card h2{font-size:16px}.seo-card p{font-size:13px;line-height:1.5;color:#536057}html[data-pride-app-ready=true] #root{display:block}html[data-pride-app-ready=true] .seo-fallback{display:none}
   </style>
 </head>
 <body>
@@ -176,6 +200,35 @@ function renderCatalogPage(products, category = '') {
   })
 }
 
+function renderCategoriesPage(products, categories) {
+  const title = 'All Electronics Categories | Pride Circuit'
+  const description = 'Browse every active electronics and industrial automation category available from Pride Circuit.'
+  const categoryList = categories.map((category, index) => ({
+    '@type': 'ListItem',
+    position: index + 1,
+    name: category.name,
+    url: `${SITE_URL}/category/${encodeURIComponent(slugify(category.name))}`,
+  }))
+  return pageHtml({
+    title,
+    description,
+    canonicalPath: '/categories',
+    content: `<h1>Browse all categories</h1><p>${escapeHtml(description)}</p><div class="seo-grid">${categoryCards(categories, products)}</div>`,
+    schema: {
+      '@context': 'https://schema.org',
+      '@type': 'CollectionPage',
+      name: title,
+      description,
+      url: `${SITE_URL}/categories`,
+      mainEntity: {
+        '@type': 'ItemList',
+        numberOfItems: categoryList.length,
+        itemListElement: categoryList,
+      },
+    },
+  })
+}
+
 function renderProductPage(product) {
   const canonicalPath = productPath(product)
   const description = product.description.slice(0, 160) || `Shop ${product.name} from Pride Circuit.`
@@ -190,7 +243,7 @@ function renderProductPage(product) {
     title: `${product.name} | Pride Circuit`,
     description,
     canonicalPath,
-    content: `<article><p><a href="/category/${encodeURIComponent(slugify(product.category))}">${escapeHtml(product.category)}</a></p><h1>${escapeHtml(product.name)}</h1><img src="${escapeHtml(product.image)}" alt="${escapeHtml(product.name)}" width="640" height="480"><p>${escapeHtml(product.description)}</p>${product.sku ? `<p>SKU: ${escapeHtml(product.sku)}</p>` : ''}${product.brand ? `<p>Brand: ${escapeHtml(product.brand)}</p>` : ''}</article>`,
+    content: `<article><p><a href="/category/${encodeURIComponent(slugify(product.category))}">${escapeHtml(product.category)}</a></p><h1>${escapeHtml(product.name)}</h1><img src="${escapeHtml(product.image)}" alt="${escapeHtml(product.name)}" width="640" height="480" loading="eager" fetchpriority="high" decoding="async"><p>${escapeHtml(product.description)}</p>${product.sku ? `<p>SKU: ${escapeHtml(product.sku)}</p>` : ''}${product.brand ? `<p>Brand: ${escapeHtml(product.brand)}</p>` : ''}</article>`,
     schema: {
       '@context': 'https://schema.org',
       '@type': 'Product',
@@ -219,9 +272,11 @@ exports.publicPage = onRequest(
           title: 'Pride Circuit | Buy Electronic Components Online in India',
           description,
           canonicalPath: '/',
-          content: `<h1>Electronic components and automation products</h1><p>${escapeHtml(description)}</p><nav class="seo-nav" aria-label="Product categories">${categories.map((category) => `<a href="/category/${encodeURIComponent(slugify(category.name))}">${escapeHtml(category.name)}</a>`).join('')}</nav><div class="seo-grid">${productCards(featured)}</div>`,
+          content: `<h1>Electronic components and automation products</h1><p>${escapeHtml(description)}</p><nav class="seo-nav" aria-label="Product categories"><a href="/categories">View all categories</a>${categories.map((category) => `<a href="/category/${encodeURIComponent(slugify(category.name))}">${escapeHtml(category.name)}</a>`).join('')}</nav><div class="seo-grid">${productCards(featured)}</div>`,
           schema: { '@context': 'https://schema.org', '@type': 'WebSite', name: 'Pride Circuit', url: `${SITE_URL}/` },
         })
+      } else if (path === '/categories') {
+        page = renderCategoriesPage(products, categories)
       } else if (path === '/products') {
         page = renderCatalogPage(products)
       } else if (path.startsWith('/category/')) {
@@ -253,4 +308,9 @@ exports.publicPage = onRequest(
   },
 )
 
-exports._test = { pageHtml, renderCatalogPage, renderProductPage }
+exports._test = {
+  pageHtml,
+  renderCatalogPage,
+  renderCategoriesPage,
+  renderProductPage,
+}
