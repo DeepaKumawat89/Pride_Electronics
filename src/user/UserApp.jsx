@@ -2068,7 +2068,7 @@ export default function UserApp({
               onSelect={navigateToCategory}
               onViewAll={navigateToCategories}
             />
-            <BenefitsStrip shippingSettings={shippingSettings} />
+            <BenefitsStrip />
             <ProductCatalog
               products={filteredProducts}
               suggestedProducts={suggestedProducts}
@@ -2087,6 +2087,10 @@ export default function UserApp({
               error={productsError}
               onRetry={onRetryProducts}
               categoryNames={categories.filter((item) => item.enabled !== false).map((item) => item.name)}
+              initialVisibleCount={16}
+              productBatchSize={24}
+              maxVisibleProducts={50}
+              paginationResetKey={`home:${category}:${query}:${sortBy}`}
             />
             <PromoBanner
               banner={marketingSettings?.promotionalBanner}

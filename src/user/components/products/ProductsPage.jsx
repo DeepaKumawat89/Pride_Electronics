@@ -190,6 +190,9 @@ export default function ProductsPage({
         loading={loading}
         error={error}
         onRetry={onRetry}
+        initialVisibleCount={24}
+        productBatchSize={24}
+        paginationResetKey={`catalog:${activeCategory}:${query}:${sortBy}`}
       />
     </div>
   )

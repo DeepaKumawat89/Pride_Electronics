@@ -1,10 +1,7 @@
-import { Headphones, RefreshCcw, ShieldCheck, Truck } from 'lucide-react'
-import { initialShippingSettings } from '../../../data/shipping'
-import { formatCurrency } from '../../utils/currency'
+import { Headphones, RefreshCcw, ShieldCheck } from 'lucide-react'
 
-export default function BenefitsStrip({ shippingSettings = initialShippingSettings }) {
+export default function BenefitsStrip() {
   const benefits = [
-    [Truck, 'Fast, free delivery', `On orders over ${formatCurrency(shippingSettings.freeShippingThreshold)}`],
     [RefreshCcw, 'Easy 7-day returns', 'Simple, no-fuss process'],
     [ShieldCheck, 'Genuine guarantee', '100% original products'],
     [Headphones, 'Expert support', 'Real help, seven days a week'],

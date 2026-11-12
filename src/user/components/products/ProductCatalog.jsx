@@ -53,6 +53,10 @@ export default function ProductCatalog({
   loading = false,
   error = '',
   onRetry,
+  initialVisibleCount = 24,
+  productBatchSize = 24,
+  maxVisibleProducts = Number.POSITIVE_INFINITY,
+  paginationResetKey = '',
 }) {
   const availableCategories = ['All', ...categoryNames]
   const [subcategory, setSubcategory] = useState('All')
@@ -87,33 +91,74 @@ export default function ProductCatalog({
     })
     return nextFilters
   }, [catalogFilters, filterOptions])
-  const visibleProducts = useMemo(
+  const matchingProducts = useMemo(
     () =>
       filterCatalogProducts(products, activeSubcategory, effectiveFilters),
     [activeSubcategory, effectiveFilters, products],
   )
+  const uniqueProducts = useMemo(() => {
+    const seenProductIds = new Set()
+    return matchingProducts.filter((product) => {
+      const productId = String(product.id)
+      if (seenProductIds.has(productId)) return false
+      seenProductIds.add(productId)
+      return true
+    })
+  }, [matchingProducts])
+  const availableProducts = useMemo(
+    () =>
+      Number.isFinite(maxVisibleProducts)
+        ? uniqueProducts.slice(0, Math.max(0, maxVisibleProducts))
+        : uniqueProducts,
+    [maxVisibleProducts, uniqueProducts],
+  )
+  const paginationKey = useMemo(
+    () =>
+      JSON.stringify([
+        paginationResetKey,
+        activeCategory,
+        activeSubcategory,
+        sortBy,
+        effectiveFilters,
+        products.map((product) => product.id),
+      ]),
+    [
+      activeCategory,
+      activeSubcategory,
+      effectiveFilters,
+      paginationResetKey,
+      products,
+      sortBy,
+    ],
+  )
+  const [pagination, setPagination] = useState({ key: '', count: initialVisibleCount })
+  const visibleCount =
+    pagination.key === paginationKey ? pagination.count : initialVisibleCount
+  const renderedProducts = availableProducts.slice(0, visibleCount)
+  const hasMoreProducts = renderedProducts.length < availableProducts.length
+
   const showFeatureCards =
-    showPromotions && activeCategory === 'All' && visibleProducts.length > 4
+    showPromotions && activeCategory === 'All' && availableProducts.length > 4
   const today = new Date().toISOString().slice(0, 10)
   const flashSaleActive =
     offers?.flashSale?.enabled !== false &&
     (!offers?.flashSale?.startDate || offers.flashSale.startDate <= today) &&
     (!offers?.flashSale?.endDate || offers.flashSale.endDate >= today)
   const lifestyleProduct =
-    visibleProducts.find(
+    availableProducts.find(
       (product) => String(product.id) === String(offers?.flashSale?.productId),
     ) ||
-    visibleProducts.find((product) => product.category === 'Wearables') ||
-    visibleProducts[0]
+    availableProducts.find((product) => product.category === 'Wearables') ||
+    availableProducts[0]
   const performanceProduct =
-    visibleProducts.find(
+    availableProducts.find(
       (product) => String(product.id) === String(offers?.deal?.productId),
     ) ||
-    visibleProducts.find(
+    availableProducts.find(
       (product) => product.category === 'Components & DIY',
     ) ||
-    visibleProducts[1] ||
-    visibleProducts[0]
+    availableProducts[1] ||
+    availableProducts[0]
 
   const updateFilter = (key, value) => {
     setCatalogFilters((current) => ({ ...current, [key]: value }))
@@ -226,92 +271,118 @@ export default function ProductCatalog({
             )}
           </div>
         </div>
-      ) : visibleProducts.length ? (
-        <div className="storefront-product-grid mt-8 grid grid-cols-2 gap-x-3 gap-y-10 sm:gap-x-5 md:grid-cols-3 xl:grid-cols-4">
-          {visibleProducts.map((product, index) => (
-            <div
-              key={product.id}
-              className={`min-w-0 ${getProductOrder(index)}`}
-            >
-              <ProductCard
-                product={product}
-                liked={likedIds.includes(product.id)}
-                onLike={onLike}
-                onAdd={onAdd}
-                onBuyNow={onBuyNow}
-                onView={onView}
-              />
-            </div>
-          ))}
-
-          {showFeatureCards && (flashSaleActive || offers?.deal?.enabled !== false) && (
-            <div className="order-2 col-span-full grid gap-4 md:grid-cols-2 sm:gap-5">
-              {flashSaleActive && <article className="group relative min-h-64 overflow-hidden rounded-[28px] bg-[#dcebdd] shadow-sm sm:min-h-72">
-                <StorefrontImage
-                  src={lifestyleProduct.thumbnail || lifestyleProduct.image}
-                  alt=""
-                  width="640"
-                  height="576"
-                  loading="lazy"
-                  decoding="async"
-                  className="absolute inset-y-0 right-0 h-full w-[58%] object-cover transition duration-700 group-hover:scale-105"
+      ) : uniqueProducts.length ? (
+        <>
+          <div className="storefront-product-grid mt-8 grid grid-cols-2 gap-x-3 gap-y-10 sm:gap-x-5 md:grid-cols-3 xl:grid-cols-4">
+            {renderedProducts.map((product, index) => (
+              <div
+                key={product.id}
+                className={`min-w-0 ${getProductOrder(index)}`}
+              >
+                <ProductCard
+                  product={product}
+                  liked={likedIds.includes(product.id)}
+                  onLike={onLike}
+                  onAdd={onAdd}
+                  onBuyNow={onBuyNow}
+                  onView={onView}
                 />
-                <div className="absolute inset-0 bg-gradient-to-r from-[#dcebdd] via-[#dcebdd]/95 to-[#dcebdd]/10" />
-                <div className="absolute -left-12 -top-16 size-48 rounded-full bg-white/45 blur-3xl" />
-                <div className="relative z-10 flex min-h-64 max-w-[72%] flex-col items-start justify-center p-5 sm:min-h-72 sm:max-w-[64%] sm:p-7">
-                  <span className="flex items-center gap-1.5 rounded-full bg-white/75 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#397a4a] backdrop-blur">
-                    <Sparkles size={12} /> {offers?.flashSale?.eyebrow || 'Everyday intelligence'}
-                  </span>
-                  <h3 className="mt-4 text-2xl font-extrabold leading-tight tracking-[-0.04em] text-slate-950 sm:text-3xl">
-                    {offers?.flashSale?.title || 'Smarter tech for every move.'}
-                  </h3>
-                  <p className="mt-3 text-xs font-medium leading-5 text-slate-600">
-                    {offers?.flashSale?.description || 'Stay connected, active, and effortlessly in control throughout your day.'}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => onView(lifestyleProduct)}
-                    className="mt-5 flex h-10 items-center gap-2 rounded-full bg-slate-950 px-4 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35]"
-                  >
-                    {offers?.flashSale?.actionLabel || 'Explore the edit'} <ArrowRight size={13} />
-                  </button>
-                </div>
-              </article>}
+              </div>
+            ))}
 
-              {offers?.deal?.enabled !== false && <article className="group relative min-h-64 overflow-hidden rounded-[28px] bg-slate-950 shadow-sm sm:min-h-72">
-                <StorefrontImage
-                  src={performanceProduct.thumbnail || performanceProduct.image}
-                  alt=""
-                  width="640"
-                  height="576"
-                  loading="lazy"
-                  decoding="async"
-                  className="absolute inset-y-0 right-0 h-full w-[62%] object-cover opacity-80 transition duration-700 group-hover:scale-105"
-                />
-                <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/95 to-slate-950/15" />
-                <div className="absolute -bottom-20 left-10 size-52 rounded-full bg-[#9bcaa6]/20 blur-3xl" />
-                <div className="relative z-10 flex min-h-64 max-w-[72%] flex-col items-start justify-center p-5 text-white sm:min-h-72 sm:max-w-[64%] sm:p-7">
-                  <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#b6dfbf] backdrop-blur">
-                    <Zap size={12} fill="currentColor" /> {offers?.deal?.eyebrow || 'Performance lab'}
-                  </span>
-                  <h3 className="mt-4 text-2xl font-extrabold leading-tight tracking-[-0.04em] sm:text-3xl">
-                    {offers?.deal?.title || 'Build without limits.'}
-                  </h3>
-                  <p className="mt-3 text-xs font-medium leading-5 text-white/65">
-                    {offers?.deal?.description || 'High-performance components selected for ambitious setups and bold ideas.'}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => onView(performanceProduct)}
-                    className="mt-5 flex h-10 items-center gap-2 rounded-full bg-white px-4 text-[10px] font-extrabold text-slate-950 transition hover:bg-[#9bcaa6]"
-                  >
-                    {offers?.deal?.actionLabel || 'Discover performance'} <ArrowRight size={13} />
-                  </button>
-                </div>
-              </article>}
-            </div>
-          )}
-        </div>
+            {showFeatureCards && (flashSaleActive || offers?.deal?.enabled !== false) && (
+              <div className="order-2 col-span-full grid gap-4 md:grid-cols-2 sm:gap-5">
+                {flashSaleActive && <article className="group relative min-h-64 overflow-hidden rounded-[28px] bg-[#dcebdd] shadow-sm sm:min-h-72">
+                  <StorefrontImage
+                    src={lifestyleProduct.thumbnail || lifestyleProduct.image}
+                    alt=""
+                    width="640"
+                    height="576"
+                    loading="lazy"
+                    decoding="async"
+                    className="absolute inset-y-0 right-0 h-full w-[58%] object-cover transition duration-700 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-r from-[#dcebdd] via-[#dcebdd]/95 to-[#dcebdd]/10" />
+                  <div className="absolute -left-12 -top-16 size-48 rounded-full bg-white/45 blur-3xl" />
+                  <div className="relative z-10 flex min-h-64 max-w-[72%] flex-col items-start justify-center p-5 sm:min-h-72 sm:max-w-[64%] sm:p-7">
+                    <span className="flex items-center gap-1.5 rounded-full bg-white/75 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#397a4a] backdrop-blur">
+                      <Sparkles size={12} /> {offers?.flashSale?.eyebrow || 'Everyday intelligence'}
+                    </span>
+                    <h3 className="mt-4 text-2xl font-extrabold leading-tight tracking-[-0.04em] text-slate-950 sm:text-3xl">
+                      {offers?.flashSale?.title || 'Smarter tech for every move.'}
+                    </h3>
+                    <p className="mt-3 text-xs font-medium leading-5 text-slate-600">
+                      {offers?.flashSale?.description || 'Stay connected, active, and effortlessly in control throughout your day.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => onView(lifestyleProduct)}
+                      className="mt-5 flex h-10 items-center gap-2 rounded-full bg-slate-950 px-4 text-[10px] font-extrabold text-white transition hover:bg-[#ff5c35]"
+                    >
+                      {offers?.flashSale?.actionLabel || 'Explore the edit'} <ArrowRight size={13} />
+                    </button>
+                  </div>
+                </article>}
+
+                {offers?.deal?.enabled !== false && <article className="group relative min-h-64 overflow-hidden rounded-[28px] bg-slate-950 shadow-sm sm:min-h-72">
+                  <StorefrontImage
+                    src={performanceProduct.thumbnail || performanceProduct.image}
+                    alt=""
+                    width="640"
+                    height="576"
+                    loading="lazy"
+                    decoding="async"
+                    className="absolute inset-y-0 right-0 h-full w-[62%] object-cover opacity-80 transition duration-700 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/95 to-slate-950/15" />
+                  <div className="absolute -bottom-20 left-10 size-52 rounded-full bg-[#9bcaa6]/20 blur-3xl" />
+                  <div className="relative z-10 flex min-h-64 max-w-[72%] flex-col items-start justify-center p-5 text-white sm:min-h-72 sm:max-w-[64%] sm:p-7">
+                    <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#b6dfbf] backdrop-blur">
+                      <Zap size={12} fill="currentColor" /> {offers?.deal?.eyebrow || 'Performance lab'}
+                    </span>
+                    <h3 className="mt-4 text-2xl font-extrabold leading-tight tracking-[-0.04em] sm:text-3xl">
+                      {offers?.deal?.title || 'Build without limits.'}
+                    </h3>
+                    <p className="mt-3 text-xs font-medium leading-5 text-white/65">
+                      {offers?.deal?.description || 'High-performance components selected for ambitious setups and bold ideas.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => onView(performanceProduct)}
+                      className="mt-5 flex h-10 items-center gap-2 rounded-full bg-white px-4 text-[10px] font-extrabold text-slate-950 transition hover:bg-[#9bcaa6]"
+                    >
+                      {offers?.deal?.actionLabel || 'Discover performance'} <ArrowRight size={13} />
+                    </button>
+                  </div>
+                </article>}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-10 flex flex-col items-center gap-3 border-t border-slate-200 pt-6 text-center">
+            <p className="text-[10px] font-bold text-slate-500" aria-live="polite">
+              Showing {renderedProducts.length} of {uniqueProducts.length} products
+            </p>
+            {hasMoreProducts && (
+              <button
+                type="button"
+                onClick={() =>
+                  setPagination({
+                    key: paginationKey,
+                    count: Math.min(
+                      visibleCount + productBatchSize,
+                      availableProducts.length,
+                    ),
+                  })
+                }
+                className="h-11 rounded-full border border-slate-300 bg-white px-6 text-xs font-extrabold text-slate-700 transition hover:border-[#397a4a] hover:bg-[#eef5ef] hover:text-[#397a4a] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#397a4a]/15"
+                aria-label={`Load up to ${Math.min(productBatchSize, availableProducts.length - renderedProducts.length)} more products`}
+              >
+                Load More
+              </button>
+            )}
+          </div>
+        </>
       ) : (
         <div className="py-10 sm:py-14">
           <div className="rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
