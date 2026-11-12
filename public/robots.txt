@@ -10,5 +10,6 @@ Disallow: /checkout
 Disallow: /saved-address
 Disallow: /saved-cards
 Disallow: /coupons
+Disallow: /*?mode=
 
 Sitemap: https://pridecircuit.in/sitemap.xml
