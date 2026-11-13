@@ -39,13 +39,13 @@ export default function CategoryStrip({
   if (!featuredCategories.length) return null
 
   return (
-    <section className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 sm:py-10 lg:px-10 lg:py-12">
-      <div className="mb-4 flex items-end justify-between gap-4 sm:mb-5">
+    <section className="mx-auto max-w-[1440px] px-3 py-6 sm:px-6 sm:py-10 lg:px-10 lg:py-12">
+      <div className="mb-3 flex items-end justify-between gap-3 sm:mb-5 sm:gap-4">
         <div>
           <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#ff5c35] sm:text-xs">
             Browse the store
           </p>
-          <h2 className="mt-1.5 text-xl font-extrabold tracking-[-0.04em] text-slate-950 sm:text-2xl">
+          <h2 className="mt-1 text-[19px] font-extrabold tracking-[-0.04em] text-slate-950 sm:mt-1.5 sm:text-2xl">
             Shop by category
           </h2>
         </div>
@@ -63,7 +63,7 @@ export default function CategoryStrip({
         </a>
       </div>
 
-      <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:-mx-6 sm:px-6 lg:mx-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:px-0 lg:pb-0">
+      <div className="-mx-3 flex snap-x gap-2.5 overflow-x-auto px-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:-mx-6 sm:gap-3 sm:px-6 lg:mx-0 lg:grid lg:grid-cols-5 lg:overflow-visible lg:px-0 lg:pb-0">
         {featuredCategories.map(({ category, productCount }) => (
           <CategoryTile
             key={category.id}

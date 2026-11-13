@@ -455,21 +455,21 @@ function Eyebrow({ section, number }) {
 
 function SectionHeader({ section, number, count, children }) {
   return (
-    <div className="mb-8 flex flex-col gap-5 border-b border-stone-200/80 pb-6 sm:mb-10 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mb-5 flex flex-col gap-3 border-b border-stone-200/80 pb-4 sm:mb-10 sm:flex-row sm:items-end sm:justify-between sm:gap-5 sm:pb-6">
       <div>
         <Eyebrow section={section} number={number} />
         <h2
           id={`homepage-${section.key}-title`}
-          className="mt-3 text-[26px] font-semibold leading-tight tracking-[-0.03em] text-stone-900 sm:text-[34px]"
+          className="mt-2.5 text-[23px] font-semibold leading-tight tracking-[-0.03em] text-stone-900 sm:mt-3 sm:text-[34px]"
         >
           {section.title}
         </h2>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-stone-500 sm:text-[15px]">
+        <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-stone-500 sm:mt-2 sm:text-[15px]">
           {section.description}
         </p>
       </div>
-      <div className="flex items-center gap-4">
-        <span className="text-xs font-medium text-stone-400">
+      <div className="flex items-center gap-3 sm:gap-4">
+        <span className="text-[11px] font-medium text-stone-400 sm:text-xs">
           {count} {count === 1 ? 'product' : 'products'}
         </span>
         {children}
@@ -485,6 +485,7 @@ function ProductGrid({ products, cardProps, className = gridClass }) {
         <ProductCard
           key={productKey(product)}
           product={product}
+          homepage
           {...cardProps(product)}
         />
       ))}
@@ -528,14 +529,14 @@ function CarouselSection({ section, number, products, cardProps }) {
       </SectionHeader>
       <div
         ref={trackRef}
-        className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth px-4 pb-4 [scrollbar-width:none] sm:-mx-6 sm:gap-5 sm:px-6 lg:mx-0 lg:px-0 [&::-webkit-scrollbar]:hidden"
+        className="-mx-3 flex snap-x snap-mandatory gap-2.5 overflow-x-auto scroll-smooth px-3 pb-3 [scrollbar-width:none] sm:-mx-6 sm:gap-5 sm:px-6 sm:pb-4 lg:mx-0 lg:px-0 [&::-webkit-scrollbar]:hidden"
       >
         {products.map((product) => (
           <div
             key={productKey(product)}
             className="w-[calc(50%-6px)] shrink-0 snap-start sm:w-[calc(33.333%-14px)] xl:w-[calc(25%-15px)]"
           >
-            <ProductCard product={product} {...cardProps(product)} />
+            <ProductCard product={product} homepage {...cardProps(product)} />
           </div>
         ))}
       </div>
@@ -639,7 +640,7 @@ export default function HomepageProductSections({
     switch (section.layout) {
       case 'panel':
         return (
-          <div className="relative overflow-hidden rounded-[32px] border border-stone-200/80 bg-gradient-to-b from-[#fbfaf8] via-white to-[#fdfcfa] p-5 shadow-[0_1px_2px_rgba(28,25,23,0.03),0_24px_48px_-32px_rgba(28,25,23,0.16)] sm:p-10">
+          <div className="relative overflow-hidden rounded-[24px] border border-stone-200/80 bg-gradient-to-b from-[#fbfaf8] via-white to-[#fdfcfa] p-4 shadow-[0_1px_2px_rgba(28,25,23,0.03),0_24px_48px_-32px_rgba(28,25,23,0.16)] sm:rounded-[32px] sm:p-10">
             <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-amber-100/60 blur-3xl" />
             <div className="pointer-events-none absolute -bottom-24 -left-16 h-64 w-64 rounded-full bg-orange-50 blur-3xl" />
             <div className="relative">
@@ -682,17 +683,17 @@ export default function HomepageProductSections({
           ),
         ]
         return (
-          <div className="rounded-[32px] border border-sky-100/80 bg-gradient-to-br from-[#f6faff] via-white to-[#f9fbfd] p-5 sm:p-10">
-            <div className="grid gap-10 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-12">
+          <div className="rounded-[24px] border border-sky-100/80 bg-gradient-to-br from-[#f6faff] via-white to-[#f9fbfd] p-4 sm:rounded-[32px] sm:p-10">
+            <div className="grid gap-6 sm:gap-10 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-12">
               <div className="lg:sticky lg:top-28 lg:self-start">
                 <Eyebrow section={section} number={number} />
                 <h2
                   id={`homepage-${section.key}-title`}
-                  className="mt-3 text-[26px] font-semibold leading-tight tracking-[-0.03em] text-stone-900 sm:text-[34px]"
+                  className="mt-2.5 text-[23px] font-semibold leading-tight tracking-[-0.03em] text-stone-900 sm:mt-3 sm:text-[34px]"
                 >
                   {section.title}
                 </h2>
-                <p className="mt-3 text-sm leading-relaxed text-stone-500 sm:text-[15px]">
+                <p className="mt-2 text-[13px] leading-relaxed text-stone-500 sm:mt-3 sm:text-[15px]">
                   {section.description}
                 </p>
                 {chips.length > 0 && (
@@ -741,11 +742,11 @@ export default function HomepageProductSections({
   )
 
   return (
-    <div className="mx-auto max-w-[1440px] bg-white px-4 sm:px-6 lg:px-10">
+    <div className="mx-auto max-w-[1440px] bg-white px-3 sm:px-6 lg:px-10">
       {visibleSections.map((section, index) => (
         <section
           key={section.key}
-          className="py-10 sm:py-12 lg:py-16"
+          className="py-7 sm:py-12 lg:py-16"
           aria-labelledby={`homepage-${section.key}-title`}
         >
           {renderBody(section, index + 1, sections[section.key])}

@@ -12,6 +12,7 @@ export default function ProductCard({
   onBuyNow,
   onView,
   imagePriority = false,
+  homepage = false,
 }) {
   const sellingPrice = getProductBasePrice(product)
   const priceAvailable = hasValidPrice(sellingPrice)
@@ -25,7 +26,7 @@ export default function ProductCard({
         : 'In stock'
 
   return (
-    <article className="group flex min-w-0 flex-col">
+    <article className={`group flex min-w-0 flex-col ${homepage ? 'homepage-product-card' : ''}`}>
       <div className="relative aspect-[1/0.9] overflow-hidden rounded-[26px] bg-white">
         <StorefrontImage
           src={product.thumbnail || product.image}

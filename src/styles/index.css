@@ -78,6 +78,64 @@
 }
 
 @media (max-width: 639px) {
+  .customer-shell .homepage-product-card .aspect-\[1\/0\.9\] {
+    border-radius: 1.125rem;
+  }
+
+  .customer-shell .homepage-product-card .aspect-\[1\/0\.9\] > .absolute.left-3 {
+    left: 0.5rem;
+    top: 0.5rem;
+    padding: 0.3rem 0.55rem;
+    font-size: 8px;
+  }
+
+  .customer-shell .homepage-product-card .aspect-\[1\/0\.9\] > button {
+    right: 0.5rem;
+    top: 0.5rem;
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .customer-shell .homepage-product-card .aspect-\[1\/0\.9\] > button svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .customer-shell .homepage-product-card .aspect-\[1\/0\.9\] .grid-cols-2 {
+    inset-inline: 0.5rem;
+    bottom: 0.5rem;
+    gap: 0.25rem;
+  }
+
+  .customer-shell .homepage-product-card .aspect-\[1\/0\.9\] .grid-cols-2 button {
+    height: 2.5rem;
+    font-size: 8px;
+  }
+
+  .customer-shell .homepage-product-card > .flex-1 {
+    padding-top: 0.65rem;
+  }
+
+  .customer-shell .homepage-product-card > .flex-1 > .text-\[10px\] {
+    font-size: 8px;
+    letter-spacing: 0.08em;
+  }
+
+  .customer-shell .homepage-product-card > .flex-1 > a {
+    min-height: 2.75rem;
+    margin-top: 0.35rem;
+    font-size: 13px;
+    line-height: 1.25rem;
+  }
+
+  .customer-shell .homepage-product-card > .flex-1 > .mt-3 {
+    margin-top: 0.5rem;
+  }
+
+  .customer-shell .homepage-product-card > .flex-1 strong {
+    font-size: 14px;
+  }
+
   .customer-shell :where(input, select, textarea) {
     font-size: 16px;
   }
