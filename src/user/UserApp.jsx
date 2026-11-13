@@ -6,10 +6,9 @@ import Footer from './components/layout/Footer'
 import HeroSection from './components/home/HeroSection'
 import CategoryStrip from './components/home/CategoryStrip'
 import AllCategoriesPage from './components/categories/AllCategoriesPage'
-import BenefitsStrip from './components/home/BenefitsStrip'
 import PromoBanner from './components/home/PromoBanner'
 import HomeScrollReveal from './components/home/HomeScrollReveal'
-import ProductCatalog from './components/products/ProductCatalog'
+import HomepageProductSections from './components/home/HomepageProductSections'
 import ProductDetailsPage from './components/products/ProductDetailsPage'
 import ProductSeo from './components/seo/ProductSeo'
 import HomeSeo from './components/seo/HomeSeo'
@@ -2068,29 +2067,15 @@ export default function UserApp({
               onSelect={navigateToCategory}
               onViewAll={navigateToCategories}
             />
-            <BenefitsStrip />
-            <ProductCatalog
-              products={filteredProducts}
-              suggestedProducts={suggestedProducts}
-              onSuggestedCategoryChange={handleHomeCategory}
-              activeCategory={category}
-              onCategoryChange={setCategory}
-              sortBy={sortBy}
-              onSortChange={setSortBy}
+            <HomepageProductSections
+              products={products}
+              categories={categories}
+              featuredProductIds={marketingSettings?.featuredProductIds || []}
               likedIds={user ? likedIds : []}
               onLike={handleLike}
               onAdd={handleAdd}
               onBuyNow={handleBuyNow}
               onView={navigateToProduct}
-              offers={marketingSettings}
-              loading={productsLoading}
-              error={productsError}
-              onRetry={onRetryProducts}
-              categoryNames={categories.filter((item) => item.enabled !== false).map((item) => item.name)}
-              initialVisibleCount={16}
-              productBatchSize={24}
-              maxVisibleProducts={50}
-              paginationResetKey={`home:${category}:${query}:${sortBy}`}
             />
             <PromoBanner
               banner={marketingSettings?.promotionalBanner}
