@@ -13,7 +13,8 @@ export function getPaymentStatus(order, refund) {
     return 'Refunded'
   }
   const paymentStatus = normalizedText(order.paymentStatus)
-  if (['failed', 'declined', 'cancelled'].includes(paymentStatus)) {
+  if (paymentStatus === 'cancelled') return 'Cancelled'
+  if (['failed', 'declined'].includes(paymentStatus)) {
     return 'Failed'
   }
   if (

@@ -4,6 +4,7 @@ import { userAuth, userFunctions, userStorage } from './firebase'
 
 const operationGateway = httpsCallable(userFunctions, 'updateUserProfile')
 const placeOrderGateway = httpsCallable(userFunctions, 'placeOrder')
+const createCashfreeOrderGateway = httpsCallable(userFunctions, 'createCashfreeOrder')
 const getOrderInvoiceGateway = httpsCallable(userFunctions, 'getOrderInvoice')
 const callOperation = (operation, payload = {}) =>
   operationGateway({ operation, payload })
@@ -36,8 +37,11 @@ const messageFor = (error, fallback) => {
 
 export async function placeCustomerOrder(order) {
   try {
-    const result = await placeOrderGateway({ order })
-    return result.data.order
+    const gateway = order?.paymentMethod === 'Cashfree'
+      ? createCashfreeOrderGateway
+      : placeOrderGateway
+    const result = await gateway({ order })
+    return result.data
   } catch (error) {
     throw messageFor(error, 'Unable to place the order. Please try again.')
   }

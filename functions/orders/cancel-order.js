@@ -71,7 +71,8 @@ async function cancelOrderHandler(request) {
         inventoryUpdateFor(product, now),
       )
     })
-    const paymentStatus = /cash|cod/i.test(order.paymentMethod || '')
+    const paymentStatus = /cash|cod/i.test(order.paymentMethod || '') ||
+      !['paid', 'successful', 'captured'].includes(String(order.paymentStatus || '').toLowerCase())
       ? 'Cancelled'
       : 'Refund Pending'
     const cancelledMoment = indiaOrderMoment(now)

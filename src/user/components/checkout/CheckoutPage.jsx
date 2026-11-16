@@ -180,11 +180,12 @@ export default function CheckoutPage({
   const [couponAttempted, setCouponAttempted] = useState(Boolean(initialCouponCode))
   const [paymentError, setPaymentError] = useState('')
   const [paying, setPaying] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState('Cash on Delivery')
   const [deliveryId, setDeliveryId] = useState('office_pickup')
 
   const primaryActionLabel = orderConfirmationAttempt
     ? 'Confirm Order'
-    : 'Place Order'
+    : paymentMethod === 'Cashfree' ? 'Pay securely' : 'Place Order'
 
   // Active delivery address computation
   const selectedDeliveryAddress = useManualDeliveryAddress
@@ -546,7 +547,7 @@ export default function CheckoutPage({
       address: checkoutDeliveryAddress,
       billingAddress: checkoutBillingAddress,
       gstProfile: checkoutAddresses?.gstProfile || null,
-      payment: { type: 'Cash on Delivery' },
+      payment: { type: paymentMethod },
       discount: checkoutPricing.couponDiscount,
       shipping: checkoutPricing.shipping,
       tax: checkoutPricing.tax,
@@ -580,11 +581,15 @@ export default function CheckoutPage({
       return
     }
 
-    const codCheckout = { ...checkoutDetails, cod: true }
+    const selectedCheckout = {
+      ...checkoutDetails,
+      paymentMethod,
+      ...(paymentMethod === 'Cash on Delivery' ? { cod: true } : {}),
+    }
     try {
-      await onPlaceOrder(codCheckout)
+      await onPlaceOrder(selectedCheckout)
     } catch (error) {
-      setOrderConfirmationAttempt(codCheckout)
+      setOrderConfirmationAttempt(selectedCheckout)
       setPaymentError(
         `${error.message || 'Unable to confirm the order.'} Retry confirmation; the same order will not be created twice.`,
       )
@@ -1392,6 +1397,26 @@ export default function CheckoutPage({
 
             {/* Price Breakdown Card */}
             <section className="rounded-2xl bg-white p-5 shadow-sm border border-slate-200/80">
+              <div className="mb-5 border-b border-slate-100 pb-4">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#397a4a]">Payment method</span>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {[
+                    { value: 'Cash on Delivery', title: 'Cash on Delivery', detail: 'Pay when your order arrives' },
+                    { value: 'Cashfree', title: 'Pay Online', detail: 'Cards, UPI and net banking · Sandbox' },
+                  ].map((method) => (
+                    <button
+                      key={method.value}
+                      type="button"
+                      onClick={() => setPaymentMethod(method.value)}
+                      aria-pressed={paymentMethod === method.value}
+                      className={`rounded-xl border p-3 text-left transition ${paymentMethod === method.value ? 'border-[#397a4a] bg-[#f2f8f2] ring-1 ring-[#397a4a]' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                    >
+                      <strong className="block text-xs font-extrabold text-slate-900">{method.title}</strong>
+                      <span className="mt-1 block text-[9px] font-semibold text-slate-500">{method.detail}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#397a4a]">Price Breakdown</span>
                 <ShoppingBag size={18} className="text-slate-400" />
@@ -1490,8 +1515,8 @@ export default function CheckoutPage({
                 {paying
                   ? orderConfirmationAttempt
                     ? 'Confirming Order…'
-                    : 'Placing Order…'
-                  : `${primaryActionLabel} · ${formatCurrency(checkoutTotal)}`}
+                    : paymentMethod === 'Cashfree' ? 'Opening secure checkout…' : 'Placing Order…'
+                  : `${paymentMethod === 'Cashfree' ? 'Pay securely' : primaryActionLabel} · ${formatCurrency(checkoutTotal)}`}
               </button>
             </section>
 

@@ -248,6 +248,15 @@ export default function UserApp({
   const activeUserUid = useRef(null)
   const historyRouteSynced = useRef(false)
 
+  useEffect(() => {
+    if (!successfulOrder?.id) return
+    const latestOrder = localOrders.find((order) => order.id === successfulOrder.id)
+    if (latestOrder && JSON.stringify(latestOrder) !== JSON.stringify(successfulOrder)) {
+      setSuccessfulOrder(latestOrder)
+      sessionStorage.setItem(ORDER_SUCCESS_SESSION_KEY, JSON.stringify(latestOrder))
+    }
+  }, [localOrders, successfulOrder])
+
   const rememberIntendedRoute = (path) => {
     const route = getProtectedRoute(path)
     if (route) sessionStorage.setItem(INTENDED_ROUTE_SESSION_KEY, route.path)
@@ -1734,11 +1743,22 @@ export default function UserApp({
         checkoutDetails.billingAddress || checkoutDetails.address || null,
       gstProfile: checkoutDetails.gstProfile || null,
       deliveryId: checkoutDetails.delivery?.id || 'standard',
-      paymentMethod: 'Cash on Delivery',
-      paymentEnvironment: 'Cash on Delivery',
+      paymentMethod: checkoutDetails.paymentMethod === 'Cashfree' ? 'Cashfree' : 'Cash on Delivery',
+      paymentEnvironment: checkoutDetails.paymentMethod === 'Cashfree' ? 'Cashfree Sandbox' : 'Cash on Delivery',
       items: activeCheckoutItems.map(checkoutItemRequest),
     }
-    const savedOrder = (await onNewOrder?.(order)) || order
+    const placedResult = (await onNewOrder?.(order)) || { order }
+    const savedOrder = placedResult.order || placedResult
+    if (order.paymentMethod === 'Cashfree') {
+      if (!placedResult.paymentSessionId || typeof window.Cashfree !== 'function') {
+        throw new Error('Cashfree checkout could not be loaded. Please try again.')
+      }
+      const cashfree = window.Cashfree({ mode: placedResult.cashfreeMode || 'sandbox' })
+      await cashfree.checkout({
+        paymentSessionId: placedResult.paymentSessionId,
+        redirectTarget: '_modal',
+      })
+    }
     setOrders((current) =>
       current.some((item) => item.id === savedOrder.id)
         ? current

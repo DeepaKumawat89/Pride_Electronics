@@ -88,14 +88,16 @@ const sections = [
     '5. Payments',
     <>
       <p>
-        The website currently offers Cash on Delivery and does not send checkout
-        data to an online payment gateway. If online payments are enabled in the
-        future, this policy will be updated to identify the payment provider and
-        explain the related processing before that option is made available.
+        When online payment is selected, checkout order details needed to
+        process the transaction are sent to Cashfree, which hosts the payment
+        page. Pride Circuit receives and stores payment status, amount,
+        currency, and transaction reference information for order fulfilment
+        and accounting. Card details, CVV, UPI PINs, and banking passwords are
+        handled by the provider and are not stored by Pride Circuit.
       </p>
       <p>
-        Pride Circuit stores the order and payment status information required
-        to fulfil and account for Cash on Delivery orders. Pride Circuit does
+        Pride Circuit stores order and payment status information needed to
+        fulfil and account for orders. Pride Circuit does
         not ask customers to provide card security codes, UPI PINs,
         online-banking passwords, or one-time passwords through the website or
         customer support.

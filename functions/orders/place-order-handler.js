@@ -37,11 +37,21 @@ async function placeOrderHandler(request) {
   const uid = activeCustomer?.uid || requireUser(request)
   const authUser = activeCustomer?.authUser || await adminAuth.getUser(uid)
   const submittedOrder = cleanObject(request.data?.order)
+  const isCashfree = request.allowCashfree === true
   if (
     authUser.disabled &&
-    /cash|cod/i.test(submittedOrder.paymentMethod || '')
+    (isCashfree || /cash|cod/i.test(submittedOrder.paymentMethod || ''))
   ) {
     throw new HttpsError('permission-denied', 'This customer account is suspended.')
+  }
+  if (
+    (isCashfree && submittedOrder.paymentMethod !== 'Cashfree') ||
+    (!isCashfree && !/cash|cod/i.test(submittedOrder.paymentMethod || ''))
+  ) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Choose Cash on Delivery or Cashfree online payment to continue.',
+    )
   }
   const items = normalizeOrderItems(submittedOrder.items)
   const requestId = String(submittedOrder.clientRequestId || '').trim()
@@ -69,6 +79,13 @@ async function placeOrderHandler(request) {
     if (existingOrder.exists) {
       const existing = existingOrder.data()
       if (existing.userId === uid && existing.clientRequestId === requestId) {
+        const expectedPaymentMethod = isCashfree ? 'Cashfree' : 'Cash on Delivery'
+        if (existing.paymentMethod !== expectedPaymentMethod) {
+          throw new HttpsError(
+            'failed-precondition',
+            'This checkout was already started with another payment method. Restart checkout to continue.',
+          )
+        }
         return { ...existing, id: orderReference.id }
       }
       throw new HttpsError('already-exists', 'This order has already been placed.')
@@ -98,14 +115,6 @@ async function placeOrderHandler(request) {
         'Invoice settings must be configured before accepting orders.',
       )
     }
-    const isCashOnDelivery = /cash|cod/i.test(submittedOrder.paymentMethod || '')
-    if (!isCashOnDelivery) {
-      throw new HttpsError(
-        'failed-precondition',
-        'Online payment is not available yet. Select Cash on Delivery.',
-      )
-    }
-
     productDocuments.forEach((productDocument, index) => {
       const product = productDocument.data()
       const variants = Array.isArray(product?.variants) ? product.variants : []
@@ -271,7 +280,7 @@ async function placeOrderHandler(request) {
 
     const paymentStatus = 'Pending'
     const orderStatus = 'Pending'
-    const paymentMethod = 'Cash on Delivery'
+    const paymentMethod = isCashfree ? 'Cashfree' : 'Cash on Delivery'
     const invoiceSettings = normalizeInvoiceSettings(
       invoiceSettingsDocument.exists ? invoiceSettingsDocument.data() : {},
     )
@@ -418,7 +427,10 @@ async function placeOrderHandler(request) {
       paymentCurrency: 'INR',
       paymentDate: null,
       paymentMethod,
-      paymentEnvironment: 'Cash on Delivery',
+      paymentEnvironment: isCashfree ? 'Cashfree Sandbox' : 'Cash on Delivery',
+      ...(isCashfree ? {
+        paymentExpiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      } : {}),
       createdAt: now,
       updatedAt: now,
       statusHistory: [
@@ -455,7 +467,14 @@ async function placeOrderHandler(request) {
     return order
   })
 
-  return { order: savedOrder }
+  if (!isCashfree) return { order: savedOrder }
+
+  const { createCashfreePaymentOrder } = require('../payments/cashfree-create-order')
+  return createCashfreePaymentOrder({
+    order: savedOrder,
+    uid,
+    authUser,
+  })
 }
 
 

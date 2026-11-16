@@ -164,9 +164,9 @@ const sections = [
     '9. Refund Method and Processing',
     <>
       <p>
-        The website currently accepts Cash on Delivery. The method for an
-        approved refund will be communicated after the return or cancellation
-        is reviewed. Pride Circuit will not ask for a card PIN, CVV, UPI
+        Checkout may offer Cash on Delivery and Cashfree hosted online payment
+        in sandbox mode. The method for an approved refund will be communicated
+        after the return or cancellation is reviewed. Pride Circuit will not ask for a card PIN, CVV, UPI
         PIN, one-time password, or complete card number to process a refund.
       </p>
       <p>
@@ -211,9 +211,9 @@ const sections = [
     '11. Payment Issues',
     <>
       <p>
-        The website currently offers Cash on Delivery and does not collect an
-        online checkout payment. Do not send money in response to an
-        unsolicited payment link or share confidential payment credentials.
+        Online payments, when offered, are processed through Cashfree hosted
+        checkout. Do not send money in response to an unsolicited payment link
+        or share confidential payment credentials.
       </p>
       <p>
         If you believe a payment was requested or collected incorrectly,

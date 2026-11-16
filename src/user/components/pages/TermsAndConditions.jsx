@@ -165,14 +165,16 @@ const sections = [
     content: (
       <>
         <p>
-          The website currently offers <strong>Cash on Delivery</strong>. Any
-          available payment method is shown during checkout before an order is
-          placed. No online payment gateway is currently integrated.
+          Checkout may offer Cash on Delivery and Cashfree hosted online
+          payment in sandbox mode. The available method is shown before an
+          order is placed. Sandbox payments are for integration testing and do
+          not represent production payment availability.
         </p>
         <p>
-          If an online payment option is introduced, the applicable provider
-          and terms will be disclosed on the website before customers are asked
-          to use that option.
+          Cashfree processes online payment details on its hosted checkout.
+          Pride Circuit records the resulting payment status and transaction
+          reference against the order. A browser redirect alone does not
+          confirm payment; confirmation is based on verified provider updates.
         </p>
         <p>
           Cash on Delivery orders remain subject to order acceptance, product

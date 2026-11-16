@@ -18,6 +18,8 @@ const {
 } = require('./admin/update-customer-status')
 const { sitemap } = require('./sitemap')
 const { publicPage } = require('./public-pages')
+const { createCashfreeOrder } = require('./payments/create-cashfree-order')
+const { cashfreePaymentWebhook } = require('./payments/cashfree-webhook')
 
 module.exports = {
   updateUserProfile,
@@ -34,4 +36,6 @@ module.exports = {
   updateCustomerStatus,
   sitemap,
   publicPage,
+  createCashfreeOrder,
+  cashfreePaymentWebhook,
 }

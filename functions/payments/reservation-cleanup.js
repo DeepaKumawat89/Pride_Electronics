@@ -135,6 +135,74 @@ async function releaseStockReservation({
   })
 }
 
+async function expirePendingCashfreeOrders() {
+  const expired = await db.collection('orders')
+    .where('status', '==', 'Pending')
+    .where('paymentExpiresAt', '<=', new Date().toISOString())
+    .limit(100)
+    .get()
+  for (const orderSnapshot of expired.docs) {
+    const orderReference = orderSnapshot.ref
+    await db.runTransaction(async (transaction) => {
+      const orderDocument = await transaction.get(orderReference)
+      if (!orderDocument.exists) return
+      const order = orderDocument.data()
+      if (
+        order.paymentMethod !== 'Cashfree' ||
+        order.status !== 'Pending' ||
+        order.inventoryState !== 'reserved' ||
+        ['paid', 'successful', 'captured'].includes(String(order.paymentStatus || '').toLowerCase())
+      ) return
+      const items = normalizeOrderItems(order.items)
+      const references = [...new Map(items.map((item) => [item.productId, db.doc(`products/${item.productId}`)])).values()]
+      const documents = await Promise.all(references.map((reference) => transaction.get(reference)))
+      const updates = new Map()
+      const now = new Date().toISOString()
+      items.forEach((item) => {
+        const productDocument = documents.find((document) => document.id === item.productId)
+        if (!productDocument?.exists) return
+        const product = updates.get(productDocument.id) || cleanObject(productDocument.data())
+        const inventory = inventoryForItem(product, item)
+        if (!inventory) return
+        const reservedBefore = Number(inventory.reservedStock || 0)
+        const reservedAfter = Math.max(0, reservedBefore - item.qty)
+        inventory.reservedStock = reservedAfter
+        syncVariantReservedStock(product)
+        updates.set(productDocument.id, product)
+        transaction.create(db.collection('inventoryHistory').doc(), {
+          productId: item.productId,
+          variantId: item.variantId || '',
+          productName: product.name || item.productName || '',
+          action: 'Cashfree payment reservation expired',
+          quantity: item.qty,
+          stockBefore: Number(inventory.stock || 0),
+          stockAfter: Number(inventory.stock || 0),
+          reservedBefore,
+          reservedAfter,
+          availableBefore: Math.max(0, Number(inventory.stock || 0) - reservedBefore),
+          availableAfter: Math.max(0, Number(inventory.stock || 0) - reservedAfter),
+          reference: orderDocument.id,
+          note: 'Unpaid Cashfree order expired after 30 minutes',
+          timestamp: now,
+          createdAt: now,
+          updatedAt: now,
+        })
+      })
+      updates.forEach((product, productId) => transaction.update(
+        db.doc(`products/${productId}`), inventoryUpdateFor(product, now),
+      ))
+      const moment = indiaOrderMoment(now)
+      transaction.update(orderReference, {
+        status: 'Cancelled',
+        paymentStatus: 'Cancelled',
+        inventoryState: 'released',
+        updatedAt: now,
+        statusHistory: [...(order.statusHistory || []), { status: 'Cancelled', ...moment }],
+      })
+    })
+  }
+}
+
 async function releaseExpiredStockReservationsHandler() {
   const cleanupStartedAt = Timestamp.now()
   let cursor = null
@@ -171,6 +239,7 @@ async function releaseExpiredStockReservationsHandler() {
     })
     throw new Error('Expired reservation cleanup was only partially successful.')
   }
+  await expirePendingCashfreeOrders()
 }
 
 module.exports = { releaseExpiredStockReservationsHandler }
