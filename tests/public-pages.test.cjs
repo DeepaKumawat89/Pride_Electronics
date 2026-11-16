@@ -40,6 +40,13 @@ test('product rendering emits product metadata and escapes public text', () => {
   assert.match(page.html, /loading="eager" fetchpriority="high"/)
 })
 
+test('product fallback matches storefront heading typography', () => {
+  const page = _test.renderProductPage(product)
+  assert.match(page.html, /fonts\.googleapis\.com\/css2\?family=JetBrains\+Mono/)
+  assert.match(page.html, /font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif/)
+  assert.match(page.html, /color:#020617;font-family:"Plus Jakarta Sans"/)
+})
+
 test('category directory exposes every category with canonical links', () => {
   const page = _test.renderCategoriesPage(
     [product],

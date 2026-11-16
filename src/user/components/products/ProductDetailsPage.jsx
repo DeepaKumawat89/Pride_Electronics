@@ -268,7 +268,7 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
             <div className="flex flex-col justify-center p-5 sm:p-7 lg:p-8">
               <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#ff5c35]">{product.category}</span>
 
-              <h1 className="mt-3 max-w-full break-words text-3xl font-extrabold leading-[1.1] tracking-[-0.045em] text-slate-950 sm:max-w-none sm:break-normal sm:text-4xl">{product.name}</h1>
+              <h1 className="mt-3 max-w-full break-words font-sans text-3xl font-extrabold leading-[1.1] tracking-[-0.045em] text-[#020617] sm:max-w-none sm:break-normal sm:text-4xl">{product.name}</h1>
               <div className="mt-3 sm:hidden">
                 <p
                   id="mobile-product-description"

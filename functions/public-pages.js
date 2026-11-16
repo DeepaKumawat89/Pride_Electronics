@@ -141,6 +141,9 @@ const pageHtml = ({ title, description, canonicalPath, content, schema, image = 
   <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png">
   <link rel="preconnect" href="https://firebasestorage.googleapis.com" crossorigin>
   <link rel="dns-prefetch" href="//firebasestorage.googleapis.com">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <meta property="og:title" content="${safeTitle}">
   <meta property="og:description" content="${safeDescription}">
   <meta property="og:type" content="${schema?.['@type'] === 'Product' ? 'product' : 'website'}">
@@ -157,7 +160,7 @@ const pageHtml = ({ title, description, canonicalPath, content, schema, image = 
   <script type="application/ld+json"${schema?.['@type'] === 'Product' ? ' data-pride-product-schema="true"' : ''}>${schemaText}</script>
   <link rel="stylesheet" href="/assets/app.css">
   <style>
-    #root{display:none}.seo-fallback{font-family:Arial,sans-serif;max-width:1280px;margin:auto;padding:32px 20px;color:#172019}.seo-nav{display:flex;gap:16px;flex-wrap:wrap}.seo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;margin-top:28px}.seo-card{border:1px solid #dfe6df;border-radius:18px;padding:16px;background:#fff}.seo-card img,.seo-card-image-placeholder{display:block;width:100%;height:180px;object-fit:contain}.seo-card-image-placeholder{background:#f2f5f1;border-radius:12px}.seo-card a,.seo-nav a{color:#245c36}.seo-card h2{font-size:16px}.seo-card p{font-size:13px;line-height:1.5;color:#536057}html[data-pride-app-ready=true] #root{display:block}html[data-pride-app-ready=true] .seo-fallback{display:none}
+    #root{display:none}.seo-fallback{font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;max-width:1280px;margin:auto;padding:32px 20px;color:#172019}.seo-fallback h1{color:#020617;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;font-weight:800;letter-spacing:-.045em;line-height:1.1}.seo-nav{display:flex;gap:16px;flex-wrap:wrap}.seo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;margin-top:28px}.seo-card{border:1px solid #dfe6df;border-radius:18px;padding:16px;background:#fff}.seo-card img,.seo-card-image-placeholder{display:block;width:100%;height:180px;object-fit:contain}.seo-card-image-placeholder{background:#f2f5f1;border-radius:12px}.seo-card a,.seo-nav a{color:#245c36}.seo-card h2{font-size:16px}.seo-card p{font-size:13px;line-height:1.5;color:#536057}html[data-pride-app-ready=true] #root{display:block}html[data-pride-app-ready=true] .seo-fallback{display:none}
   </style>
 </head>
 <body>
