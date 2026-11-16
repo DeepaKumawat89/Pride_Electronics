@@ -15,6 +15,7 @@ import {
   where as liteWhere,
 } from 'firebase/firestore/lite'
 import { auth, db, FIREBASE_STORAGE_BUCKET, publicDb } from './firebase'
+import { slugify } from '../utils/slugify'
 import {
   assertValidHsnCode,
   assertValidProductForCreate,
@@ -279,6 +280,7 @@ export async function createProduct(product) {
     const savedProduct = {
       ...productToCreate,
       id: productReference.id,
+      slug: `${slugify(productToCreate.slug || productToCreate.name) || productReference.id}-${productReference.id}`,
       sku: createProductSku(
         productToCreate.sku,
         productToCreate.category,
@@ -318,6 +320,7 @@ export async function saveProduct(product) {
     const existingProduct = snapshot.data()
     const savedProduct = {
       ...product,
+      slug: existingProduct.slug || `${slugify(existingProduct.slug) || slugify(existingProduct.name || product.name) || 'product'}-${productReference.id}`,
       ...(Object.prototype.hasOwnProperty.call(product, 'sku')
         ? {
             sku: updateProductSku(

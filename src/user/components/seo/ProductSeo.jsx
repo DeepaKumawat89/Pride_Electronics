@@ -96,7 +96,9 @@ export default function ProductSeo({ product }) {
           }
         : {}),
     }
-    const structuredData = document.createElement('script')
+    const structuredData = document.head.querySelector(
+      'script[data-pride-product-schema]',
+    ) || document.createElement('script')
     structuredData.type = 'application/ld+json'
     structuredData.setAttribute('data-pride-product-schema', 'true')
     structuredData.textContent = JSON.stringify(structuredProduct).replace(/</g, '\\u003c')
@@ -108,11 +110,16 @@ export default function ProductSeo({ product }) {
       setMeta('name', 'description', description),
       setMeta('property', 'og:title', `${name} | Pride Circuit`),
       setMeta('property', 'og:description', description),
+      setMeta('property', 'og:type', 'product'),
       setMeta('property', 'og:url', canonicalUrl),
       setMeta('property', 'og:image', images[0] || `${SITE_URL}/favicon-192x192.png`),
+      setMeta('property', 'og:image:alt', name),
+      setMeta('name', 'twitter:card', 'summary_large_image'),
       setMeta('name', 'twitter:title', `${name} | Pride Circuit`),
       setMeta('name', 'twitter:description', description),
+      setMeta('name', 'twitter:url', canonicalUrl),
       setMeta('name', 'twitter:image', images[0] || `${SITE_URL}/favicon-192x192.png`),
+      setMeta('name', 'twitter:image:alt', name),
       setCanonical(canonicalUrl),
     ]
 

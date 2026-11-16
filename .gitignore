@@ -23,6 +23,7 @@ ui-debug.log*
 firebase-export-*/
 .private-backups/
 functions/.runtimeconfig.json
+functions/backups/
 
 # Private credentials must be supplied through Secret Manager or CI secrets
 *service-account*.json

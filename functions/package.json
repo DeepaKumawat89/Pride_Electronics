@@ -7,7 +7,8 @@
   },
   "scripts": {
     "set-admin": "node scripts/set-admin.js",
-    "migrate-invoices": "node scripts/migrate-order-invoices.js"
+    "migrate-invoices": "node scripts/migrate-order-invoices.js",
+    "migrate-product-slugs": "node scripts/migrate-product-slugs.js"
   },
   "dependencies": {
     "firebase-admin": "^14.2.0",

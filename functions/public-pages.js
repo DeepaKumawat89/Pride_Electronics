@@ -122,7 +122,7 @@ const categoryCards = (categories, products) => categories.map((category) => {
     </article>`
 }).join('')
 
-const pageHtml = ({ title, description, canonicalPath, content, schema, status = 200 }) => {
+const pageHtml = ({ title, description, canonicalPath, content, schema, image = `${SITE_URL}/favicon-192x192.png`, status = 200 }) => {
   const canonical = `${SITE_URL}${canonicalPath}`
   const safeTitle = escapeHtml(title)
   const safeDescription = escapeHtml(description)
@@ -143,10 +143,18 @@ const pageHtml = ({ title, description, canonicalPath, content, schema, status =
   <link rel="dns-prefetch" href="//firebasestorage.googleapis.com">
   <meta property="og:title" content="${safeTitle}">
   <meta property="og:description" content="${safeDescription}">
-  <meta property="og:type" content="website">
+  <meta property="og:type" content="${schema?.['@type'] === 'Product' ? 'product' : 'website'}">
   <meta property="og:url" content="${canonical}">
+  <meta property="og:image" content="${escapeHtml(image)}">
+  <meta property="og:image:alt" content="${safeTitle}">
   <meta property="og:site_name" content="Pride Circuit">
-  <script type="application/ld+json">${schemaText}</script>
+  <meta name="twitter:card" content="${schema?.['@type'] === 'Product' ? 'summary_large_image' : 'summary'}">
+  <meta name="twitter:title" content="${safeTitle}">
+  <meta name="twitter:description" content="${safeDescription}">
+  <meta name="twitter:url" content="${canonical}">
+  <meta name="twitter:image" content="${escapeHtml(image)}">
+  <meta name="twitter:image:alt" content="${safeTitle}">
+  <script type="application/ld+json"${schema?.['@type'] === 'Product' ? ' data-pride-product-schema="true"' : ''}>${schemaText}</script>
   <link rel="stylesheet" href="/assets/app.css">
   <style>
     #root{display:none}.seo-fallback{font-family:Arial,sans-serif;max-width:1280px;margin:auto;padding:32px 20px;color:#172019}.seo-nav{display:flex;gap:16px;flex-wrap:wrap}.seo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;margin-top:28px}.seo-card{border:1px solid #dfe6df;border-radius:18px;padding:16px;background:#fff}.seo-card img,.seo-card-image-placeholder{display:block;width:100%;height:180px;object-fit:contain}.seo-card-image-placeholder{background:#f2f5f1;border-radius:12px}.seo-card a,.seo-nav a{color:#245c36}.seo-card h2{font-size:16px}.seo-card p{font-size:13px;line-height:1.5;color:#536057}html[data-pride-app-ready=true] #root{display:block}html[data-pride-app-ready=true] .seo-fallback{display:none}
@@ -243,6 +251,7 @@ function renderProductPage(product) {
     title: `${product.name} | Pride Circuit`,
     description,
     canonicalPath,
+    image: product.image,
     content: `<article><p><a href="/category/${encodeURIComponent(slugify(product.category))}">${escapeHtml(product.category)}</a></p><h1>${escapeHtml(product.name)}</h1><img src="${escapeHtml(product.image)}" alt="${escapeHtml(product.name)}" width="640" height="480" loading="eager" fetchpriority="high" decoding="async"><p>${escapeHtml(product.description)}</p>${product.sku ? `<p>SKU: ${escapeHtml(product.sku)}</p>` : ''}${product.brand ? `<p>Brand: ${escapeHtml(product.brand)}</p>` : ''}</article>`,
     schema: {
       '@context': 'https://schema.org',
@@ -286,8 +295,12 @@ exports.publicPage = onRequest(
           ? renderCatalogPage(products, category.name)
           : pageHtml({ title: 'Category not found | Pride Circuit', description: 'This product category is not available.', canonicalPath: path, content: '<h1>Category not found</h1><p><a href="/products">Browse all products</a></p>', schema: { '@context': 'https://schema.org', '@type': 'WebPage' }, status: 404 })
       } else if (path.startsWith('/product/')) {
-        const identifier = decodeURIComponent(path.slice('/product/'.length))
-        const product = products.find((item) => item.slug === identifier || item.id === identifier)
+        const routeIdentifier = decodeURIComponent(path.slice('/product/'.length))
+        const identifier = routeIdentifier.startsWith('id/')
+          ? routeIdentifier.slice('id/'.length)
+          : routeIdentifier
+        const product = products.find((item) => item.id === identifier) ||
+          products.find((item) => item.slug === identifier)
         page = product
           ? renderProductPage(product)
           : pageHtml({ title: 'Product not found | Pride Circuit', description: 'This product is not available.', canonicalPath: path, content: '<h1>Product not found</h1><p><a href="/products">Browse all products</a></p>', schema: { '@context': 'https://schema.org', '@type': 'WebPage' }, status: 404 })

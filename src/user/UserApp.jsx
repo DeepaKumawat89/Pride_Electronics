@@ -389,9 +389,9 @@ export default function UserApp({
       setCategoriesOpen(false)
       if (publicPath?.type === 'product') {
         const pathProduct = products.find(
-          (product) =>
-            String(product.id) === publicPath.productId ||
-            String(product.slug || '') === publicPath.productId,
+          (product) => String(product.id) === publicPath.productId,
+        ) || products.find(
+          (product) => String(product.slug || '') === publicPath.productId,
         )
         let resolvedProduct = pathProduct
         if (!resolvedProduct) {
