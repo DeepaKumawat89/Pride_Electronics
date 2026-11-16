@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, X } from 'lucide-react'
-import AnnouncementBar from './components/layout/AnnouncementBar'
 import Header from './components/layout/Header'
 import Footer from './components/layout/Footer'
 import HeroSection from './components/home/HeroSection'
 import CategoryStrip from './components/home/CategoryStrip'
 import AllCategoriesPage from './components/categories/AllCategoriesPage'
-import PromoBanner from './components/home/PromoBanner'
 import HomeScrollReveal from './components/home/HomeScrollReveal'
 import HomepageProductSections from './components/home/HomepageProductSections'
 import ProductDetailsPage from './components/products/ProductDetailsPage'
@@ -1891,7 +1889,6 @@ export default function UserApp({
       {!liveSelectedProduct && productsOpen && (
         <CatalogSeo category={category} products={filteredProducts} />
       )}
-      <AnnouncementBar />
       <Header
         products={products}
         searchQuery={query}
@@ -2076,12 +2073,6 @@ export default function UserApp({
               onAdd={handleAdd}
               onBuyNow={handleBuyNow}
               onView={navigateToProduct}
-            />
-            <PromoBanner
-              banner={marketingSettings?.promotionalBanner}
-              onShopNow={() =>
-                navigateToProtectedPath('/account')
-              }
             />
           </HomeScrollReveal>
         )}

@@ -1,12 +1,16 @@
 import {
   ArrowRight,
   Check,
+  ChevronDown,
+  ChevronRight,
   Filter,
+  Menu,
   SlidersHorizontal,
   Sparkles,
+  X,
   Zap,
 } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import SelectMenu from '../../../components/ui/SelectMenu'
 import { useAnchoredPopover } from '../../../hooks/useAnchoredPopover'
@@ -33,6 +37,8 @@ const sortOptions = [
 
 export default function ProductCatalog({
   products,
+  allProducts = products,
+  categories = [],
   suggestedProducts = [],
   onSuggestedCategoryChange,
   activeCategory,
@@ -46,9 +52,6 @@ export default function ProductCatalog({
   onView,
   offers,
   categoryNames = catalogCategories.slice(1),
-  eyebrow = 'Curated for you',
-  title = 'Trending right now',
-  description = 'Our most-loved tech, chosen by customers.',
   showPromotions = true,
   loading = false,
   error = '',
@@ -60,14 +63,48 @@ export default function ProductCatalog({
 }) {
   const availableCategories = ['All', ...categoryNames]
   const [subcategory, setSubcategory] = useState('All')
+  const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false)
+  const [expandedCategories, setExpandedCategories] = useState(
+    () => new Set(activeCategory !== 'All' ? [activeCategory] : []),
+  )
   const [catalogFilters, setCatalogFilters] = useState(defaultCatalogFilters)
+  const categoryTree = useMemo(
+    () =>
+      categoryNames.map((name) => {
+        const category = categories.find((item) => item.name === name)
+        const categoryProducts = allProducts.filter(
+          (product) => product.category === name,
+        )
+        const subcategories = [
+          ...new Set(
+            categoryProducts
+              .map((product) => product.subcategory)
+              .filter(Boolean),
+          ),
+        ]
+          .sort((a, b) => a.localeCompare(b))
+          .map((subcategoryName) => ({ name: subcategoryName }))
+
+        return {
+          id: category?.id || name,
+          name,
+          subcategories,
+        }
+      }),
+    [allProducts, categories, categoryNames],
+  )
   const filterOptions = useMemo(
     () => getCatalogFilterOptions(products),
     [products],
   )
-  const activeSubcategory = filterOptions.subcategories.includes(subcategory)
-    ? subcategory
-    : 'All'
+  const activeCategoryNode = categoryTree.find(
+    (category) => category.name === activeCategory,
+  )
+  const activeSubcategory =
+    subcategory === 'All' ||
+    activeCategoryNode?.subcategories.some((item) => item.name === subcategory)
+      ? subcategory
+      : 'All'
   const effectiveFilters = useMemo(() => {
     const nextFilters = { ...catalogFilters }
     const dynamicFilterKeys = [
@@ -160,6 +197,16 @@ export default function ProductCatalog({
     availableProducts[1] ||
     availableProducts[0]
 
+  useEffect(() => {
+    if (!categoryDrawerOpen) return undefined
+
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setCategoryDrawerOpen(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [categoryDrawerOpen])
+
   const updateFilter = (key, value) => {
     setCatalogFilters((current) => ({ ...current, [key]: value }))
   }
@@ -174,6 +221,35 @@ export default function ProductCatalog({
     onSuggestedCategoryChange(nextCategory)
   }
 
+  const selectCategory = (nextCategory, closeDrawer = false) => {
+    clearCatalogFilters()
+    if (nextCategory !== 'All') {
+      setExpandedCategories((current) => {
+        const next = new Set(current)
+        next.add(nextCategory)
+        return next
+      })
+    }
+    onCategoryChange(nextCategory)
+    if (closeDrawer) setCategoryDrawerOpen(false)
+  }
+
+  const selectSubcategory = (categoryName, nextSubcategory, closeDrawer = false) => {
+    setCatalogFilters(defaultCatalogFilters)
+    setSubcategory(nextSubcategory)
+    if (activeCategory !== categoryName) onCategoryChange(categoryName)
+    if (closeDrawer) setCategoryDrawerOpen(false)
+  }
+
+  const toggleCategory = (categoryName) => {
+    setExpandedCategories((current) => {
+      const next = new Set(current)
+      if (next.has(categoryName)) next.delete(categoryName)
+      else next.add(categoryName)
+      return next
+    })
+  }
+
   const getProductOrder = (index) => {
     if (!showFeatureCards) return ''
     if (index < 2) return 'order-1'
@@ -185,74 +261,148 @@ export default function ProductCatalog({
   return (
     <section
       id="catalog"
-      className="mx-auto max-w-[1440px] scroll-mt-32 px-4 py-8 sm:px-6 lg:px-10 lg:py-12"
+      className="mx-auto max-w-[1680px] scroll-mt-32 px-3 pb-7 pt-2 sm:px-4 sm:pt-3 lg:px-5 lg:pb-10 lg:pt-3 xl:px-6"
     >
-      <div className="flex flex-col gap-5 border-b border-slate-200 pb-6 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#ff5c35]">
-            {eyebrow}
-          </p>
-          <h2 className="mt-2 text-3xl font-extrabold tracking-[-0.045em] sm:text-4xl">
-            {title}
-          </h2>
-          <p className="mt-2 text-sm text-slate-500">
-            {description}
-          </p>
-        </div>
-        <div className="flex w-full items-center gap-2 sm:w-auto">
-          <CatalogFilters
-            activeCategory={activeCategory}
-            onCategoryChange={onCategoryChange}
-            filters={effectiveFilters}
-            onFilterChange={updateFilter}
-            options={filterOptions}
-            onClear={clearCatalogFilters}
-            categories={availableCategories}
-          />
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white pl-4 text-xs font-bold text-slate-600 sm:w-52 sm:flex-none">
-            <SlidersHorizontal size={14} className="shrink-0" />
-            <SelectMenu
-              value={sortBy}
-              onChange={onSortChange}
-              options={sortOptions}
-              ariaLabel="Sort products"
-              className="min-w-0 flex-1"
-              buttonClassName="h-10 rounded-r-full pr-4"
+      {categoryDrawerOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[110] lg:hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Product categories"
+            data-storefront-overlay="categories"
+          >
+            <button
+              type="button"
+              aria-label="Close category menu"
+              onClick={() => setCategoryDrawerOpen(false)}
+              className="absolute inset-0 h-full w-full cursor-default bg-slate-950/45 backdrop-blur-[2px]"
+            />
+            <div className="absolute inset-y-0 left-0 flex w-[min(88vw,360px)] flex-col bg-[#fafbf8] shadow-[20px_0_60px_rgba(15,23,42,0.2)]">
+              <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#ff5c35]">Shop by</p>
+                  <h2 className="mt-1 text-lg font-extrabold tracking-tight text-slate-950">Categories</h2>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close category menu"
+                  onClick={() => setCategoryDrawerOpen(false)}
+                  className="grid size-10 place-items-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-[#ff5c35] hover:text-[#ff5c35]"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                <CategoryNavigation
+                  categoryTree={categoryTree}
+                  activeCategory={activeCategory}
+                  activeSubcategory={activeSubcategory}
+                  expandedCategories={expandedCategories}
+                  onCategorySelect={(name) => selectCategory(name, true)}
+                  onSubcategorySelect={(categoryName, name) =>
+                    selectSubcategory(categoryName, name, true)
+                  }
+                  onToggleCategory={toggleCategory}
+                />
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      <div className="grid items-start gap-5 lg:grid-cols-[310px_minmax(0,1fr)] xl:grid-cols-[330px_minmax(0,1fr)] xl:gap-7">
+        <aside className="sticky top-28 hidden max-h-[calc(100dvh-8rem)] flex-col overflow-hidden rounded-[26px] border border-slate-200/80 bg-white p-3 shadow-[0_12px_35px_rgba(15,23,42,0.06)] lg:flex">
+          <div className="shrink-0 px-3 pb-3 pt-2">
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#ff5c35]">Shop by</p>
+            <h2 className="mt-1 text-xl font-extrabold tracking-[-0.035em] text-slate-950">Categories</h2>
+            <p className="mt-1 text-xs leading-5 text-slate-500">Browse the complete collection</p>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <CategoryNavigation
+              categoryTree={categoryTree}
+              activeCategory={activeCategory}
+              activeSubcategory={activeSubcategory}
+              expandedCategories={expandedCategories}
+              onCategorySelect={selectCategory}
+              onSubcategorySelect={selectSubcategory}
+              onToggleCategory={toggleCategory}
             />
           </div>
-        </div>
-      </div>
+        </aside>
 
-      <div className="mt-6 flex gap-2 overflow-x-auto pb-2">
-        {availableCategories.map((filter) => (
-          <button
-            key={filter}
-            type="button"
-            onClick={() => onCategoryChange(filter)}
-            className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold transition ${activeCategory === filter ? 'bg-slate-950 text-white' : 'border border-slate-200 bg-white text-slate-500 hover:border-slate-400'}`}
-          >
-            {filter}
-          </button>
-        ))}
-      </div>
-
-      {activeCategory !== 'All' && filterOptions.subcategories.length > 1 && (
-        <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-2">
-          <span className="shrink-0 text-[9px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
-            Subcategory
-          </span>
-          {['All', ...filterOptions.subcategories].map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setSubcategory(item)}
-              className={`shrink-0 rounded-full px-3 py-1.5 text-[10px] font-bold transition ${activeSubcategory === item ? 'bg-[#397a4a] text-white' : 'border border-slate-200 bg-white text-slate-500 hover:border-[#8bb495]'}`}
+        <div className="min-w-0">
+          <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+            <nav
+              aria-label="Catalog breadcrumb"
+              className="flex min-w-0 items-center gap-1.5 overflow-x-auto whitespace-nowrap text-xs font-extrabold"
             >
-              {item === 'All' ? `All ${activeCategory}` : item}
-            </button>
-          ))}
-        </div>
-      )}
+              {activeCategory === 'All' ? (
+                <span className="text-slate-900">All products</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => selectCategory('All')}
+                  className="text-slate-500 transition hover:text-[#397a4a]"
+                >
+                  All products
+                </button>
+              )}
+              {activeCategory !== 'All' && (
+                <>
+                  <ChevronRight size={13} className="shrink-0 text-slate-300" />
+                  {activeSubcategory === 'All' ? (
+                    <span className="text-slate-900">{activeCategory}</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => selectCategory(activeCategory)}
+                      className="text-slate-500 transition hover:text-[#397a4a]"
+                    >
+                      {activeCategory}
+                    </button>
+                  )}
+                </>
+              )}
+              {activeCategory !== 'All' && activeSubcategory !== 'All' && (
+                <>
+                  <ChevronRight size={13} className="shrink-0 text-slate-300" />
+                  <span className="text-slate-900">{activeSubcategory}</span>
+                </>
+              )}
+            </nav>
+
+            <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap">
+              <button
+                type="button"
+                onClick={() => setCategoryDrawerOpen(true)}
+                aria-haspopup="dialog"
+                className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-[10px] font-extrabold text-slate-700 transition hover:border-[#397a4a] hover:text-[#397a4a] lg:hidden"
+              >
+                <Menu size={14} /> Categories
+              </button>
+              <CatalogFilters
+                activeCategory={activeCategory}
+                onCategoryChange={selectCategory}
+                filters={effectiveFilters}
+                onFilterChange={updateFilter}
+                options={filterOptions}
+                onClear={clearCatalogFilters}
+                categories={availableCategories}
+              />
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white pl-3 text-xs font-bold text-slate-600 sm:w-48 sm:flex-none">
+                <SlidersHorizontal size={14} className="shrink-0" />
+                <SelectMenu
+                  value={sortBy}
+                  onChange={onSortChange}
+                  options={sortOptions}
+                  ariaLabel="Sort products"
+                  className="min-w-0 flex-1"
+                  buttonClassName="h-10 rounded-r-full pr-3"
+                />
+              </div>
+            </div>
+          </div>
 
       {loading ? (
         <div className="py-10 sm:py-14" aria-live="polite" aria-busy="true">
@@ -273,7 +423,7 @@ export default function ProductCatalog({
         </div>
       ) : uniqueProducts.length ? (
         <>
-          <div className="storefront-product-grid mt-8 grid grid-cols-2 gap-x-3 gap-y-10 sm:gap-x-5 md:grid-cols-3 xl:grid-cols-4">
+          <div className="storefront-product-grid mt-7 grid grid-cols-2 gap-x-3 gap-y-9 sm:gap-x-5 xl:grid-cols-3">
             {renderedProducts.map((product, index) => (
               <div
                 key={product.id}
@@ -425,7 +575,7 @@ export default function ProductCatalog({
                   View all
                 </button>
               </div>
-              <div className="storefront-product-grid mt-6 grid grid-cols-2 gap-x-3 gap-y-10 sm:gap-x-5 md:grid-cols-3 xl:grid-cols-4">
+              <div className="storefront-product-grid mt-6 grid grid-cols-2 gap-x-3 gap-y-9 sm:gap-x-5 xl:grid-cols-3">
                 {suggestedProducts.map((product) => (
                   <ProductCard
                     key={product.id}
@@ -442,7 +592,86 @@ export default function ProductCatalog({
           )}
         </div>
       )}
+        </div>
+      </div>
     </section>
+  )
+}
+
+function CategoryNavigation({
+  categoryTree,
+  activeCategory,
+  activeSubcategory,
+  expandedCategories,
+  onCategorySelect,
+  onSubcategorySelect,
+  onToggleCategory,
+}) {
+  return (
+    <nav aria-label="Product categories" className="space-y-1.5">
+      {categoryTree.map((category) => {
+        const active = activeCategory === category.name
+        const expanded = expandedCategories.has(category.name)
+        const hasSubcategories = category.subcategories.length > 0
+
+        return (
+          <div key={category.id} className="overflow-hidden rounded-2xl">
+            <div
+              className={`flex items-center rounded-2xl transition-all duration-200 ${
+                active ? 'bg-[#eef5ef] shadow-[inset_3px_0_0_#397a4a]' : 'hover:bg-slate-50'
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => onCategorySelect(category.name)}
+                aria-current={active && activeSubcategory === 'All' ? 'page' : undefined}
+                className={`min-w-0 flex-1 px-4 py-3 text-left text-xs font-extrabold transition ${active ? 'text-[#285d37]' : 'text-slate-700 hover:text-[#397a4a]'}`}
+              >
+                <span className="block truncate">{category.name}</span>
+                <span className={`mt-1 block text-[9px] font-semibold ${active ? 'text-[#397a4a]/75' : 'text-slate-400'}`}>
+                  {category.subcategories.length}{' '}
+                  {category.subcategories.length === 1
+                    ? 'subcategory'
+                    : 'subcategories'}
+                </span>
+              </button>
+              {hasSubcategories && (
+                <button
+                  type="button"
+                  onClick={() => onToggleCategory(category.name)}
+                  aria-expanded={expanded}
+                  aria-label={`${expanded ? 'Collapse' : 'Expand'} ${category.name} subcategories`}
+                  className={`mr-2 grid size-9 shrink-0 place-items-center rounded-xl transition ${active ? 'text-[#397a4a] hover:bg-white/70' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'}`}
+                >
+                  <ChevronDown size={15} className={`transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`} />
+                </button>
+              )}
+            </div>
+
+            <div className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${expanded && hasSubcategories ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+              <div className="overflow-hidden">
+                <div className="ml-5 border-l border-[#cddcca] py-1 pl-3">
+                  {category.subcategories.map((item) => {
+                    const subcategoryActive = active && activeSubcategory === item.name
+                    return (
+                      <button
+                        key={item.name}
+                        type="button"
+                        onClick={() => onSubcategorySelect(category.name, item.name)}
+                        aria-current={subcategoryActive ? 'page' : undefined}
+                        className={`mt-0.5 block w-full rounded-xl px-3 py-2 text-left text-[10px] font-bold transition-all duration-200 ${subcategoryActive ? 'translate-x-1 bg-[#397a4a] text-white shadow-sm' : 'text-slate-500 hover:translate-x-1 hover:bg-white hover:text-[#397a4a]'}`}
+                      >
+                        <span className="block truncate">{item.name}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </nav>
   )
 }
 

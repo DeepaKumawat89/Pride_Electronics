@@ -61,6 +61,24 @@
   outline: none;
 }
 
+@keyframes storefront-category-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes storefront-category-drawer-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+[data-storefront-overlay="categories"] > button {
+  animation: storefront-category-backdrop-in 180ms ease-out both;
+}
+
+[data-storefront-overlay="categories"] > div {
+  animation: storefront-category-drawer-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .form-control-shell:focus-within {
   outline: none;
   box-shadow: none;
@@ -191,5 +209,9 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  [data-storefront-overlay="categories"] > * {
+    animation-duration: 0.01ms !important;
   }
 }

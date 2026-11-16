@@ -1,47 +1,5 @@
-import {
-  ArrowLeft,
-  Cable,
-  Grid2X2,
-  Headphones,
-  Monitor,
-  Watch,
-  Zap,
-} from 'lucide-react'
-import ProductSearch from '../layout/ProductSearch'
+import { ArrowLeft } from 'lucide-react'
 import ProductCatalog from './ProductCatalog'
-
-const categoryPresentation = {
-  Audio: {
-    icon: Headphones,
-    color: 'bg-[#f3e4dd]',
-    label: 'Audio & sound',
-  },
-  Wearables: {
-    icon: Watch,
-    color: 'bg-[#e2ebf4]',
-    label: 'Smart wearables',
-  },
-  Peripherals: {
-    icon: Monitor,
-    color: 'bg-[#efe9d7]',
-    label: 'Workspace gear',
-  },
-  'Components & DIY': {
-    icon: Cable,
-    color: 'bg-[#e5e1ef]',
-    label: 'Components & DIY',
-  },
-  'Smart Power': {
-    icon: Zap,
-    color: 'bg-[#dfeee4]',
-    label: 'Power & charging',
-  },
-}
-
-const fallbackPresentation = {
-  icon: Grid2X2,
-  color: 'bg-[#e5e1ef]',
-}
 
 export default function ProductsPage({
   products,
@@ -56,8 +14,6 @@ export default function ProductsPage({
   error,
   onRetry,
   onBack,
-  onQueryChange,
-  onSearchSubmit,
   onCategoryChange,
   onSortChange,
   onProductSelect,
@@ -69,108 +25,25 @@ export default function ProductsPage({
     (category) => category.enabled !== false,
   )
   const categoryNames = availableCategories.map((category) => category.name)
-  const resultTitle =
-    activeCategory !== 'All'
-      ? activeCategory
-      : query.trim()
-        ? 'Search results'
-        : 'All products'
-  const resultDescription = `${filteredProducts.length} ${filteredProducts.length === 1 ? 'product' : 'products'}${query.trim() ? ` matching “${query.trim()}”` : ' available to explore'}.`
-  const catalogDescription = loading
-    ? 'Loading the current product collection…'
-    : error
-      ? 'The current product collection is temporarily unavailable.'
-      : resultDescription
-
   return (
-    <div className="min-h-[70vh]">
-      <section className="mx-auto max-w-[1440px] px-4 pt-5 sm:px-6 sm:pt-7 lg:px-10 lg:pt-9">
-        <div className="flex items-center gap-3">
+    <div className="min-h-[70vh] bg-[#fafbf8]">
+      <section className="bg-white">
+        <div className="mx-auto flex max-w-[1680px] items-center px-3 py-2 sm:px-4 lg:px-5 xl:px-6">
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-xs font-extrabold text-slate-700 transition hover:border-[#ff5c35] hover:text-[#ff5c35]"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-[10px] font-extrabold text-slate-700 transition duration-200 hover:border-[#ff5c35] hover:text-[#ff5c35] hover:shadow-sm"
           >
-            <ArrowLeft size={15} />
-            Back
-          </button>
-          <div className="ml-auto min-w-0 w-full max-w-xl">
-            <ProductSearch
-              products={products}
-              value={query}
-              onChange={onQueryChange}
-              onSubmitQuery={onSearchSubmit}
-              onSelect={onProductSelect}
-              placeholder="Search products, brands, features..."
-            />
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-[1440px] px-4 pt-9 sm:px-6 sm:pt-11 lg:px-10 lg:pt-14">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#ff5c35] sm:text-xs">
-              Shop by category
-            </p>
-            <h2 className="mt-2 text-2xl font-extrabold tracking-[-0.04em] sm:text-3xl">
-              Explore every category
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={() => onCategoryChange('All')}
-            className={`hidden shrink-0 rounded-full px-4 py-2 text-xs font-extrabold transition sm:block ${activeCategory === 'All' ? 'bg-slate-950 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:border-[#ff5c35] hover:text-[#ff5c35]'}`}
-          >
-            All products
+            <ArrowLeft size={13} />
+            <span>Back</span>
           </button>
         </div>
-
-        <div className="storefront-category-grid mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 lg:gap-4">
-          {availableCategories.map((category) => {
-            const presentation =
-              categoryPresentation[category.name] || fallbackPresentation
-            const Icon = presentation.icon
-            const productCount = products.filter(
-              (product) => product.category === category.name,
-            ).length
-            const active = activeCategory === category.name
-
-            return (
-              <button
-                key={category.id || category.name}
-                type="button"
-                aria-pressed={active}
-                onClick={() => onCategoryChange(category.name)}
-                className={`${presentation.color} group min-h-32 rounded-[24px] border p-4 text-left transition duration-300 sm:min-h-36 sm:p-5 ${active ? 'border-[#397a4a] ring-4 ring-[#397a4a]/10' : 'border-transparent hover:-translate-y-1 hover:shadow-lg'}`}
-              >
-                <span className="grid size-10 place-items-center rounded-2xl bg-white/80 text-slate-800 sm:size-11">
-                  <Icon size={20} />
-                </span>
-                <strong className="mt-5 block text-xs font-extrabold text-slate-900 sm:text-sm">
-                  {presentation.label || category.name}
-                </strong>
-                <span className="mt-1 block text-[10px] font-semibold text-slate-500">
-                  {loading
-                    ? 'Loading products…'
-                    : `${productCount} ${productCount === 1 ? 'product' : 'products'}`}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-
-        <button
-          type="button"
-          onClick={() => onCategoryChange('All')}
-          className={`mt-3 h-11 w-full rounded-full text-xs font-extrabold transition sm:hidden ${activeCategory === 'All' ? 'bg-slate-950 text-white' : 'border border-slate-200 bg-white text-slate-600'}`}
-        >
-          View all products
-        </button>
       </section>
 
       <ProductCatalog
         products={filteredProducts}
+        allProducts={products}
+        categories={availableCategories}
         suggestedProducts={suggestedProducts}
         onSuggestedCategoryChange={onCategoryChange}
         activeCategory={activeCategory}
@@ -183,9 +56,6 @@ export default function ProductsPage({
         onBuyNow={onBuyNow}
         onView={onProductSelect}
         categoryNames={categoryNames}
-        eyebrow="Product collection"
-        title={resultTitle}
-        description={catalogDescription}
         showPromotions={false}
         loading={loading}
         error={error}

@@ -438,38 +438,67 @@ const arrowProps = {
   'aria-hidden': true,
 }
 
-function Eyebrow({ section, number }) {
+function Eyebrow({ section, number, inverse = false }) {
   return (
     <div className="flex items-center gap-2.5">
-      <span className="font-mono text-[11px] font-medium tabular-nums tracking-wider text-stone-400">
+      <span
+        className={`font-mono text-[11px] font-medium tabular-nums tracking-wider ${
+          inverse ? 'text-white/75' : 'text-stone-400'
+        }`}
+      >
         {String(number).padStart(2, '0')}
       </span>
-      <span className="h-px w-6 bg-stone-300" />
+      <span className={`h-px w-6 ${inverse ? 'bg-white/45' : 'bg-stone-300'}`} />
       <span className={`h-1.5 w-1.5 rounded-full ${section.dot}`} />
-      <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">
+      <span
+        className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${
+          inverse ? 'text-white' : 'text-stone-500'
+        }`}
+      >
         {section.eyebrow}
       </span>
     </div>
   )
 }
 
-function SectionHeader({ section, number, count, children }) {
+function SectionHeader({
+  section,
+  number,
+  count,
+  children,
+  inverse = false,
+  compact = false,
+}) {
   return (
-    <div className="mb-5 flex flex-col gap-3 border-b border-stone-200/80 pb-4 sm:mb-10 sm:flex-row sm:items-end sm:justify-between sm:gap-5 sm:pb-6">
+    <div
+      className={`${compact ? 'mb-3 gap-2 pb-3 sm:mb-5 sm:gap-4 sm:pb-4' : 'mb-5 gap-3 pb-4 sm:mb-10 sm:gap-5 sm:pb-6'} flex flex-col border-b sm:flex-row sm:items-end sm:justify-between ${
+        inverse ? 'border-white/25' : 'border-stone-200/80'
+      }`}
+    >
       <div>
-        <Eyebrow section={section} number={number} />
+        <Eyebrow section={section} number={number} inverse={inverse} />
         <h2
           id={`homepage-${section.key}-title`}
-          className="mt-2.5 text-[23px] font-semibold leading-tight tracking-[-0.03em] text-stone-900 sm:mt-3 sm:text-[34px]"
+          className={`mt-2.5 text-[23px] font-semibold leading-tight tracking-[-0.03em] sm:mt-3 sm:text-[34px] ${
+            inverse ? 'text-white' : 'text-stone-900'
+          }`}
         >
           {section.title}
         </h2>
-        <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-stone-500 sm:mt-2 sm:text-[15px]">
+        <p
+          className={`mt-1.5 max-w-xl text-[13px] leading-relaxed sm:mt-2 sm:text-[15px] ${
+            inverse ? 'text-white/80' : 'text-stone-500'
+          }`}
+        >
           {section.description}
         </p>
       </div>
       <div className="flex items-center gap-3 sm:gap-4">
-        <span className="text-[11px] font-medium text-stone-400 sm:text-xs">
+        <span
+          className={`text-[11px] font-medium sm:text-xs ${
+            inverse ? 'text-white/75' : 'text-stone-400'
+          }`}
+        >
           {count} {count === 1 ? 'product' : 'products'}
         </span>
         {children}
@@ -644,12 +673,17 @@ export default function HomepageProductSections({
             <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-amber-100/60 blur-3xl" />
             <div className="pointer-events-none absolute -bottom-24 -left-16 h-64 w-64 rounded-full bg-orange-50 blur-3xl" />
             <div className="relative">
-              <SectionHeader
-                section={section}
-                number={number}
-                count={sectionProducts.length}
-              />
-              <ProductGrid products={sectionProducts} cardProps={cardProps} />
+              <div className="-mx-4 -mt-4 rounded-t-[23px] border-b border-[#c6ddca] bg-[#dcebdd] px-4 pt-3 sm:-mx-10 sm:-mt-10 sm:rounded-t-[31px] sm:px-10 sm:pt-6">
+                <SectionHeader
+                  section={section}
+                  number={number}
+                  count={sectionProducts.length}
+                  compact
+                />
+              </div>
+              <div className="mt-4 sm:mt-6">
+                <ProductGrid products={sectionProducts} cardProps={cardProps} />
+              </div>
             </div>
           </div>
         )
@@ -685,7 +719,7 @@ export default function HomepageProductSections({
         return (
           <div className="rounded-[24px] border border-sky-100/80 bg-gradient-to-br from-[#f6faff] via-white to-[#f9fbfd] p-4 sm:rounded-[32px] sm:p-10">
             <div className="grid gap-6 sm:gap-10 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-12">
-              <div className="lg:sticky lg:top-28 lg:self-start">
+              <div className="-ml-4 -mt-4 -mb-4 rounded-[22px] bg-[#dcebdd] p-4 lg:sticky lg:top-28 lg:-ml-10 lg:-mt-10 lg:-mb-10 lg:self-start lg:rounded-r-[26px] lg:p-6">
                 <Eyebrow section={section} number={number} />
                 <h2
                   id={`homepage-${section.key}-title`}
