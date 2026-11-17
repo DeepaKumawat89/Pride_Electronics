@@ -4,18 +4,22 @@ const DEFAULT_FALLBACK_IMAGE = '/favicon-192x192.png'
 
 export default function StorefrontImage({
   src,
+  srcSet,
+  sizes,
   alt,
   fallbackSrc = DEFAULT_FALLBACK_IMAGE,
   onError,
   ...imageProps
 }) {
   const [displayedSrc, setDisplayedSrc] = useState(src || fallbackSrc)
+  const [displayedSrcSet, setDisplayedSrcSet] = useState(srcSet || '')
   const [failedSrc, setFailedSrc] = useState('')
 
   useEffect(() => {
     setDisplayedSrc(src || fallbackSrc)
+    setDisplayedSrcSet(srcSet || '')
     setFailedSrc('')
-  }, [fallbackSrc, src])
+  }, [fallbackSrc, src, srcSet])
 
   const handleError = (event) => {
     const rejectedSrc = event.currentTarget.currentSrc || displayedSrc
@@ -29,6 +33,7 @@ export default function StorefrontImage({
     if (displayedSrc !== fallbackSrc) {
       setFailedSrc(rejectedSrc)
       setDisplayedSrc(fallbackSrc)
+      setDisplayedSrcSet('')
     }
   }
 
@@ -36,6 +41,8 @@ export default function StorefrontImage({
     <img
       {...imageProps}
       src={displayedSrc}
+      srcSet={displayedSrcSet || undefined}
+      sizes={sizes}
       alt={alt}
       onError={handleError}
       data-original-src={src || undefined}

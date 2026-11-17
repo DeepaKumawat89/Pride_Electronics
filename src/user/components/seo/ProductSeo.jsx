@@ -40,19 +40,46 @@ const setCanonical = (href) => {
   }
 }
 
-export default function ProductSeo({ product }) {
+export default function ProductSeo({ product, notFound = false }) {
   useEffect(() => {
-    if (!product?.id) return undefined
+    if (!product?.id) {
+      if (!notFound) return undefined
+      const previousTitle = document.title
+      const description = 'This product is not available from Pride Circuit.'
+      const canonicalUrl = `${SITE_URL}${window.location.pathname}`
+      document.title = 'Product not found | Pride Circuit'
+      const restore = [
+        setMeta('name', 'description', description),
+        setMeta('name', 'robots', 'noindex,follow'),
+        setMeta('property', 'og:title', 'Product not found | Pride Circuit'),
+        setMeta('property', 'og:description', description),
+        setMeta('property', 'og:type', 'website'),
+        setMeta('property', 'og:url', canonicalUrl),
+        setMeta('property', 'og:image', `${SITE_URL}/favicon-192x192.png`),
+        setMeta('name', 'twitter:card', 'summary'),
+        setMeta('name', 'twitter:title', 'Product not found | Pride Circuit'),
+        setMeta('name', 'twitter:description', description),
+        setMeta('name', 'twitter:url', canonicalUrl),
+        setMeta('name', 'twitter:image', `${SITE_URL}/favicon-192x192.png`),
+        setCanonical(canonicalUrl),
+      ]
+      return () => {
+        restore.forEach((restoreValue) => restoreValue())
+        document.title = previousTitle
+      }
+    }
 
     const name = textValue(product.name) || 'Product'
-    const description =
-      textValue(product.description).slice(0, 160) ||
+    const productDescription =
+      textValue(product.description) ||
       `Shop ${name} from Pride Circuit.`
+    const description = productDescription.slice(0, 160)
     const canonicalUrl = `${SITE_URL}${getProductPath(product)}`
     const images = [
       product.image,
       ...(Array.isArray(product.images) ? product.images : []),
     ].filter(Boolean)
+    if (!images.length) images.push(`${SITE_URL}/favicon-192x192.png`)
     const price = Number(getProductBasePrice(product))
     const hasPrice = Number.isFinite(price) && price > 0
     const stock = Number(product.stock) || 0
@@ -63,7 +90,7 @@ export default function ProductSeo({ product }) {
       '@type': 'Product',
       url: canonicalUrl,
       name,
-      description,
+      description: productDescription,
       image: [...new Set(images)],
       ...(textValue(product.sku) ? { sku: textValue(product.sku) } : {}),
       ...(textValue(product.brand || product.manufacturer)
@@ -108,6 +135,7 @@ export default function ProductSeo({ product }) {
     document.title = `${name} | Pride Circuit`
     const restore = [
       setMeta('name', 'description', description),
+      setMeta('name', 'robots', 'index,follow'),
       setMeta('property', 'og:title', `${name} | Pride Circuit`),
       setMeta('property', 'og:description', description),
       setMeta('property', 'og:type', 'product'),
@@ -128,7 +156,7 @@ export default function ProductSeo({ product }) {
       structuredData.remove()
       document.title = previousTitle
     }
-  }, [product])
+  }, [notFound, product])
 
   return null
 }

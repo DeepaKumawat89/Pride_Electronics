@@ -7,7 +7,12 @@ import {
 } from 'firebase/storage'
 import { auth, storage } from './firebase'
 
-export const PRODUCT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+export const PRODUCT_IMAGE_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/avif',
+]
 export const MIN_PRODUCT_IMAGES = 1
 export const MAX_PRODUCT_IMAGES = 3
 export const MAX_PRODUCT_IMAGE_SIZE = 20 * 1024 * 1024
@@ -76,7 +81,7 @@ export async function optimizeProductImage(
   { maxDimension = 1600, quality = 0.82 } = {},
 ) {
   if (!PRODUCT_IMAGE_TYPES.includes(file.type)) {
-    throw new Error(`${file.name} must be a JPG, PNG, or WebP image.`)
+    throw new Error(`${file.name} must be a JPG, PNG, WebP, or AVIF image.`)
   }
   if (file.size > MAX_PRODUCT_IMAGE_SIZE) {
     throw new Error(`${file.name} must be smaller than 20 MB.`)

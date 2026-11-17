@@ -57,7 +57,7 @@ export function sortCatalogProducts(products, sortBy) {
     if (sortBy === 'price-low') return getProductBasePrice(a) - getProductBasePrice(b)
     if (sortBy === 'price-high') return getProductBasePrice(b) - getProductBasePrice(a)
     if (sortBy === 'newest') {
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      return timestampMillis(b.createdAt) - timestampMillis(a.createdAt)
     }
     if (sortBy === 'rating') return (Number(b.rating) || 0) - (Number(a.rating) || 0)
     if (sortBy === 'recommended') {
@@ -69,6 +69,12 @@ export function sortCatalogProducts(products, sortBy) {
     }
     return (Number(b.reviewsCount) || 0) - (Number(a.reviewsCount) || 0)
   })
+}
+
+function timestampMillis(value) {
+  if (value && typeof value.toMillis === 'function') return value.toMillis()
+  const parsed = new Date(value || 0).getTime()
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 const matchesPrice = (product, range) => {

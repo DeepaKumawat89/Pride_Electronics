@@ -3,8 +3,22 @@ const { db } = require('./shared/core')
 const { slugify } = require('./shared/slugify')
 
 const SITE_URL = 'https://pridecircuit.in'
+const CONTENT_PAGES = {
+  '/about-us': ['About Pride Circuit | Pride Circuit', 'Learn about Pride Circuit and our selection of electronics and automation products.', 'About Pride Circuit'],
+  '/contact-us': ['Contact Pride Circuit | Pride Circuit', 'Contact Pride Circuit for help with electronics, orders, delivery, and support.', 'Contact Pride Circuit'],
+  '/privacy-policy': ['Privacy Policy | Pride Circuit', 'Read the Pride Circuit privacy policy and learn how customer information is handled.', 'Privacy Policy'],
+  '/terms-and-conditions': ['Terms & Conditions | Pride Circuit', 'Review the terms and conditions that apply to Pride Circuit website purchases and services.', 'Terms & Conditions'],
+  '/refund-and-cancellation-policy': ['Refund & Cancellation Policy | Pride Circuit', 'Review Pride Circuit order cancellation, return, and refund terms.', 'Refund & Cancellation Policy'],
+  '/shipping-and-delivery-policy': ['Shipping & Delivery Policy | Pride Circuit', 'Review delivery methods, timelines, charges, and support information for Pride Circuit orders.', 'Shipping & Delivery Policy'],
+}
 const CACHE_TTL_MS = 5 * 60 * 1000
 let catalogCache = null
+
+const timestampMillis = (value) => {
+  if (value && typeof value.toMillis === 'function') return value.toMillis()
+  const parsed = new Date(value || 0).getTime()
+  return Number.isFinite(parsed) ? parsed : 0
+}
 
 const text = (value) => String(value || '').replace(/\s+/g, ' ').trim()
 const escapeHtml = (value) =>
@@ -18,6 +32,17 @@ const escapeHtml = (value) =>
 const safeImage = (value) => {
   const image = text(value)
   return /^https:\/\//i.test(image) ? image : `${SITE_URL}/favicon-192x192.png`
+}
+
+const formatPrice = (value) => {
+  const price = Number(value)
+  return Number.isFinite(price) && price > 0
+    ? new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        maximumFractionDigits: 2,
+      }).format(price)
+    : 'Price unavailable'
 }
 
 const publicProduct = (document) => {
@@ -37,8 +62,9 @@ const publicProduct = (document) => {
     thumbnail: safeImage(
       data.thumbnail || data.thumbnails?.[0] || data.image || data.images?.[0],
     ),
-    price: Number(data.price || data.basePrice || 0),
+    price: Number(data.price ?? data.basePrice ?? 0),
     stock: Math.max(0, Number(data.stock) || 0),
+    createdAt: data.createdAt,
     enabled: data.enabled !== false,
   }
 }
@@ -59,6 +85,7 @@ async function loadCatalog() {
     }))
     const subcategories = subcategorySnapshot.docs.map((document) => ({
       id: document.id,
+      name: text(document.data()?.name),
       categoryId: text(document.data()?.categoryId),
       enabled: document.data()?.enabled !== false,
     }))
@@ -77,7 +104,8 @@ async function loadCatalog() {
         const subcategory = subcategoryById.get(product.subcategoryId)
         return product.enabled && category?.enabled !== false && subcategory?.enabled !== false
       })
-    return { products, categories: categories.filter((category) => category.enabled) }
+      .sort((first, second) => timestampMillis(second.createdAt) - timestampMillis(first.createdAt))
+    return { products, categories: categories.filter((category) => category.enabled), subcategories: subcategories.filter((subcategory) => subcategory.enabled) }
   })
   catalogCache = { loadedAt: Date.now(), value: pending }
   try {
@@ -93,19 +121,29 @@ async function loadCatalog() {
 const productPath = (product) =>
   `/product/${encodeURIComponent(product.slug || product.id)}`
 
+const responsiveImageAttributes = (product, sizes) => {
+  const thumbnail = text(product.thumbnail)
+  const image = text(product.image)
+  const srcset = thumbnail && image && thumbnail !== image
+    ? ` srcset="${escapeHtml(`${thumbnail} 640w, ${image} 1600w`)}"`
+    : ''
+  return `${srcset} sizes="${escapeHtml(sizes)}"`
+}
+
 const SEO_CATALOG_IMAGE_BUDGET = 24
 const SEO_EAGER_IMAGE_COUNT = 4
 
+// 1. Remove product.description from catalog cards so /products stops outranking /product/:slug
 const productCards = (products) => products.map((product, index) => `
   <article class="seo-card">
     <a href="${productPath(product)}">
       ${index < SEO_CATALOG_IMAGE_BUDGET
-        ? `<img src="${escapeHtml(product.thumbnail || product.image)}" alt="${escapeHtml(product.name)}" width="320" height="240" loading="${index < SEO_EAGER_IMAGE_COUNT ? 'eager' : 'lazy'}"${index < SEO_EAGER_IMAGE_COUNT ? ' fetchpriority="high"' : ''} decoding="async">`
+        ? `<img src="${escapeHtml(product.thumbnail || product.image)}"${responsiveImageAttributes(product, '(min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw')} alt="${escapeHtml(product.name)}" width="320" height="240" loading="${index < SEO_EAGER_IMAGE_COUNT ? 'eager' : 'lazy'}"${index < SEO_EAGER_IMAGE_COUNT ? ' fetchpriority="high"' : ''} decoding="async">`
         : '<span class="seo-card-image-placeholder" aria-hidden="true"></span>'}
       <h2>${escapeHtml(product.name)}</h2>
     </a>
     <p>${escapeHtml(product.category)}${product.subcategory ? ` · ${escapeHtml(product.subcategory)}` : ''}</p>
-    ${product.description ? `<p>${escapeHtml(product.description.slice(0, 180))}</p>` : ''}
+    <p class="seo-card-price">${escapeHtml(formatPrice(product.price))}</p>
   </article>`).join('')
 
 const categoryCards = (categories, products) => categories.map((category) => {
@@ -175,19 +213,28 @@ const pageHtml = ({ title, description, canonicalPath, content, schema, image = 
   }
 }
 
-function renderCatalogPage(products, category = '') {
+function renderCatalogPage(products, category = '', subcategory = '') {
   const categoryName = text(category)
-  const filtered = categoryName
+  const subcategoryName = text(subcategory)
+  const filtered = subcategoryName
+    ? products.filter((product) => slugify(product.category) === slugify(categoryName) && slugify(product.subcategory) === slugify(subcategoryName))
+    : categoryName
     ? products.filter((product) => slugify(product.category) === slugify(categoryName))
     : products
-  const title = categoryName
-    ? `${categoryName} Products | Pride Circuit`
+  const title = subcategoryName
+    ? `${subcategoryName} ${categoryName} Products | Pride Circuit`
+    : categoryName
+      ? `${categoryName} Products | Pride Circuit`
     : 'Electronic Products Online | Pride Circuit'
-  const description = categoryName
-    ? `Shop ${categoryName} products online at Pride Circuit with clear pricing and reliable delivery across India.`
+  const description = subcategoryName
+    ? `Shop ${subcategoryName} products in ${categoryName} online at Pride Circuit with clear pricing and reliable delivery across India.`
+    : categoryName
+      ? `Shop ${categoryName} products online at Pride Circuit with clear pricing and reliable delivery across India.`
     : 'Browse genuine electronic components and industrial automation products online at Pride Circuit.'
-  const canonicalPath = categoryName
-    ? `/category/${encodeURIComponent(slugify(categoryName))}`
+  const canonicalPath = subcategoryName
+    ? `/category/${encodeURIComponent(slugify(categoryName))}/${encodeURIComponent(slugify(subcategoryName))}`
+    : categoryName
+      ? `/category/${encodeURIComponent(slugify(categoryName))}`
     : '/products'
   const itemList = filtered.slice(0, 100).map((product, index) => ({
     '@type': 'ListItem',
@@ -199,7 +246,7 @@ function renderCatalogPage(products, category = '') {
     title,
     description,
     canonicalPath,
-    content: `<h1>${escapeHtml(categoryName || 'Electronic products')}</h1><p>${escapeHtml(description)}</p><div class="seo-grid">${productCards(filtered)}</div>`,
+    content: `<h1>${escapeHtml(subcategoryName ? `${subcategoryName} ${categoryName}` : categoryName || 'Electronic products')}</h1><p>${escapeHtml(description)}</p><div class="seo-grid">${productCards(filtered)}</div>`,
     schema: {
       '@context': 'https://schema.org',
       '@type': 'CollectionPage',
@@ -242,7 +289,8 @@ function renderCategoriesPage(products, categories) {
 
 function renderProductPage(product) {
   const canonicalPath = productPath(product)
-  const description = product.description.slice(0, 160) || `Shop ${product.name} from Pride Circuit.`
+  const productDescription = product.description || `Shop ${product.name} from Pride Circuit.`
+  const description = productDescription.slice(0, 160)
   const offer = product.price > 0 ? {
     '@type': 'Offer',
     price: product.price.toFixed(2),
@@ -255,12 +303,12 @@ function renderProductPage(product) {
     description,
     canonicalPath,
     image: product.image,
-    content: `<article><p><a href="/category/${encodeURIComponent(slugify(product.category))}">${escapeHtml(product.category)}</a></p><h1>${escapeHtml(product.name)}</h1><img src="${escapeHtml(product.image)}" alt="${escapeHtml(product.name)}" width="640" height="480" loading="eager" fetchpriority="high" decoding="async"><p>${escapeHtml(product.description)}</p>${product.sku ? `<p>SKU: ${escapeHtml(product.sku)}</p>` : ''}${product.brand ? `<p>Brand: ${escapeHtml(product.brand)}</p>` : ''}</article>`,
+    content: `<article><p><a href="/category/${encodeURIComponent(slugify(product.category))}">${escapeHtml(product.category)}</a></p><h1>${escapeHtml(product.name)}</h1><img src="${escapeHtml(product.image)}"${responsiveImageAttributes(product, '(min-width: 1024px) 55vw, 100vw')} alt="${escapeHtml(product.name)}" width="640" height="480" loading="eager" fetchpriority="high" decoding="async"><p>${escapeHtml(productDescription)}</p><p>${escapeHtml(formatPrice(product.price))}${product.price > 0 ? ' (Excl. GST)' : ''}</p><p>${product.stock > 0 ? 'In stock' : 'Out of stock'}</p>${product.sku ? `<p>SKU: ${escapeHtml(product.sku)}</p>` : ''}${product.brand ? `<p>Brand: ${escapeHtml(product.brand)}</p>` : ''}</article>`,
     schema: {
       '@context': 'https://schema.org',
       '@type': 'Product',
       name: product.name,
-      description,
+      description: productDescription,
       image: [product.image],
       sku: product.sku || undefined,
       brand: product.brand ? { '@type': 'Brand', name: product.brand } : undefined,
@@ -274,10 +322,19 @@ exports.publicPage = onRequest(
   { region: 'asia-south1', invoker: 'public', timeoutSeconds: 30 },
   async (request, response) => {
     try {
-      const { products, categories } = await loadCatalog()
+      const { products, categories, subcategories } = await loadCatalog()
       const path = String(request.path || '/').replace(/\/+$/, '') || '/'
       let page
-      if (path === '/') {
+      if (CONTENT_PAGES[path]) {
+        const [title, description, heading] = CONTENT_PAGES[path]
+        page = pageHtml({
+          title,
+          description,
+          canonicalPath: path,
+          content: `<article><h1>${escapeHtml(heading)}</h1><p>${escapeHtml(description)}</p><p><a href="/products">Browse products</a> · <a href="/contact-us">Contact Pride Circuit</a></p></article>`,
+          schema: { '@context': 'https://schema.org', '@type': 'WebPage', name: title, description, url: `${SITE_URL}${path}` },
+        })
+      } else if (path === '/') {
         const featured = products.slice(0, 24)
         const description = 'Shop genuine electronic components and industrial automation products online in India with Pride Circuit.'
         page = pageHtml({
@@ -292,29 +349,50 @@ exports.publicPage = onRequest(
       } else if (path === '/products') {
         page = renderCatalogPage(products)
       } else if (path.startsWith('/category/')) {
-        const requestedSlug = decodeURIComponent(path.slice('/category/'.length))
+        const segments = path.slice('/category/'.length).split('/').map(decodeURIComponent)
+        const requestedSlug = segments[0]
         const category = categories.find((item) => slugify(item.name) === requestedSlug)
+        const subcategory = segments[1]
+          ? subcategories.find((item) => slugify(item.name) === segments[1] && categories.find((entry) => String(entry.id) === String(item.categoryId) && entry.id === category?.id))
+          : null
+        if (segments[1] && category && !subcategory) {
+          page = pageHtml({ title: 'Category not found | Pride Circuit', description: 'This product category is not available.', canonicalPath: path, content: '<h1>Category not found</h1><p><a href="/products">Browse all products</a></p>', schema: { '@context': 'https://schema.org', '@type': 'WebPage' }, status: 404 })
+        } else {
         page = category
-          ? renderCatalogPage(products, category.name)
+          ? renderCatalogPage(products, category.name, subcategory?.name || '')
           : pageHtml({ title: 'Category not found | Pride Circuit', description: 'This product category is not available.', canonicalPath: path, content: '<h1>Category not found</h1><p><a href="/products">Browse all products</a></p>', schema: { '@context': 'https://schema.org', '@type': 'WebPage' }, status: 404 })
+        }
+
+        // 2. Inside exports.publicPage -> else if (path.startsWith('/product/'))
       } else if (path.startsWith('/product/')) {
-        const routeIdentifier = decodeURIComponent(path.slice('/product/'.length))
+        const productRoutePath = path.endsWith('/reviews') ? path.slice(0, -'/reviews'.length) : path
+        const routeIdentifier = decodeURIComponent(productRoutePath.slice('/product/'.length))
         const identifier = routeIdentifier.startsWith('id/')
           ? routeIdentifier.slice('id/'.length)
           : routeIdentifier
-        const product = products.find((item) => item.id === identifier) ||
-          products.find((item) => item.slug === identifier)
+        const productBySlug = products.find((item) => item.slug === identifier)
+        const productById = !productBySlug
+          ? products.find((item) => item.id === identifier)
+          : null
+
+        if (productById && productById.slug && productById.slug !== identifier) {
+          response.redirect(301, productPath(productById))
+          return
+        }
+
+        const product = productBySlug || productById
         page = product
           ? renderProductPage(product)
           : pageHtml({ title: 'Product not found | Pride Circuit', description: 'This product is not available.', canonicalPath: path, content: '<h1>Product not found</h1><p><a href="/products">Browse all products</a></p>', schema: { '@context': 'https://schema.org', '@type': 'WebPage' }, status: 404 })
-      } else {
+      }
+      else {
         response.status(404).send('Not found')
         return
       }
       response
         .status(page.status)
         .set('Content-Type', 'text/html; charset=utf-8')
-        .set('Cache-Control', 'public, max-age=300, s-maxage=300, stale-while-revalidate=600')
+        .set('Cache-Control', 'public, max-age=300, s-maxage=300')
         .set('X-Content-Type-Options', 'nosniff')
         .send(page.html)
     } catch (error) {

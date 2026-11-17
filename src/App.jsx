@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { onIdTokenChanged } from 'firebase/auth'
 import UserApp from './user/UserApp'
-import AdminApp from './admin/AdminApp'
 import MaintenancePage from './user/components/pages/MaintenancePage'
 import { initialMarketingSettings } from './data/marketing'
 import { initialShippingSettings } from './data/shipping'
@@ -72,6 +71,8 @@ import {
 } from './utils/catalogTaxonomy'
 import { productForStorefront } from './utils/productVariants'
 import { createOrderMoment } from './utils/orderTimestamps'
+
+const AdminApp = lazy(() => import('./admin/AdminApp.jsx'))
 
 const getChangedProducts = (currentProducts, nextProducts) =>
   nextProducts.filter((nextProduct) => {
@@ -256,9 +257,6 @@ function App() {
       setProductsList(products)
       setProductsError('')
       setProductsLoading(false)
-      if (activePortal === 'user') {
-        document.documentElement.dataset.prideAppReady = 'true'
-      }
     }
     const onError = (error) => {
       if (!active) return
@@ -492,7 +490,7 @@ function App() {
 
   const switchPortal = (portal) => {
     const path = portal === 'admin' ? '/admin' : '/'
-    if (window.location.pathname !== path || window.location.hash) {
+    if (window.location.pathname !== path) {
       window.history.pushState({ pridePortal: portal }, '', path)
     }
     setActivePortal(portal)
@@ -1224,49 +1222,57 @@ function App() {
           />
         )
       ) : (
-        <AdminApp
-          products={catalogProducts}
-          orders={ordersList}
-          refunds={refundsList}
-          returns={returnsList}
-          coupons={couponsList}
-          customers={customersList}
-          productsLoading={productsLoading}
-          productsError={productsError}
-          categories={managedCategories}
-          subcategories={managedSubcategories}
-          reviews={reviewsList}
-          marketingSettings={marketingSettings}
-          shippingSettings={shippingSettings}
-          invoiceSettings={invoiceSettings}
-          invoiceSettingsLoading={invoiceSettingsLoading}
-          invoiceSettingsError={invoiceSettingsError}
-          adminSettings={adminSettings}
-          maintenanceEnabled={maintenanceEnabled}
-          maintenanceLoading={maintenanceLoading}
-          maintenanceError={maintenanceError}
-          onAddProduct={handleAddProduct}
-          onUpdateProduct={handleUpdateProduct}
-          onDeleteProduct={handleDeleteProduct}
-          onAdjustStock={handleAdjustStock}
-          onUpdateOrderStatus={handleUpdateOrderStatus}
-          onUpdateReturn={handleUpdateReturn}
-          onAddCoupon={handleAddCoupon}
-          onUpdateCoupon={handleUpdateCoupon}
-          onDeleteCoupon={handleDeleteCoupon}
-          onAddCategory={handleAddCategory}
-          onUpdateCategory={handleUpdateCategory}
-          onDeleteCategory={handleDeleteCategory}
-          onAddSubcategory={handleAddSubcategory}
-          onUpdateSubcategory={handleUpdateSubcategory}
-          onDeleteSubcategory={handleDeleteSubcategory}
-          onUpdateReview={handleUpdateReview}
-          onDeleteReview={handleDeleteReview}
-          onUpdateCustomer={handleUpdateCustomer}
-          onUpdateMarketingSettings={updateMarketingSettings}
-          onUpdateInvoiceSettings={updateInvoiceSettings}
-          onUpdateMaintenance={handleUpdateMaintenance}
-        />
+        <Suspense
+          fallback={
+            <div className="grid min-h-screen place-items-center bg-[#f7f8f5] text-sm font-semibold text-slate-500">
+              Loading admin portal…
+            </div>
+          }
+        >
+          <AdminApp
+            products={catalogProducts}
+            orders={ordersList}
+            refunds={refundsList}
+            returns={returnsList}
+            coupons={couponsList}
+            customers={customersList}
+            productsLoading={productsLoading}
+            productsError={productsError}
+            categories={managedCategories}
+            subcategories={managedSubcategories}
+            reviews={reviewsList}
+            marketingSettings={marketingSettings}
+            shippingSettings={shippingSettings}
+            invoiceSettings={invoiceSettings}
+            invoiceSettingsLoading={invoiceSettingsLoading}
+            invoiceSettingsError={invoiceSettingsError}
+            adminSettings={adminSettings}
+            maintenanceEnabled={maintenanceEnabled}
+            maintenanceLoading={maintenanceLoading}
+            maintenanceError={maintenanceError}
+            onAddProduct={handleAddProduct}
+            onUpdateProduct={handleUpdateProduct}
+            onDeleteProduct={handleDeleteProduct}
+            onAdjustStock={handleAdjustStock}
+            onUpdateOrderStatus={handleUpdateOrderStatus}
+            onUpdateReturn={handleUpdateReturn}
+            onAddCoupon={handleAddCoupon}
+            onUpdateCoupon={handleUpdateCoupon}
+            onDeleteCoupon={handleDeleteCoupon}
+            onAddCategory={handleAddCategory}
+            onUpdateCategory={handleUpdateCategory}
+            onDeleteCategory={handleDeleteCategory}
+            onAddSubcategory={handleAddSubcategory}
+            onUpdateSubcategory={handleUpdateSubcategory}
+            onDeleteSubcategory={handleDeleteSubcategory}
+            onUpdateReview={handleUpdateReview}
+            onDeleteReview={handleDeleteReview}
+            onUpdateCustomer={handleUpdateCustomer}
+            onUpdateMarketingSettings={updateMarketingSettings}
+            onUpdateInvoiceSettings={updateInvoiceSettings}
+            onUpdateMaintenance={handleUpdateMaintenance}
+          />
+        </Suspense>
       )}
     </div>
   )

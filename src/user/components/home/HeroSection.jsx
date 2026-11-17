@@ -44,6 +44,7 @@ export default function HeroSection({
           </div>
           <StorefrontImage
             src={banner.image}
+            sizes="(min-width: 1024px) 52vw, 100vw"
             alt={banner.productName}
             width="680"
             height="560"

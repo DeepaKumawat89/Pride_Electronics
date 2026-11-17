@@ -5,6 +5,7 @@ const protectedRoutes = Object.freeze({
   '/cart': { section: 'cart' },
   '/orders': { section: 'orders' },
   '/checkout': { page: 'checkout' },
+  '/order-success': { page: 'order-success' },
   '/saved-address': { section: 'address' },
   '/saved-cards': { section: 'payment' },
   '/coupons': { section: 'coupons' },

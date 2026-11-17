@@ -104,10 +104,10 @@ const sections = [
     <>
       <p>
         Customers can review the{' '}
-        <a href="/#shipping-and-delivery-policy">Shipping &amp; Delivery Policy</a>,{' '}
-        <a href="/#refund-and-cancellation-policy">Refund &amp; Cancellation Policy</a>,{' '}
-        <a href="/#privacy-policy">Privacy Policy</a>, and{' '}
-        <a href="/#terms-and-conditions">Terms &amp; Conditions</a> for information
+        <a href="/shipping-and-delivery-policy">Shipping &amp; Delivery Policy</a>,{' '}
+        <a href="/refund-and-cancellation-policy">Refund &amp; Cancellation Policy</a>,{' '}
+        <a href="/privacy-policy">Privacy Policy</a>, and{' '}
+        <a href="/terms-and-conditions">Terms &amp; Conditions</a> for information
         relevant to purchases, fulfilment, customer data, and use of the website.
       </p>
     </>,

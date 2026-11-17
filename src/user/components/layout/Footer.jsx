@@ -7,12 +7,12 @@ const columns = [
 ]
 
 const pageLinks = {
-  'About Us': { page: 'about', href: '/#about-us' },
-  'Shipping & delivery': { page: 'shipping', href: '/#shipping-and-delivery-policy' },
-  'Returns & refunds': { page: 'refunds', href: '/#refund-and-cancellation-policy' },
-  'Contact us': { page: 'contact', href: '/#contact-us' },
-  'Privacy Policy': { page: 'privacy', href: '/#privacy-policy' },
-  'Terms & Conditions': { page: 'terms', href: '/#terms-and-conditions' },
+  'About Us': { page: 'about', href: '/about-us' },
+  'Shipping & delivery': { page: 'shipping', href: '/shipping-and-delivery-policy' },
+  'Returns & refunds': { page: 'refunds', href: '/refund-and-cancellation-policy' },
+  'Contact us': { page: 'contact', href: '/contact-us' },
+  'Privacy Policy': { page: 'privacy', href: '/privacy-policy' },
+  'Terms & Conditions': { page: 'terms', href: '/terms-and-conditions' },
 }
 
 const handlePageOpen = (event, link, onPageOpen) => {
@@ -27,7 +27,15 @@ export default function Footer({ onBeSellerClick, onPageOpen }) {
       <div className="mx-auto max-w-[1440px] px-4 py-12 sm:px-6 lg:px-10 lg:py-16">
         <div className="grid gap-12 border-b border-white/10 pb-12 lg:grid-cols-[1.3fr_2fr]">
           <div>
-            <img src={prismCircuitTechLogo} alt="Pride Circuit" className="block h-auto w-56 mix-blend-screen sm:w-64" />
+            <img
+              src={prismCircuitTechLogo}
+              alt="Pride Circuit"
+              width="2170"
+              height="725"
+              loading="lazy"
+              decoding="async"
+              className="block h-auto w-56 mix-blend-screen sm:w-64"
+            />
             <p className="mt-5 max-w-sm text-sm leading-7 text-white/50">
               Better electronics, thoughtfully chosen. Built for curious minds,
               creators, and everyday life.

@@ -1,32 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, X } from 'lucide-react'
 import Header from './components/layout/Header'
 import Footer from './components/layout/Footer'
 import HeroSection from './components/home/HeroSection'
 import CategoryStrip from './components/home/CategoryStrip'
-import AllCategoriesPage from './components/categories/AllCategoriesPage'
 import HomeScrollReveal from './components/home/HomeScrollReveal'
 import HomepageProductSections from './components/home/HomepageProductSections'
-import ProductDetailsPage from './components/products/ProductDetailsPage'
 import ProductSeo from './components/seo/ProductSeo'
 import HomeSeo from './components/seo/HomeSeo'
 import CatalogSeo from './components/seo/CatalogSeo'
 import CategoriesSeo from './components/seo/CategoriesSeo'
-import ProductReviewsPage from './components/products/ProductReviewsPage'
-import ProductsPage from './components/products/ProductsPage'
-import AboutUs from './components/pages/AboutUs'
-import ContactUs from './components/pages/ContactUs'
-import PrivacyPolicy from './components/pages/PrivacyPolicy'
-import RefundAndCancellationPolicy from './components/pages/RefundAndCancellationPolicy'
-import ShippingAndDeliveryPolicy from './components/pages/ShippingAndDeliveryPolicy'
-import TermsAndConditions from './components/pages/TermsAndConditions'
-import AuthModal from './components/auth/AuthModal'
-import PasswordResetModal from './components/auth/PasswordResetModal'
-import CheckoutPage from './components/checkout/CheckoutPage'
-import OrderSuccessPage from './components/checkout/OrderSuccessPage'
-import AccountPanel, {
-  LogoutConfirmation,
-} from './components/profile/AccountPanel'
 import { useCart } from './hooks/useCart'
 import { formatCurrency, hasValidPrice } from './utils/currency'
 import {
@@ -80,21 +63,79 @@ import { getProductMinimumOrderQuantity } from '../utils/productMoq'
 import { getProductPath, slugify } from '../utils/slugify'
 import { getProductBySlugOrId } from '../firebase/products'
 
-const PRODUCT_HASH_PREFIX = '#product-'
-const PRODUCTS_HASH_PREFIX = '#products'
-const REVIEWS_HASH_SUFFIX = '-reviews'
-const CHECKOUT_HASH = '#checkout'
-const ORDER_SUCCESS_HASH = '#order-success'
+const AllCategoriesPage = lazy(() => import('./components/categories/AllCategoriesPage'))
+const ProductDetailsPage = lazy(() => import('./components/products/ProductDetailsPage'))
+const ProductReviewsPage = lazy(() => import('./components/products/ProductReviewsPage'))
+const ProductsPage = lazy(() => import('./components/products/ProductsPage'))
+const AboutUs = lazy(() => import('./components/pages/AboutUs'))
+const ContactUs = lazy(() => import('./components/pages/ContactUs'))
+const PrivacyPolicy = lazy(() => import('./components/pages/PrivacyPolicy'))
+const RefundAndCancellationPolicy = lazy(() => import('./components/pages/RefundAndCancellationPolicy'))
+const ShippingAndDeliveryPolicy = lazy(() => import('./components/pages/ShippingAndDeliveryPolicy'))
+const TermsAndConditions = lazy(() => import('./components/pages/TermsAndConditions'))
+const AuthModal = lazy(() => import('./components/auth/AuthModal'))
+const PasswordResetModal = lazy(() => import('./components/auth/PasswordResetModal'))
+const CheckoutPage = lazy(() => import('./components/checkout/CheckoutPage'))
+const OrderSuccessPage = lazy(() => import('./components/checkout/OrderSuccessPage'))
+const AccountPanel = lazy(() => import('./components/profile/AccountPanel'))
+const LogoutConfirmation = lazy(() =>
+  import('./components/profile/AccountPanel').then((module) => ({
+    default: module.LogoutConfirmation,
+  })),
+)
+
+let cashfreeScriptPromise
+const loadCashfreeScript = () => {
+  if (typeof window === 'undefined') {
+    return Promise.reject(new Error('Cashfree requires a browser.'))
+  }
+  if (typeof window.Cashfree === 'function') return Promise.resolve(window.Cashfree)
+  if (cashfreeScriptPromise) return cashfreeScriptPromise
+
+  cashfreeScriptPromise = new Promise((resolve, reject) => {
+    const existingScript = document.querySelector('script[data-cashfree-sdk]')
+    const script = existingScript || document.createElement('script')
+    const handleLoad = () => {
+      if (typeof window.Cashfree === 'function') resolve(window.Cashfree)
+      else reject(new Error('Cashfree checkout could not be loaded.'))
+    }
+    script.addEventListener('load', handleLoad, { once: true })
+    script.addEventListener(
+      'error',
+      () => reject(new Error('Cashfree checkout could not be loaded.')),
+      { once: true },
+    )
+    if (!existingScript) {
+      script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js'
+      script.async = true
+      script.dataset.cashfreeSdk = 'true'
+      document.head.appendChild(script)
+    }
+  })
+  return cashfreeScriptPromise
+}
+
+const LEGACY_PRODUCT_HASH_PREFIX = '#product-'
+const LEGACY_PRODUCTS_HASH_PREFIX = '#products'
+const LEGACY_PRODUCT_REVIEWS_SUFFIX = '-reviews'
 const ORDER_SUCCESS_SESSION_KEY = 'pride_last_successful_order'
 const INTENDED_ROUTE_SESSION_KEY = 'pride_intended_protected_route'
 const CHECKOUT_SELECTION_SESSION_KEY = 'pride_checkout_selection'
-const CONTENT_PAGE_HASHES = {
-  about: '#about-us',
-  privacy: '#privacy-policy',
-  terms: '#terms-and-conditions',
-  refunds: '#refund-and-cancellation-policy',
-  shipping: '#shipping-and-delivery-policy',
-  contact: '#contact-us',
+const CONTENT_PAGE_PATHS = {
+  about: '/about-us',
+  privacy: '/privacy-policy',
+  terms: '/terms-and-conditions',
+  refunds: '/refund-and-cancellation-policy',
+  shipping: '/shipping-and-delivery-policy',
+  contact: '/contact-us',
+}
+const LEGACY_CONTENT_PAGE_HASHES = {
+  '#about-us': 'about',
+  '#contact-us': 'contact',
+  '#privacy-policy': 'privacy',
+  '#terms-and-conditions': 'terms',
+  '#refund-and-cancellation-policy': 'refunds',
+  '#shipping-and-delivery-policy': 'shipping',
 }
 const CONTENT_PAGE_COMPONENTS = {
   about: AboutUs,
@@ -104,31 +145,72 @@ const CONTENT_PAGE_COMPONENTS = {
   shipping: ShippingAndDeliveryPolicy,
   contact: ContactUs,
 }
-
-function getContentPageFromHash(hash) {
-  return Object.keys(CONTENT_PAGE_HASHES).find(
-    (page) => CONTENT_PAGE_HASHES[page] === hash,
-  )
+const CONTENT_PAGE_SEO = {
+  about: ['About Pride Circuit | Pride Circuit', 'Learn about Pride Circuit and our selection of electronics and automation products.'],
+  contact: ['Contact Pride Circuit | Pride Circuit', 'Contact Pride Circuit for help with electronics, orders, delivery, and support.'],
+  privacy: ['Privacy Policy | Pride Circuit', 'Read the Pride Circuit privacy policy and learn how customer information is handled.'],
+  terms: ['Terms & Conditions | Pride Circuit', 'Review the terms and conditions that apply to Pride Circuit website purchases and services.'],
+  refunds: ['Refund & Cancellation Policy | Pride Circuit', 'Review Pride Circuit order cancellation, return, and refund terms.'],
+  shipping: ['Shipping & Delivery Policy | Pride Circuit', 'Review delivery methods, timelines, charges, and support information for Pride Circuit orders.'],
 }
 
-function createProductsHash(category = 'All', query = '') {
+function getContentPageFromPath(pathname) {
+  return Object.keys(CONTENT_PAGE_PATHS).find((page) => CONTENT_PAGE_PATHS[page] === pathname)
+}
+
+function createProductsPath(category = 'All', query = '') {
   const params = new URLSearchParams()
   if (category && category !== 'All') params.set('category', category)
   if (query.trim()) params.set('query', query.trim())
   const search = params.toString()
-  return `${PRODUCTS_HASH_PREFIX}${search ? `?${search}` : ''}`
+  return `/products${search ? `?${search}` : ''}`
 }
 
-function parseProductsHash(hash) {
-  if (hash !== PRODUCTS_HASH_PREFIX && !hash.startsWith(`${PRODUCTS_HASH_PREFIX}?`)) {
+function parseLegacyProductsHash(hash) {
+  if (hash !== LEGACY_PRODUCTS_HASH_PREFIX && !hash.startsWith(`${LEGACY_PRODUCTS_HASH_PREFIX}?`)) {
     return null
   }
-  const queryString = hash.slice(PRODUCTS_HASH_PREFIX.length + 1)
+  const queryString = hash.slice(LEGACY_PRODUCTS_HASH_PREFIX.length + 1)
   const params = new URLSearchParams(queryString)
   return {
     category: params.get('category') || 'All',
     query: params.get('query') || '',
   }
+}
+
+// Keep a single entry point for previously shared hash URLs. New navigation uses paths.
+function replaceLegacyHashRoute(products) {
+  const hash = window.location.hash
+  const legacyProducts = parseLegacyProductsHash(hash)
+  if (legacyProducts) {
+    window.history.replaceState({ prideProducts: true }, '', createProductsPath(legacyProducts.category, legacyProducts.query))
+    return true
+  }
+  const legacyContentPage = LEGACY_CONTENT_PAGE_HASHES[hash]
+  if (legacyContentPage) {
+    window.history.replaceState({ prideContentPage: legacyContentPage }, '', CONTENT_PAGE_PATHS[legacyContentPage])
+    return true
+  }
+  if (hash === '#checkout' || hash === '#account-cart' || hash === '#order-success') {
+    const path = hash === '#checkout' ? CHECKOUT_PATH : hash === '#account-cart' ? '/cart' : '/order-success'
+    window.history.replaceState({ prideProtectedRedirect: path }, '', path)
+    return true
+  }
+  if (hash === '#reviews' && window.location.pathname.startsWith('/product/')) {
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}/reviews`)
+    return true
+  }
+  if (hash.startsWith(LEGACY_PRODUCT_HASH_PREFIX)) {
+    const legacyProduct = hash.slice(LEGACY_PRODUCT_HASH_PREFIX.length)
+    const isReviewsPage = legacyProduct.endsWith(LEGACY_PRODUCT_REVIEWS_SUFFIX)
+    const identifier = decodeURIComponent(isReviewsPage ? legacyProduct.slice(0, -LEGACY_PRODUCT_REVIEWS_SUFFIX.length) : legacyProduct)
+    const product = products.find((item) => String(item.id) === identifier || String(item.slug || '') === identifier)
+    if (product) {
+      window.history.replaceState({ prideProduct: product.id }, '', `${getProductPath(product)}${isReviewsPage ? '/reviews' : ''}`)
+      return true
+    }
+  }
+  return false
 }
 
 const publicSlug = slugify
@@ -137,13 +219,24 @@ function parsePublicPath(pathname) {
   const path = String(pathname || '').replace(/\/+$/, '') || '/'
   if (path === '/categories') return { type: 'categories' }
   if (path === '/products') return { type: 'products', categorySlug: '' }
+  const contentPage = getContentPageFromPath(path)
+  if (contentPage) return { type: 'content', contentPage }
   if (path.startsWith('/category/')) {
+    const segments = path.slice('/category/'.length).split('/').map(decodeURIComponent)
     return {
       type: 'category',
-      categorySlug: decodeURIComponent(path.slice('/category/'.length)),
+      categorySlug: segments[0],
+      subcategorySlug: segments[1] || '',
     }
   }
   if (path.startsWith('/product/')) {
+    if (path.endsWith('/reviews')) {
+      const productPath = path.slice(0, -'/reviews'.length)
+      const productId = productPath.startsWith('/product/id/')
+        ? productPath.slice('/product/id/'.length)
+        : productPath.slice('/product/'.length)
+      return { type: 'product', productId: decodeURIComponent(productId), reviews: true }
+    }
     if (path.startsWith('/product/id/')) {
       return {
         type: 'product',
@@ -191,13 +284,19 @@ export default function UserApp({
   const cartPersistenceRef = useRef(cartPersistence)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('All')
-  const [sortBy, setSortBy] = useState('popular')
+  const [subcategory, setSubcategory] = useState('')
+  const [sortBy, setSortBy] = useState('newest')
   const [productsOpen, setProductsOpen] = useState(false)
   const [categoriesOpen, setCategoriesOpen] = useState(false)
   const [contentPage, setContentPage] = useState(null)
   const [likedIds, setLikedIds] = useState([])
   const likedIdsRef = useRef(likedIds)
   const [selectedProduct, setSelectedProduct] = useState(null)
+  const [productRouteStatus, setProductRouteStatus] = useState(() =>
+    parsePublicPath(window.location.pathname)?.type === 'product'
+      ? 'pending'
+      : '',
+  )
   const [reviewsOpen, setReviewsOpen] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
   const [authInitialMode, setAuthInitialMode] = useState('login')
@@ -236,17 +335,48 @@ export default function UserApp({
   const pendingAccountSnapshot = useRef('')
   const accountSaveQueue = useRef(Promise.resolve())
   const accountSaveRevision = useRef(0)
-  const cartReturnSection = useRef(null)
-  const cartHistoryActive = useRef(false)
   const productReturnSection = useRef(null)
   const productHistoryActive = useRef(false)
   const productsHistoryActive = useRef(false)
   const productsReturnCatalog = useRef(null)
-  const contentPageHistoryActive = useRef(false)
   const checkoutHistoryActive = useRef(false)
   const orderSuccessHistoryActive = useRef(false)
   const activeUserUid = useRef(null)
   const historyRouteSynced = useRef(false)
+
+  useEffect(() => {
+    if (!contentPage) return
+    const [title, description] = CONTENT_PAGE_SEO[contentPage] || []
+    if (!title || !description) return
+    document.title = title
+    const setMeta = (selector, attribute, key, value) => {
+      let element = document.head.querySelector(selector)
+      if (!element) {
+        element = document.createElement('meta')
+        element.setAttribute(attribute, key)
+        document.head.appendChild(element)
+      }
+      element.setAttribute('content', value)
+    }
+    const canonicalUrl = `https://pridecircuit.in${CONTENT_PAGE_PATHS[contentPage]}`
+    setMeta('meta[name="description"]', 'name', 'description', description)
+    setMeta('meta[property="og:title"]', 'property', 'og:title', title)
+    setMeta('meta[property="og:description"]', 'property', 'og:description', description)
+    setMeta('meta[property="og:url"]', 'property', 'og:url', canonicalUrl)
+    setMeta('meta[property="og:type"]', 'property', 'og:type', 'website')
+    setMeta('meta[property="og:site_name"]', 'property', 'og:site_name', 'Pride Circuit')
+    setMeta('meta[name="twitter:card"]', 'name', 'twitter:card', 'summary')
+    setMeta('meta[name="twitter:title"]', 'name', 'twitter:title', title)
+    setMeta('meta[name="twitter:description"]', 'name', 'twitter:description', description)
+    setMeta('meta[name="twitter:url"]', 'name', 'twitter:url', canonicalUrl)
+    let canonical = document.head.querySelector('link[rel="canonical"]')
+    if (!canonical) {
+      canonical = document.createElement('link')
+      canonical.rel = 'canonical'
+      document.head.appendChild(canonical)
+    }
+    canonical.href = canonicalUrl
+  }, [contentPage])
 
   useEffect(() => {
     if (!successfulOrder?.id) return
@@ -328,12 +458,16 @@ export default function UserApp({
   }, [cartPersistence, likedIds, savedAddresses, savedPayments])
 
   useEffect(() => {
+    let active = true
     const handleHistoryBack = async (event) => {
+      replaceLegacyHashRoute(products)
       const shouldResetScroll =
         event?.type === 'popstate' || !historyRouteSynced.current
       historyRouteSynced.current = true
       const resetScroll = () => {
-        if (shouldResetScroll) window.scrollTo({ top: 0, behavior: 'auto' })
+        if (shouldResetScroll && !window.location.hash) {
+          window.scrollTo({ top: 0, behavior: 'auto' })
+        }
       }
       const protectedRoute = getProtectedRoute(window.location.pathname)
       if (protectedRoute && authStatus === 'loading') return
@@ -345,7 +479,6 @@ export default function UserApp({
           '/',
         )
         checkoutHistoryActive.current = false
-        cartHistoryActive.current = false
         setCheckoutOpen(false)
         setSuccessfulOrder(null)
         setAccountSection(null)
@@ -354,18 +487,26 @@ export default function UserApp({
         return
       }
       if (protectedRoute && authStatus === 'authenticated') {
+        orderSuccessHistoryActive.current = false
+        checkoutHistoryActive.current = false
         setSuccessfulOrder(null)
         setSelectedProduct(null)
         setReviewsOpen(false)
         setProductsOpen(false)
         setCategoriesOpen(false)
         setContentPage(null)
-        if (protectedRoute.page === 'checkout') {
+        if (protectedRoute.page === 'order-success') {
+          const savedOrder = getSessionItems(ORDER_SUCCESS_SESSION_KEY, null)
+          orderSuccessHistoryActive.current = Boolean(savedOrder)
+          checkoutHistoryActive.current = false
+          setSuccessfulOrder(savedOrder)
+          setCheckoutOpen(false)
+          setAccountSection(savedOrder ? null : 'orders')
+        } else if (protectedRoute.page === 'checkout') {
           checkoutHistoryActive.current = true
           setCheckoutOpen(true)
           setAccountSection(null)
         } else {
-          checkoutHistoryActive.current = false
           setCheckoutOpen(false)
           setOrderToViewId(null)
           setAccountSection(protectedRoute.section)
@@ -373,7 +514,30 @@ export default function UserApp({
         resetScroll()
         return
       }
+      if (orderSuccessHistoryActive.current && window.location.pathname !== '/order-success') {
+        setSuccessfulOrder(null)
+        orderSuccessHistoryActive.current = false
+      }
+      if (checkoutHistoryActive.current && window.location.pathname !== CHECKOUT_PATH) {
+        setCheckoutOpen(false)
+        checkoutHistoryActive.current = false
+      }
       const publicPath = parsePublicPath(window.location.pathname)
+      if (publicPath?.type === 'content') {
+        setContentPage(publicPath.contentPage)
+        setProductsOpen(false)
+        setCategoriesOpen(false)
+        setSelectedProduct(null)
+        setReviewsOpen(false)
+        setCheckoutOpen(false)
+        setSuccessfulOrder(null)
+        setAccountSection(null)
+        resetScroll()
+        return
+      }
+      if (publicPath?.type !== 'product') {
+        setProductRouteStatus('')
+      }
       if (publicPath?.type === 'categories') {
         setCategoriesOpen(true)
         setSuccessfulOrder(null)
@@ -388,22 +552,29 @@ export default function UserApp({
       }
       setCategoriesOpen(false)
       if (publicPath?.type === 'product') {
-        const pathProduct = products.find(
-          (product) => String(product.id) === publicPath.productId,
-        ) || products.find(
+        const pathProductBySlug = products.find(
           (product) => String(product.slug || '') === publicPath.productId,
         )
-        let resolvedProduct = pathProduct
+        const pathProductById = !pathProductBySlug
+          ? products.find((product) => String(product.id) === publicPath.productId)
+          : null
+        let resolvedProduct = pathProductBySlug || pathProductById
         if (!resolvedProduct) {
-          if (productsLoading) return
+          if (productsLoading) {
+            setProductRouteStatus('pending')
+            return
+          }
+          setProductRouteStatus('pending')
           try {
             resolvedProduct = await getProductBySlugOrId(publicPath.productId)
           } catch {
+            if (active) setProductRouteStatus('error')
             return
           }
+          if (!active) return
         }
         if (!resolvedProduct) {
-          window.history.replaceState(null, '', '/')
+          setProductRouteStatus('not-found')
           productHistoryActive.current = false
           setSelectedProduct(null)
           setReviewsOpen(false)
@@ -413,9 +584,23 @@ export default function UserApp({
           resetScroll()
           return
         }
+        const legacyIdRoute = Boolean(
+          resolvedProduct.slug &&
+            (window.location.pathname.startsWith('/product/id/') ||
+              String(resolvedProduct.id) === publicPath.productId),
+        )
+        if (window.location.pathname.startsWith('/product/id/') ||
+          (legacyIdRoute && resolvedProduct.slug !== publicPath.productId)) {
+          window.history.replaceState(
+            { prideProduct: resolvedProduct.id },
+            '',
+            getProductPath(resolvedProduct),
+          )
+        }
+        setProductRouteStatus('ready')
         productHistoryActive.current = true
         setSelectedProduct(resolvedProduct)
-        setReviewsOpen(window.location.hash === '#reviews')
+        setReviewsOpen(Boolean(publicPath.reviews))
         setProductsOpen(false)
         setContentPage(null)
         setAccountSection(null)
@@ -423,6 +608,7 @@ export default function UserApp({
         return
       }
       if (publicPath?.type === 'products' || publicPath?.type === 'category') {
+        const routeParams = new URLSearchParams(window.location.search)
         const pathCategory =
           publicPath.type === 'category'
             ? categories.find(
@@ -432,6 +618,12 @@ export default function UserApp({
                 (product) => publicSlug(product.category) === publicPath.categorySlug,
               )
             : null
+        const pathSubcategory = publicPath.type === 'category' && publicPath.subcategorySlug
+          ? subcategories.find((item) => publicSlug(item.name) === publicPath.subcategorySlug && categories.find((entry) => String(entry.id) === String(item.categoryId) && publicSlug(entry.name) === publicPath.categorySlug))
+          : null
+        const requestedCategory = publicPath.type === 'category'
+          ? pathCategory?.name
+          : routeParams.get('category') || ''
         productsHistoryActive.current = true
         productHistoryActive.current = false
         productReturnSection.current = null
@@ -439,134 +631,11 @@ export default function UserApp({
         setSelectedProduct(null)
         setReviewsOpen(false)
         setAccountSection(null)
-        setCategory(pathCategory?.name || 'All')
-        setQuery('')
+        setCategory(requestedCategory || 'All')
+        setSubcategory(pathSubcategory?.name || '')
+        setQuery(routeParams.get('query') || '')
         resetScroll()
         return
-      }
-      const protectedHash = [
-        CHECKOUT_HASH,
-        ORDER_SUCCESS_HASH,
-        '#account-cart',
-      ].includes(window.location.hash)
-      if (protectedHash && authStatus === 'loading') return
-      if (protectedHash && authStatus === 'unauthenticated') {
-        const intendedPath =
-          window.location.hash === CHECKOUT_HASH
-            ? CHECKOUT_PATH
-            : window.location.hash === ORDER_SUCCESS_HASH
-              ? '/orders'
-              : '/cart'
-        rememberIntendedRoute(intendedPath)
-        window.history.replaceState(
-          { prideProtectedRedirect: intendedPath },
-          '',
-          '/',
-        )
-        checkoutHistoryActive.current = false
-        orderSuccessHistoryActive.current = false
-        cartHistoryActive.current = false
-        setCheckoutOpen(false)
-        setSuccessfulOrder(null)
-        setAccountSection(null)
-        setAuthOpen(true)
-        return
-      }
-      if (window.location.hash === ORDER_SUCCESS_HASH) {
-        const savedOrder = getSessionItems(ORDER_SUCCESS_SESSION_KEY, null)
-        if (savedOrder) {
-          orderSuccessHistoryActive.current = true
-          setSuccessfulOrder(savedOrder)
-          setOrders((current) =>
-            current.some((order) => order.id === savedOrder.id)
-              ? current
-              : [savedOrder, ...current],
-          )
-          setCheckoutOpen(false)
-          setAccountSection(null)
-          resetScroll()
-          return
-        }
-      }
-      if (orderSuccessHistoryActive.current) {
-        setSuccessfulOrder(null)
-        orderSuccessHistoryActive.current = false
-      }
-      if (window.location.hash === CHECKOUT_HASH) {
-        checkoutHistoryActive.current = true
-        setCheckoutOpen(true)
-        setAccountSection(null)
-        resetScroll()
-        return
-      }
-      if (checkoutHistoryActive.current) {
-        setCheckoutOpen(false)
-        checkoutHistoryActive.current = false
-      }
-      const nextContentPage = getContentPageFromHash(window.location.hash)
-      if (nextContentPage) {
-        contentPageHistoryActive.current = true
-        productHistoryActive.current = false
-        productReturnSection.current = null
-        setContentPage(nextContentPage)
-        setProductsOpen(false)
-        setSelectedProduct(null)
-        setReviewsOpen(false)
-        setAccountSection(null)
-        resetScroll()
-        return
-      }
-      if (contentPageHistoryActive.current) {
-        setContentPage(null)
-        contentPageHistoryActive.current = false
-      }
-      const productsRoute = parseProductsHash(window.location.hash)
-      if (productsRoute) {
-        const availableCategoryNames = categories
-          .filter((item) => item.enabled !== false)
-          .map((item) => item.name)
-        productsHistoryActive.current = true
-        productHistoryActive.current = false
-        productReturnSection.current = null
-        setProductsOpen(true)
-        setCategory(
-          availableCategoryNames.includes(productsRoute.category)
-            ? productsRoute.category
-            : 'All',
-        )
-        setQuery(productsRoute.query)
-        setSelectedProduct(null)
-        setReviewsOpen(false)
-        setAccountSection(null)
-        resetScroll()
-        return
-      }
-      if (window.location.hash.startsWith(PRODUCT_HASH_PREFIX)) {
-        const productPath = window.location.hash.slice(
-          PRODUCT_HASH_PREFIX.length,
-        )
-        const isReviewsPage = productPath.endsWith(REVIEWS_HASH_SUFFIX)
-        const productId = decodeURIComponent(
-          isReviewsPage
-            ? productPath.slice(0, -REVIEWS_HASH_SUFFIX.length)
-            : productPath,
-        )
-        const historyProduct = products.find(
-          (product) => String(product.id) === productId,
-        )
-        if (historyProduct) {
-          productHistoryActive.current = true
-          window.history.replaceState(
-            { prideProduct: historyProduct.id },
-            '',
-            `${getProductPath(historyProduct)}${isReviewsPage ? '#reviews' : ''}`,
-          )
-          setSelectedProduct(historyProduct)
-          setReviewsOpen(isReviewsPage)
-          setAccountSection(null)
-          resetScroll()
-          return
-        }
       }
       if (productHistoryActive.current) {
         setSelectedProduct(null)
@@ -584,23 +653,17 @@ export default function UserApp({
           productsReturnCatalog.current = null
         }
       }
-      if (window.location.hash === '#account-cart') {
-        cartHistoryActive.current = true
-        setAccountSection('cart')
-        return
-      }
-      if (
-        cartHistoryActive.current &&
-        window.location.hash !== '#account-cart'
-      ) {
-        setAccountSection(cartReturnSection.current)
-        cartReturnSection.current = null
-        cartHistoryActive.current = false
+      if (window.location.pathname === '/') {
+        setAccountSection(null)
+        setContentPage(null)
       }
     }
     handleHistoryBack()
     window.addEventListener('popstate', handleHistoryBack)
-    return () => window.removeEventListener('popstate', handleHistoryBack)
+    return () => {
+      active = false
+      window.removeEventListener('popstate', handleHistoryBack)
+    }
   }, [authStatus, categories, products, productsLoading])
 
   const notify = (message) => {
@@ -803,10 +866,11 @@ export default function UserApp({
   const filteredProducts = useMemo(() => {
     const matchingProducts = products
       .filter((product) => category === 'All' || product.category === category)
+      .filter((product) => !subcategory || product.subcategory === subcategory)
       .filter((product) => matchesProductQuery(product, query))
 
     return sortCatalogProducts(matchingProducts, sortBy)
-  }, [products, query, category, sortBy])
+  }, [products, query, category, subcategory, sortBy])
 
   const suggestedProducts = useMemo(() => {
     const normalizedQuery = normalizeSearchQuery(query)
@@ -831,7 +895,6 @@ export default function UserApp({
   const resetToStorefront = () => {
     if (
       window.location.pathname !== '/' ||
-      window.location.hash ||
       getProtectedRoute(window.location.pathname)
     ) {
       window.history.replaceState(
@@ -846,9 +909,6 @@ export default function UserApp({
     productReturnSection.current = null
     productsHistoryActive.current = false
     productsReturnCatalog.current = null
-    contentPageHistoryActive.current = false
-    cartHistoryActive.current = false
-    cartReturnSection.current = null
     setOrderToViewId(null)
     setSuccessfulOrder(null)
     setCheckoutOpen(false)
@@ -868,16 +928,15 @@ export default function UserApp({
   }
 
   const navigateToContentPage = (page) => {
-    const pageHash = CONTENT_PAGE_HASHES[page]
-    if (!pageHash) return
-    if (window.location.hash !== pageHash) {
+    const pagePath = CONTENT_PAGE_PATHS[page]
+    if (!pagePath) return
+    if (window.location.pathname !== pagePath) {
       window.history.pushState(
         { prideContentPage: page, prideContentPageReturn: true },
         '',
-        `/${pageHash}`,
+        pagePath,
       )
     }
-    contentPageHistoryActive.current = true
     setSuccessfulOrder(null)
     setCheckoutOpen(false)
     setSelectedProduct(null)
@@ -891,7 +950,7 @@ export default function UserApp({
 
   const closeContentPage = () => {
     if (
-      getContentPageFromHash(window.location.hash) &&
+      getContentPageFromPath(window.location.pathname) &&
       window.history.state?.prideContentPageReturn
     ) {
       window.history.back()
@@ -901,11 +960,11 @@ export default function UserApp({
   }
 
   const navigateToProducts = (nextCategory = 'All', nextQuery = '') => {
-    const productsHash = createProductsHash(nextCategory, nextQuery)
+    const productsHash = createProductsPath(nextCategory, nextQuery)
     if (!productsOpen) {
       productsReturnCatalog.current = { query, category }
     }
-    if (window.location.hash !== productsHash) {
+    if (`${window.location.pathname}${window.location.search}` !== productsHash) {
       window.history.pushState(
         {
           prideProducts: true,
@@ -913,7 +972,7 @@ export default function UserApp({
           category: nextCategory,
         },
         '',
-        `/${productsHash}`,
+        productsHash,
       )
     }
     productsHistoryActive.current = true
@@ -955,12 +1014,13 @@ export default function UserApp({
     setAccountSection(null)
     setQuery('')
     setCategory(nextCategory)
+    setSubcategory('')
     setProductsOpen(true)
     window.scrollTo({ top: 0, behavior: 'auto' })
   }
 
   const navigateToCategories = () => {
-    if (window.location.pathname !== '/categories' || window.location.hash) {
+    if (window.location.pathname !== '/categories') {
       window.history.pushState(
         { prideCategories: true, prideCategoriesReturn: true },
         '',
@@ -989,7 +1049,7 @@ export default function UserApp({
   const closeProducts = () => {
     const currentPublicPath = parsePublicPath(window.location.pathname)
     if (
-      (parseProductsHash(window.location.hash) ||
+      (window.location.pathname === '/products' ||
         currentPublicPath?.type === 'products' ||
         currentPublicPath?.type === 'category') &&
       window.history.state?.prideProductsReturn
@@ -1011,7 +1071,8 @@ export default function UserApp({
 
   const handleProductsCategory = (nextCategory) => {
     setCategory(nextCategory)
-    const productsHash = createProductsHash(nextCategory, query)
+    setSubcategory('')
+    const productsHash = createProductsPath(nextCategory, query)
     window.history.replaceState(
       {
         ...window.history.state,
@@ -1019,7 +1080,7 @@ export default function UserApp({
         category: nextCategory,
       },
       '',
-      `/${productsHash}`,
+      productsHash,
     )
     requestAnimationFrame(() =>
       document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' }),
@@ -1031,7 +1092,7 @@ export default function UserApp({
     window.history.replaceState(
       { ...window.history.state, prideProducts: true, category },
       '',
-      `/${createProductsHash(category, nextQuery)}`,
+      createProductsPath(category, nextQuery),
     )
     requestAnimationFrame(() =>
       document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' }),
@@ -1039,7 +1100,7 @@ export default function UserApp({
   }
 
   const handleSearchSubmit = (nextQuery) => {
-    if (parseProductsHash(window.location.hash)) {
+    if (window.location.pathname === '/products') {
       setCategory('All')
       setQuery(nextQuery)
       window.history.replaceState(
@@ -1049,7 +1110,7 @@ export default function UserApp({
           category: 'All',
         },
         '',
-        `/${createProductsHash('All', nextQuery)}`,
+        createProductsPath('All', nextQuery),
       )
       requestAnimationFrame(() =>
         document
@@ -1137,7 +1198,7 @@ export default function UserApp({
       productReturnSection.current = accountSection
     productHistoryActive.current = true
     const productPath = getProductPath(product)
-    if (window.location.pathname !== productPath || window.location.hash)
+    if (window.location.pathname !== productPath)
       window.history.pushState({ prideProduct: product.id }, '', productPath)
     setSelectedProduct(product)
     setReviewsOpen(false)
@@ -1148,8 +1209,7 @@ export default function UserApp({
 
   const closeProductDetails = () => {
     if (
-      window.location.pathname.startsWith('/product/') ||
-      window.location.hash.startsWith(PRODUCT_HASH_PREFIX)
+      window.location.pathname.startsWith('/product/')
     ) {
       if (!window.history.state?.prideProduct && window.location.pathname.startsWith('/product/')) {
         navigateHome()
@@ -1164,8 +1224,8 @@ export default function UserApp({
   const navigateToReviews = () => {
     if (!liveSelectedProduct) return
     const productPath = getProductPath(liveSelectedProduct)
-    const reviewsPath = `${productPath}#reviews`
-    if (window.location.pathname !== productPath || window.location.hash !== '#reviews')
+    const reviewsPath = `${productPath}/reviews`
+    if (window.location.pathname !== reviewsPath)
       window.history.pushState(
         { prideProductReviews: liveSelectedProduct.id },
         '',
@@ -1177,10 +1237,18 @@ export default function UserApp({
 
   const closeReviews = () => {
     if (
-      window.location.hash === '#reviews' ||
-      window.location.hash.endsWith(REVIEWS_HASH_SUFFIX)
+      window.location.pathname.endsWith('/reviews')
     ) {
-      window.history.back()
+      if (window.history.state?.prideProductReviews) {
+        window.history.back()
+      } else if (liveSelectedProduct) {
+        window.history.replaceState(
+          { prideProduct: liveSelectedProduct.id },
+          '',
+          getProductPath(liveSelectedProduct),
+        )
+        setReviewsOpen(false)
+      }
       return
     }
     setReviewsOpen(false)
@@ -1207,7 +1275,7 @@ export default function UserApp({
 
     sessionStorage.removeItem(INTENDED_ROUTE_SESSION_KEY)
     const historyMethod = replace ? 'replaceState' : 'pushState'
-    if (window.location.pathname !== route.path || window.location.hash) {
+    if (window.location.pathname !== route.path) {
       window.history[historyMethod](
         { prideProtectedRoute: route.path, prideProtectedReturn: !replace },
         '',
@@ -1220,7 +1288,13 @@ export default function UserApp({
     setProductsOpen(false)
     setCategoriesOpen(false)
     setContentPage(null)
-    if (route.page === 'checkout') {
+    if (route.page === 'order-success') {
+      const savedOrder = getSessionItems(ORDER_SUCCESS_SESSION_KEY, null)
+      orderSuccessHistoryActive.current = Boolean(savedOrder)
+      setSuccessfulOrder(savedOrder)
+      setCheckoutOpen(false)
+      setAccountSection(savedOrder ? null : 'orders')
+    } else if (route.page === 'checkout') {
       checkoutHistoryActive.current = true
       setCheckoutOpen(true)
       setAccountSection(null)
@@ -1258,7 +1332,7 @@ export default function UserApp({
   }
 
   const closeOrderSuccess = () => {
-    if (window.location.hash === ORDER_SUCCESS_HASH) {
+    if (window.location.pathname === '/order-success') {
       window.history.back()
       return
     }
@@ -1271,8 +1345,6 @@ export default function UserApp({
     checkoutHistoryActive.current = false
     productHistoryActive.current = false
     productReturnSection.current = null
-    cartHistoryActive.current = false
-    cartReturnSection.current = null
     setOrderToViewId(successfulOrder?.id || null)
     setSuccessfulOrder(null)
     setSelectedProduct(null)
@@ -1350,8 +1422,6 @@ export default function UserApp({
     }
     if (pendingCart) {
       setPendingCart(false)
-      cartReturnSection.current = null
-      cartHistoryActive.current = true
       navigateToProtectedPath('/cart', { authenticated: true })
     }
     if (pendingWishlistRequest) {
@@ -1500,16 +1570,13 @@ export default function UserApp({
 
   const handleLogout = async () => {
     if (
-      getProtectedRoute(window.location.pathname) ||
-      window.location.hash === '#account-cart'
+      getProtectedRoute(window.location.pathname)
     ) {
       window.history.replaceState(
         null,
         '',
         '/',
       )
-      cartReturnSection.current = null
-      cartHistoryActive.current = false
     }
     try {
       clearTimeout(accountSaveTimer.current)
@@ -1520,13 +1587,6 @@ export default function UserApp({
         ])
       }
       await signOutUser()
-      if ([CHECKOUT_HASH, ORDER_SUCCESS_HASH].includes(window.location.hash)) {
-        window.history.replaceState(
-          null,
-          '',
-          `${window.location.pathname}${window.location.search}`,
-        )
-      }
       clearAuthenticatedState()
       setAuthStatus('unauthenticated')
       notify('You have been logged out successfully')
@@ -1613,9 +1673,9 @@ export default function UserApp({
   }
 
   const handleOpenPolicy = (policyKey) => {
-    const hash = CONTENT_PAGE_HASHES[policyKey]
-    if (hash) {
-      window.open(`/${hash}`, '_blank')
+    const path = CONTENT_PAGE_PATHS[policyKey]
+    if (path) {
+      window.open(path, '_blank')
     }
   }
 
@@ -1713,6 +1773,8 @@ export default function UserApp({
   }
 
   const handlePlaceOrder = async (checkoutDetails = {}) => {
+    const isCashfreeOrder = checkoutDetails.paymentMethod === 'Cashfree'
+    if (isCashfreeOrder) await loadCashfreeScript()
     const placedMoment = createOrderMoment()
     const order = {
       clientRequestId: checkoutDetails.requestId,
@@ -1743,13 +1805,13 @@ export default function UserApp({
         checkoutDetails.billingAddress || checkoutDetails.address || null,
       gstProfile: checkoutDetails.gstProfile || null,
       deliveryId: checkoutDetails.delivery?.id || 'standard',
-      paymentMethod: checkoutDetails.paymentMethod === 'Cashfree' ? 'Cashfree' : 'Cash on Delivery',
-      paymentEnvironment: checkoutDetails.paymentMethod === 'Cashfree' ? 'Cashfree Sandbox' : 'Cash on Delivery',
+      paymentMethod: isCashfreeOrder ? 'Cashfree' : 'Cash on Delivery',
+      paymentEnvironment: isCashfreeOrder ? 'Cashfree Sandbox' : 'Cash on Delivery',
       items: activeCheckoutItems.map(checkoutItemRequest),
     }
     const placedResult = (await onNewOrder?.(order)) || { order }
     const savedOrder = placedResult.order || placedResult
-    if (order.paymentMethod === 'Cashfree') {
+    if (isCashfreeOrder) {
       if (!placedResult.paymentSessionId || typeof window.Cashfree !== 'function') {
         throw new Error('Cashfree checkout could not be loaded. Please try again.')
       }
@@ -1799,7 +1861,7 @@ export default function UserApp({
     window.history.replaceState(
       { prideOrderSuccess: savedOrder.id },
       '',
-      `/${ORDER_SUCCESS_HASH}`,
+      '/order-success',
     )
     setSuccessfulOrder(savedOrder)
     setCheckoutOpen(false)
@@ -1874,10 +1936,7 @@ export default function UserApp({
   const protectedAuthPending =
     authStatus === 'loading' &&
     Boolean(
-      getProtectedRoute(window.location.pathname) ||
-        [CHECKOUT_HASH, ORDER_SUCCESS_HASH, '#account-cart'].includes(
-          window.location.hash,
-        ),
+      getProtectedRoute(window.location.pathname),
     )
   const protectedAccountDataOpen = checkoutOpen || Boolean(accountSection)
   const catalogDataRequired =
@@ -1891,23 +1950,38 @@ export default function UserApp({
     protectedAccountDataOpen &&
     (accountError || (catalogDataRequired ? productsError : ''))
   const requestedPublicRoute = parsePublicPath(window.location.pathname)
+  const isProductRoute = requestedPublicRoute?.type === 'product'
   const publicProductPending =
-    requestedPublicRoute?.type === 'product' &&
+    isProductRoute &&
     !liveSelectedProduct &&
-    productsLoading
+    (productsLoading || productRouteStatus === 'pending')
+  const publicProductNotFound =
+    isProductRoute &&
+    !liveSelectedProduct &&
+    productRouteStatus === 'not-found'
   const publicProductError =
-    requestedPublicRoute?.type === 'product' &&
+    isProductRoute &&
     !liveSelectedProduct &&
     !productsLoading &&
-    productsError
+    (productsError || productRouteStatus === 'error')
+
+  useEffect(() => {
+    const destinationReady = isProductRoute
+      ? Boolean(liveSelectedProduct) || publicProductNotFound || publicProductError
+      : !productsLoading
+    if (destinationReady) {
+      document.documentElement.dataset.prideAppReady = 'true'
+    }
+  }, [isProductRoute, liveSelectedProduct, productsLoading, publicProductError, publicProductNotFound])
 
   return (
     <div className="customer-shell min-h-screen overflow-x-clip bg-[#f7f8f5] pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-16 lg:pb-0">
-      {!liveSelectedProduct && !ContentPage && !productsOpen && !categoriesOpen && !checkoutOpen && !successfulOrder && !accountSection && <HomeSeo />}
-      {categoriesOpen && <CategoriesSeo />}
-      {liveSelectedProduct && <ProductSeo product={liveSelectedProduct} />}
-      {!liveSelectedProduct && productsOpen && (
-        <CatalogSeo category={category} products={filteredProducts} />
+      {!isProductRoute && !liveSelectedProduct && !ContentPage && !productsOpen && !categoriesOpen && !checkoutOpen && !successfulOrder && !accountSection && <HomeSeo />}
+      {!isProductRoute && categoriesOpen && <CategoriesSeo />}
+      {isProductRoute && liveSelectedProduct && <ProductSeo product={liveSelectedProduct} />}
+      {isProductRoute && publicProductNotFound && <ProductSeo product={null} notFound />}
+      {!isProductRoute && !liveSelectedProduct && productsOpen && (
+        <CatalogSeo category={category} subcategory={subcategory} products={filteredProducts} />
       )}
       <Header
         products={products}
@@ -1931,12 +2005,30 @@ export default function UserApp({
         onLogout={() => setLogoutConfirmOpen(true)}
         hidePhoneNavigation={authOpen && !passwordResetActionRequested}
       />
+      <Suspense
+        fallback={
+          <section className="grid min-h-[55vh] place-items-center px-6 text-center" aria-live="polite" aria-busy="true">
+            <div>
+              <span className="mx-auto block size-9 animate-spin rounded-full border-4 border-[#75916f]/25 border-t-[#536a50]" />
+              <p className="mt-4 text-sm font-bold text-[#425443]">Loading page…</p>
+            </div>
+          </section>
+        }
+      >
       <main>
         {publicProductPending ? (
           <section className="grid min-h-[55vh] place-items-center px-6 text-center" aria-live="polite" aria-busy="true">
             <div>
               <span className="mx-auto block size-9 animate-spin rounded-full border-4 border-[#75916f]/25 border-t-[#536a50]" />
               <p className="mt-4 text-sm font-bold text-[#425443]">Loading product details…</p>
+            </div>
+          </section>
+        ) : publicProductNotFound ? (
+          <section className="grid min-h-[55vh] place-items-center px-6 text-center">
+            <div className="max-w-md rounded-[28px] bg-white p-8 shadow-sm">
+              <h1 className="text-lg font-extrabold text-slate-900">Product not found</h1>
+              <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">This product is not available from Pride Circuit.</p>
+              <button type="button" onClick={() => navigateToProducts('All')} className="mt-5 rounded-full bg-[#253329] px-5 py-3 text-xs font-extrabold text-white">Browse products</button>
             </div>
           </section>
         ) : publicProductError ? (
@@ -2097,6 +2189,7 @@ export default function UserApp({
           </HomeScrollReveal>
         )}
       </main>
+      </Suspense>
       {!checkoutOpen && (
         <Footer
           onBeSellerClick={onBeSellerClick}
@@ -2104,38 +2197,45 @@ export default function UserApp({
         />
       )}
 
-      <AuthModal
-        key={authInitialMode}
-        initialMode={authInitialMode}
-        open={authOpen && !passwordResetActionRequested}
-        onClose={() => {
-          setAuthOpen(false)
-          setAuthInitialMode('login')
-          sessionStorage.removeItem(INTENDED_ROUTE_SESSION_KEY)
-          setPendingCheckout(false)
-          setPendingCart(false)
-          setPendingWishlistRequest(null)
-        }}
-        onSuccess={handleAuthSuccess}
-      />
+      {authOpen && !passwordResetActionRequested && (
+        <Suspense fallback={null}>
+          <AuthModal
+            key={authInitialMode}
+            initialMode={authInitialMode}
+            open
+            onClose={() => {
+              setAuthOpen(false)
+              setAuthInitialMode('login')
+              sessionStorage.removeItem(INTENDED_ROUTE_SESSION_KEY)
+              setPendingCheckout(false)
+              setPendingCart(false)
+              setPendingWishlistRequest(null)
+            }}
+            onSuccess={handleAuthSuccess}
+          />
+        </Suspense>
+      )}
       {passwordResetActionRequested && (
-        <PasswordResetModal
-          key={passwordResetActionCode || 'invalid-reset-code'}
-          actionCode={passwordResetActionCode}
-          onComplete={() => {
-            window.history.replaceState(null, '', '/')
-            setAuthInitialMode('login')
-            setAuthOpen(true)
-          }}
-          onRequestNewLink={() => {
-            window.history.replaceState(null, '', '/')
-            setAuthInitialMode('forgot')
-            setAuthOpen(true)
-          }}
-        />
+        <Suspense fallback={null}>
+          <PasswordResetModal
+            key={passwordResetActionCode || 'invalid-reset-code'}
+            actionCode={passwordResetActionCode}
+            onComplete={() => {
+              window.history.replaceState(null, '', '/')
+              setAuthInitialMode('login')
+              setAuthOpen(true)
+            }}
+            onRequestNewLink={() => {
+              window.history.replaceState(null, '', '/')
+              setAuthInitialMode('forgot')
+              setAuthOpen(true)
+            }}
+          />
+        </Suspense>
       )}
       {authStatus === 'authenticated' && user && accountReady && !protectedDataPending && !protectedDataError && (
-        <AccountPanel
+        <Suspense fallback={null}>
+          <AccountPanel
           key={orderToViewId || 'account-panel'}
           section={accountSection}
           user={user}
@@ -2176,16 +2276,19 @@ export default function UserApp({
           onLogout={handleLogout}
           shippingSettings={shippingSettings}
           invoiceSettings={invoiceSettings}
-        />
+          />
+        </Suspense>
       )}
       {logoutConfirmOpen && (
-        <LogoutConfirmation
-          onCancel={() => setLogoutConfirmOpen(false)}
-          onConfirm={() => {
-            setLogoutConfirmOpen(false)
-            handleLogout()
-          }}
-        />
+        <Suspense fallback={null}>
+          <LogoutConfirmation
+            onCancel={() => setLogoutConfirmOpen(false)}
+            onConfirm={() => {
+              setLogoutConfirmOpen(false)
+              handleLogout()
+            }}
+          />
+        </Suspense>
       )}
 
       {toast && (

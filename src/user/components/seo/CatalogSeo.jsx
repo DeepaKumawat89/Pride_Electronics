@@ -45,18 +45,26 @@ const setCanonical = (href) => {
   }
 }
 
-export default function CatalogSeo({ category = 'All', products = [] }) {
+export default function CatalogSeo({ category = 'All', subcategory = '', products = [] }) {
   useEffect(() => {
     const categoryName = textValue(category)
     const isCategory = categoryName && categoryName !== 'All'
-    const title = isCategory
+    const subcategoryName = textValue(subcategory)
+    const isSubcategory = isCategory && Boolean(subcategoryName)
+    const title = isSubcategory
+      ? `${subcategoryName} ${categoryName} Products | Pride Circuit`
+      : isCategory
       ? `${categoryName} Products | Pride Circuit`
       : 'Electronic Products Online | Pride Circuit'
-    const description = isCategory
+    const description = isSubcategory
+      ? `Shop ${subcategoryName} products in ${categoryName} online at Pride Circuit with clear pricing and reliable delivery across India.`
+      : isCategory
       ? `Shop ${categoryName} products online at Pride Circuit. Browse genuine electronics, clear pricing, and reliable delivery across India.`
       : 'Browse electronic components, DIY modules, audio gear, wearables, peripherals, and power accessories at Pride Circuit.'
-    const canonicalUrl = isCategory
-      ? `${SITE_URL}/category/${encodeURIComponent(publicSlug(categoryName))}`
+    const canonicalUrl = isSubcategory
+      ? `${SITE_URL}/category/${encodeURIComponent(publicSlug(categoryName))}/${encodeURIComponent(publicSlug(subcategoryName))}`
+      : isCategory
+        ? `${SITE_URL}/category/${encodeURIComponent(publicSlug(categoryName))}`
       : `${SITE_URL}/products`
     const itemList = products
       .filter((product) => product?.id && product?.name)
@@ -110,7 +118,7 @@ export default function CatalogSeo({ category = 'All', products = [] }) {
       structuredData.remove()
       document.title = previousTitle
     }
-  }, [category, products])
+  }, [category, subcategory, products])
 
   return null
 }

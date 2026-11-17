@@ -116,10 +116,10 @@ const sections = [
         <a href="tel:9607126969">9607126969</a>
       </p>
       <p>
-        Customers can also review our <a href="/#shipping-and-delivery-policy">Shipping &amp; Delivery Policy</a>,{' '}
-        <a href="/#refund-and-cancellation-policy">Refund &amp; Cancellation Policy</a>,{' '}
-        <a href="/#privacy-policy">Privacy Policy</a>, and{' '}
-        <a href="/#terms-and-conditions">Terms &amp; Conditions</a>. These pages
+        Customers can also review our <a href="/shipping-and-delivery-policy">Shipping &amp; Delivery Policy</a>,{' '}
+        <a href="/refund-and-cancellation-policy">Refund &amp; Cancellation Policy</a>,{' '}
+        <a href="/privacy-policy">Privacy Policy</a>, and{' '}
+        <a href="/terms-and-conditions">Terms &amp; Conditions</a>. These pages
         explain the terms that apply to purchases and the handling of customer
         information.
       </p>

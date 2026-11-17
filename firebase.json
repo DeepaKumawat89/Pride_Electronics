@@ -56,6 +56,30 @@
         }
       },
       {
+        "source": "/about-us",
+        "function": { "functionId": "publicPage", "region": "asia-south1" }
+      },
+      {
+        "source": "/contact-us",
+        "function": { "functionId": "publicPage", "region": "asia-south1" }
+      },
+      {
+        "source": "/privacy-policy",
+        "function": { "functionId": "publicPage", "region": "asia-south1" }
+      },
+      {
+        "source": "/terms-and-conditions",
+        "function": { "functionId": "publicPage", "region": "asia-south1" }
+      },
+      {
+        "source": "/refund-and-cancellation-policy",
+        "function": { "functionId": "publicPage", "region": "asia-south1" }
+      },
+      {
+        "source": "/shipping-and-delivery-policy",
+        "function": { "functionId": "publicPage", "region": "asia-south1" }
+      },
+      {
         "source": "/category/**",
         "function": {
           "functionId": "publicPage",

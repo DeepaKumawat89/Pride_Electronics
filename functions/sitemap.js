@@ -91,7 +91,10 @@ exports.sitemap = onRequest(
           id: document.id,
           name: textValue(data.name),
           enabled: data.enabled !== false,
-          lastmod: lastModified(data.updatedAt || data.createdAt),
+          lastmod: latestLastmod(
+            lastModified(data.createdAt),
+            lastModified(data.updatedAt),
+          ),
         }
       })
       const categoryById = new Map(
@@ -110,7 +113,10 @@ exports.sitemap = onRequest(
           categoryId: textValue(data.categoryId),
           name: textValue(data.name),
           enabled: data.enabled !== false,
-          lastmod: lastModified(data.updatedAt || data.createdAt),
+          lastmod: latestLastmod(
+            lastModified(data.createdAt),
+            lastModified(data.updatedAt),
+          ),
         }
       })
       const subcategoryById = new Map(
@@ -128,7 +134,10 @@ exports.sitemap = onRequest(
             subcategoryId: textValue(data.subcategoryId),
             subcategory: textValue(data.subcategory),
             enabled: data.enabled !== false,
-            lastmod: lastModified(data.updatedAt || data.createdAt),
+            lastmod: latestLastmod(
+              lastModified(data.createdAt),
+              lastModified(data.updatedAt),
+            ),
           }
           const category = categoryForProduct(
             product,
@@ -189,8 +198,17 @@ exports.sitemap = onRequest(
       addUrl(urlsByPath, '/', homeLastmod)
       addUrl(urlsByPath, '/products', catalogLastmod)
       addUrl(urlsByPath, '/categories', publicCategoryLastmod)
+      ;[
+        '/about-us',
+        '/contact-us',
+        '/privacy-policy',
+        '/terms-and-conditions',
+        '/refund-and-cancellation-policy',
+        '/shipping-and-delivery-policy',
+      ].forEach((path) => addUrl(urlsByPath, path))
 
       const categoryLastmodBySlug = new Map()
+      const subcategoryLastmodByPath = new Map()
       categories
         .filter((category) => category.enabled && category.name)
         .forEach((category) => {
@@ -229,6 +247,19 @@ exports.sitemap = onRequest(
           )
         }
 
+        if (categorySlug && product.subcategoryRecord?.name) {
+          const subcategorySlug = slugify(product.subcategoryRecord.name)
+          const subcategoryPath = `/category/${encodeURIComponent(categorySlug)}/${encodeURIComponent(subcategorySlug)}`
+          subcategoryLastmodByPath.set(
+            subcategoryPath,
+            latestLastmod(
+              subcategoryLastmodByPath.get(subcategoryPath),
+              product.subcategoryRecord.lastmod,
+              product.lastmod,
+            ),
+          )
+        }
+
         const identifier = product.slug || product.id
         if (identifier) {
           addUrl(
@@ -245,6 +276,9 @@ exports.sitemap = onRequest(
           `/category/${encodeURIComponent(categorySlug)}`,
           lastmod,
         )
+      })
+      subcategoryLastmodByPath.forEach((lastmod, path) => {
+        addUrl(urlsByPath, path, lastmod)
       })
 
       const urls = [...urlsByPath.values()].sort((first, second) => {

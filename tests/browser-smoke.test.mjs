@@ -243,15 +243,17 @@ test('storefront and admin render responsively without browser console errors', 
         })
         await delay(500)
         assert.match(
-          await client.evaluate('window.location.hash'),
-          /^#products/,
+          await client.evaluate('window.location.pathname'),
+          /^\/products$/,
           'Dragging the active phone navigation indicator did not open Products',
         )
       }
     }
 
+    // Keep one legacy URL check: startup compatibility should normalize this URL to /products.
     await client.send('Page.navigate', { url: `${baseUrl}/#products` })
     await delay(8_000)
+    assert.equal(await client.evaluate('window.location.pathname'), '/products')
     const catalog = await client.evaluate(`({
       text: document.body.innerText,
       searchInputs: document.querySelectorAll('input[aria-label="Search products"]').length,

@@ -5,6 +5,11 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 export default defineConfig({
   build: {
+    // Keep production output minified and avoid publishing source maps or
+    // development-only source details to Hosting.
+    minify: 'esbuild',
+    cssMinify: 'esbuild',
+    sourcemap: false,
     rollupOptions: {
       output: {
         entryFileNames: 'assets/app.js',

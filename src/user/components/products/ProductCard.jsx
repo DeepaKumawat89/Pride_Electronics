@@ -18,6 +18,11 @@ export default function ProductCard({
   const priceAvailable = hasValidPrice(sellingPrice)
   const purchasable = Number(product.stock) > 0 && priceAvailable
   const productPath = getProductPath(product)
+  const productImage = product.thumbnail || product.image
+  const productImageSet =
+    product.thumbnail && product.image && product.thumbnail !== product.image
+      ? `${product.thumbnail} 640w, ${product.image} 1600w`
+      : undefined
   const availability =
     product.stock <= 0
       ? 'Out of stock'
@@ -29,7 +34,9 @@ export default function ProductCard({
     <article className={`group flex min-w-0 flex-col ${homepage ? 'homepage-product-card' : ''}`}>
       <div className="relative aspect-[1/0.9] overflow-hidden rounded-[26px] bg-white">
         <StorefrontImage
-          src={product.thumbnail || product.image}
+          src={productImage}
+          srcSet={productImageSet}
+          sizes="(min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw"
           alt={product.name}
           width="640"
           height="576"

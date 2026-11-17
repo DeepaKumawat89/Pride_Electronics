@@ -148,6 +148,11 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
   const displayProduct = selectedVariantProduct || product
   const images = displayProduct.images?.length ? displayProduct.images : [displayProduct.image]
   const activeImage = images[activeImageIndex] || images[0]
+  const activeThumbnail = displayProduct.thumbnails?.[activeImageIndex]
+  const activeImageSet =
+    activeThumbnail && activeThumbnail !== activeImage
+      ? `${activeThumbnail} 640w, ${activeImage} 1600w`
+      : undefined
   const stock = Math.max(0, Number(displayProduct.stock) || 0)
   const purchaseLimit = Math.min(stock, 100)
   const minimumOrderQuantity = getProductMinimumOrderQuantity(displayProduct)
@@ -225,6 +230,8 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
               <div className="relative overflow-hidden rounded-[22px] bg-white sm:rounded-[26px]">
                 <StorefrontImage
                   src={activeImage}
+                  srcSet={activeImageSet}
+                  sizes="(min-width: 1024px) 55vw, 100vw"
                   alt={product.name}
                   width="1200"
                   height="900"
@@ -251,6 +258,13 @@ export default function ProductDetailsPage({ product, relatedProducts = [], deli
                     <button key={`${image}-${index}`} type="button" onClick={() => setActiveImageIndex(index)} className={`size-10 shrink-0 overflow-hidden rounded-xl border-2 bg-white p-0.5 transition hover:-translate-y-0.5 sm:size-12 ${activeImageIndex === index ? 'border-[#ff5c35] shadow-md' : 'border-transparent opacity-75 hover:border-slate-200 hover:opacity-100'}`} aria-label={`View product image ${index + 1}`}>
                       <StorefrontImage
                         src={displayProduct.thumbnails?.[index] || image}
+                        srcSet={
+                          displayProduct.thumbnails?.[index] &&
+                          displayProduct.thumbnails[index] !== image
+                            ? `${displayProduct.thumbnails[index]} 96w, ${image} 640w`
+                            : undefined
+                        }
+                        sizes="48px"
                         alt={`${product.name} view ${index + 1}`}
                         width="96"
                         height="96"

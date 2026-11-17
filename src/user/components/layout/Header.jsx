@@ -92,6 +92,8 @@ export default function Header({
               <img
                 src={prideCircuitLogo}
                 alt="Pride Circuit electronic components"
+                width="2170"
+                height="725"
                 className="block h-auto w-56"
               />
             </button>
@@ -167,6 +169,8 @@ export default function Header({
               <img
                 src={prideCircuitLogo}
                 alt="PrideCircuit Electronic Components & More"
+                width="2170"
+                height="725"
                 className="block h-auto w-28 sm:w-36"
               />
             </button>

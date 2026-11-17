@@ -31,6 +31,14 @@ const productsCollection = collection(db, 'products')
 const publicProductsCollection = liteCollection(publicDb, 'products')
 const productSkuCounterReference = doc(db, 'skuCounters', 'products')
 
+const publicProduct = (data, id) => ({
+  ...data,
+  id,
+  ...(data.price == null && data.basePrice != null
+    ? { price: data.basePrice }
+    : {}),
+})
+
 export async function getProductBySlugOrId(identifier) {
   const normalizedIdentifier = String(identifier || '')
   if (!normalizedIdentifier) return null
@@ -39,13 +47,17 @@ export async function getProductBySlugOrId(identifier) {
     liteQuery(publicProductsCollection, liteWhere('slug', '==', normalizedIdentifier)),
   )
   const slugDocument = slugSnapshot.docs[0]
-  if (slugDocument) return { ...slugDocument.data(), id: slugDocument.id }
+  if (slugDocument) {
+    return slugDocument.data()?.enabled !== false
+      ? publicProduct(slugDocument.data(), slugDocument.id)
+      : null
+  }
 
   const productSnapshot = await liteGetDoc(
     liteDoc(publicProductsCollection, normalizedIdentifier),
   )
-  return productSnapshot.exists()
-    ? { ...productSnapshot.data(), id: productSnapshot.id }
+  return productSnapshot.exists() && productSnapshot.data()?.enabled !== false
+    ? publicProduct(productSnapshot.data(), productSnapshot.id)
     : null
 }
 
@@ -185,18 +197,64 @@ const serializeProductUpdate = (product) => {
   return serialized
 }
 
+const timestampMillis = (value) => {
+  if (value && typeof value.toMillis === 'function') return value.toMillis()
+  const parsed = new Date(value || 0).getTime()
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 const sortProducts = (products) =>
-  [...products].sort((first, second) =>
-    String(second.createdAt || '').localeCompare(String(first.createdAt || '')),
+  [...products].sort(
+    (first, second) =>
+      timestampMillis(second.createdAt) - timestampMillis(first.createdAt),
   )
+
+const uniqueProductSlug = async (transaction, base, productId) => {
+  const normalizedBase = base || 'product'
+  const snapshot = await transaction.get(productsCollection)
+  const used = new Set(
+    snapshot.docs
+      .filter((item) => item.id !== productId)
+      .flatMap((item) => [
+        item.id.toLowerCase(),
+        String(item.data()?.slug || '').toLowerCase(),
+      ])
+      .filter(Boolean),
+  )
+  let candidate = normalizedBase
+  let suffix = 2
+  while (used.has(candidate.toLowerCase())) {
+    candidate = `${normalizedBase}-${productId.toLowerCase()}${suffix === 2 ? '' : `-${suffix}`}`
+    suffix += 1
+  }
+  return candidate
+}
+
+const comparableProduct = (value) => {
+  const normalize = (current, key = '') => {
+    if (key === 'id' || key === 'createdAt' || key === 'updatedAt') return undefined
+    if (Array.isArray(current)) return current.map((item) => normalize(item))
+    if (current && typeof current === 'object') {
+      return Object.keys(current).sort().reduce((result, itemKey) => {
+        const normalized = normalize(current[itemKey], itemKey)
+        if (normalized !== undefined) result[itemKey] = normalized
+        return result
+      }, {})
+    }
+    return current
+  }
+  return JSON.stringify(normalize(value))
+}
+
+const productContentChanged = (before, after) =>
+  comparableProduct(before) !== comparableProduct(after)
 
 export async function getProducts() {
   const snapshot = await liteGetDocs(publicProductsCollection)
   return sortProducts(
-    snapshot.docs.map((snapshotDocument) => ({
-      ...snapshotDocument.data(),
-      id: snapshotDocument.id,
-    })),
+    snapshot.docs.map((snapshotDocument) =>
+      publicProduct(snapshotDocument.data(), snapshotDocument.id),
+    ),
   )
 }
 
@@ -218,10 +276,9 @@ export function subscribeToProducts(onProducts, onError) {
       productsCollection,
       (snapshot) => {
         retryCount = 0
-        const products = snapshot.docs.map((snapshotDocument) => ({
-          ...snapshotDocument.data(),
-          id: snapshotDocument.id,
-        }))
+        const products = snapshot.docs.map((snapshotDocument) =>
+          publicProduct(snapshotDocument.data(), snapshotDocument.id),
+        )
 
         publishProducts(products)
       },
@@ -280,7 +337,6 @@ export async function createProduct(product) {
     const savedProduct = {
       ...productToCreate,
       id: productReference.id,
-      slug: `${slugify(productToCreate.slug || productToCreate.name) || productReference.id}-${productReference.id}`,
       sku: createProductSku(
         productToCreate.sku,
         productToCreate.category,
@@ -290,6 +346,11 @@ export async function createProduct(product) {
       createdAt: productToCreate.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
+    savedProduct.slug = await uniqueProductSlug(
+      transaction,
+      slugify(productToCreate.slug || productToCreate.name) || 'product',
+      productReference.id,
+    )
     assertValidProductForCreate(savedProduct)
     transaction.set(productSkuCounterReference, { lastSequence: nextSequence })
     transaction.set(productReference, serializeProduct(savedProduct))
@@ -320,7 +381,11 @@ export async function saveProduct(product) {
     const existingProduct = snapshot.data()
     const savedProduct = {
       ...product,
-      slug: existingProduct.slug || `${slugify(existingProduct.slug) || slugify(existingProduct.name || product.name) || 'product'}-${productReference.id}`,
+      slug: existingProduct.slug || await uniqueProductSlug(
+        transaction,
+        slugify(product.name || existingProduct.name) || 'product',
+        productReference.id,
+      ),
       ...(Object.prototype.hasOwnProperty.call(product, 'sku')
         ? {
             sku: updateProductSku(
@@ -331,8 +396,12 @@ export async function saveProduct(product) {
             ),
           }
         : {}),
-      updatedAt: new Date().toISOString(),
     }
+    const mergedProduct = { ...existingProduct, ...savedProduct }
+    savedProduct.createdAt = existingProduct.createdAt || savedProduct.createdAt
+    savedProduct.updatedAt = productContentChanged(existingProduct, mergedProduct)
+      ? new Date().toISOString()
+      : existingProduct.updatedAt
     transaction.set(
       productReference,
       serializeProductUpdate(savedProduct),

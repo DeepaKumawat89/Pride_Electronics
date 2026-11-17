@@ -20,6 +20,7 @@ const { sitemap } = require('./sitemap')
 const { publicPage } = require('./public-pages')
 const { createCashfreeOrder } = require('./payments/create-cashfree-order')
 const { cashfreePaymentWebhook } = require('./payments/cashfree-webhook')
+const { onProductCreated, onProductUpdated } = require('./product-triggers')
 
 module.exports = {
   updateUserProfile,
@@ -38,4 +39,6 @@ module.exports = {
   publicPage,
   createCashfreeOrder,
   cashfreePaymentWebhook,
+  onProductCreated,
+  onProductUpdated,
 }

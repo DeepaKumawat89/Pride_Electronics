@@ -225,7 +225,7 @@ const sections = [
         </p>
         <p>
           You must provide accurate contact and delivery information. Review the{' '}
-          <a href="/#shipping-and-delivery-policy">Shipping &amp; Delivery Policy</a>{' '}
+          <a href="/shipping-and-delivery-policy">Shipping &amp; Delivery Policy</a>{' '}
           for processing, pickup, dispatch, tracking, delivery, failed-delivery,
           and shipment-issue terms.
         </p>
@@ -251,7 +251,7 @@ const sections = [
           Full eligibility, exclusions, request steps, inspection requirements,
           refund treatment, and expected processing information are stated in
           the{' '}
-          <a href="/#refund-and-cancellation-policy">Refund &amp; Cancellation Policy</a>,
+          <a href="/refund-and-cancellation-policy">Refund &amp; Cancellation Policy</a>,
           which covers cancellations, returns, replacements, and refunds.
         </p>
       </>
@@ -317,7 +317,7 @@ const sections = [
       <>
         <p>
           Personal-data handling is described in the{' '}
-          <a href="/#privacy-policy">Privacy Policy</a>. We may send service
+          <a href="/privacy-policy">Privacy Policy</a>. We may send service
           communications needed for authentication, account security, payments,
           orders, pickup, delivery, cancellations, returns, refunds, or support.
         </p>
