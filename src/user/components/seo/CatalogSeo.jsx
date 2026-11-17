@@ -5,12 +5,6 @@ const SITE_URL = 'https://pridecircuit.in'
 
 const textValue = (value) => String(value || '').replace(/\s+/g, ' ').trim()
 
-const publicSlug = (value) =>
-  textValue(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-
 const setMeta = (attribute, name, content) => {
   let element = document.head.querySelector(`meta[${attribute}="${name}"]`)
   const created = !element
@@ -45,7 +39,7 @@ const setCanonical = (href) => {
   }
 }
 
-export default function CatalogSeo({ category = 'All', subcategory = '', products = [] }) {
+export default function CatalogSeo({ category = 'All', subcategory = '', routePath = '', products = [] }) {
   useEffect(() => {
     const categoryName = textValue(category)
     const isCategory = categoryName && categoryName !== 'All'
@@ -61,10 +55,8 @@ export default function CatalogSeo({ category = 'All', subcategory = '', product
       : isCategory
       ? `Shop ${categoryName} products online at Pride Circuit. Browse genuine electronics, clear pricing, and reliable delivery across India.`
       : 'Browse electronic components, DIY modules, audio gear, wearables, peripherals, and power accessories at Pride Circuit.'
-    const canonicalUrl = isSubcategory
-      ? `${SITE_URL}/category/${encodeURIComponent(publicSlug(categoryName))}/${encodeURIComponent(publicSlug(subcategoryName))}`
-      : isCategory
-        ? `${SITE_URL}/category/${encodeURIComponent(publicSlug(categoryName))}`
+    const canonicalUrl = routePath
+      ? `${SITE_URL}${routePath}`
       : `${SITE_URL}/products`
     const itemList = products
       .filter((product) => product?.id && product?.name)
@@ -118,7 +110,7 @@ export default function CatalogSeo({ category = 'All', subcategory = '', product
       structuredData.remove()
       document.title = previousTitle
     }
-  }, [category, subcategory, products])
+  }, [category, subcategory, routePath, products])
 
   return null
 }

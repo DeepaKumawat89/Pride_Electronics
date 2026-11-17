@@ -80,6 +80,13 @@
         "function": { "functionId": "publicPage", "region": "asia-south1" }
       },
       {
+        "source": "/product-category/**",
+        "function": {
+          "functionId": "publicPage",
+          "region": "asia-south1"
+        }
+      },
+      {
         "source": "/category/**",
         "function": {
           "functionId": "publicPage",

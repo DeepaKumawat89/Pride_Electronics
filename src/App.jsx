@@ -1212,6 +1212,7 @@ function App() {
             invoiceSettings={invoiceSettings}
             adminSettings={adminSettings}
             categories={managedCategories}
+            subcategories={managedSubcategories}
             reviews={reviewsList.filter((review) => review.status === 'Published')}
             onNewOrder={handleNewOrder}
             onCreateReturnRequest={handleCreateReturnRequest}

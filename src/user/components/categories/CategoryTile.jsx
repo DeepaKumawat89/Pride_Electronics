@@ -15,6 +15,7 @@ import {
   Workflow,
 } from 'lucide-react'
 import { slugify } from '../../../utils/slugify'
+import { categoryPath as getCategoryPath } from '../../../utils/catalogRoutes'
 
 const categoryVisuals = [
   { keywords: ['industrial', 'automation'], icon: Workflow },
@@ -58,13 +59,14 @@ const categoryIcon = (name) => {
 
 export default function CategoryTile({
   category,
+  categories = [],
   productCount = 0,
   compact = false,
   onSelect,
 }) {
   const Icon = categoryIcon(category.name)
   const image = category.image || category.imageUrl || category.thumbnail || ''
-  const categoryPath = `/category/${encodeURIComponent(slugify(category.name))}`
+  const categoryPath = getCategoryPath(category, categories) || `/product-category/${encodeURIComponent(slugify(category.name))}/`
   const tone = tileTones[stableIndex(category.id || category.name, tileTones.length)]
 
   return (

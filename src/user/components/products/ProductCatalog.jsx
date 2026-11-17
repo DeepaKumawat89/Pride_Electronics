@@ -39,10 +39,14 @@ export default function ProductCatalog({
   products,
   allProducts = products,
   categories = [],
+  subcategories = [],
   suggestedProducts = [],
   onSuggestedCategoryChange,
   activeCategory,
+  activeCategoryId = '',
+  selectedSubcategory = '',
   onCategoryChange,
+  onSubcategoryChange,
   sortBy,
   onSortChange,
   likedIds,
@@ -62,7 +66,7 @@ export default function ProductCatalog({
   paginationResetKey = '',
 }) {
   const availableCategories = ['All', ...categoryNames]
-  const [subcategory, setSubcategory] = useState('All')
+  const [subcategory, setSubcategory] = useState(selectedSubcategory || 'All')
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false)
   const [expandedCategories, setExpandedCategories] = useState(
     () => new Set(activeCategory !== 'All' ? [activeCategory] : []),
@@ -70,12 +74,12 @@ export default function ProductCatalog({
   const [catalogFilters, setCatalogFilters] = useState(defaultCatalogFilters)
   const categoryTree = useMemo(
     () =>
-      categoryNames.map((name) => {
-        const category = categories.find((item) => item.name === name)
+      categories.filter((category) => category.enabled !== false).map((category) => {
+        const name = category.name
         const categoryProducts = allProducts.filter(
-          (product) => product.category === name,
+          (product) => String(product.categoryId || '') === String(category.id) || (!product.categoryId && product.category === name),
         )
-        const subcategories = [
+        const productSubcategories = [
           ...new Set(
             categoryProducts
               .map((product) => product.subcategory)
@@ -84,21 +88,34 @@ export default function ProductCatalog({
         ]
           .sort((a, b) => a.localeCompare(b))
           .map((subcategoryName) => ({ name: subcategoryName }))
+        const configuredSubcategories = subcategories
+          .filter((subcategory) => String(subcategory.categoryId) === String(category.id) && subcategory.enabled !== false)
+        const childNames = new Set(configuredSubcategories.map((item) => item.name.toLowerCase()))
+        const categorySubcategories = [
+          ...configuredSubcategories,
+          ...productSubcategories.filter((item) => !childNames.has(item.name.toLowerCase())),
+        ]
 
         return {
-          id: category?.id || name,
+          id: category.id || name,
           name,
-          subcategories,
+          category,
+          subcategories: categorySubcategories,
         }
       }),
-    [allProducts, categories, categoryNames],
+    [allProducts, categories, subcategories],
   )
+  useEffect(() => {
+    setSubcategory(selectedSubcategory || 'All')
+  }, [activeCategory, selectedSubcategory])
   const filterOptions = useMemo(
     () => getCatalogFilterOptions(products),
     [products],
   )
   const activeCategoryNode = categoryTree.find(
-    (category) => category.name === activeCategory,
+    (category) => activeCategoryId
+      ? String(category.id) === String(activeCategoryId)
+      : category.name === activeCategory,
   )
   const activeSubcategory =
     subcategory === 'All' ||
@@ -222,22 +239,34 @@ export default function ProductCatalog({
   }
 
   const selectCategory = (nextCategory, closeDrawer = false) => {
+    const categoryRecord = typeof nextCategory === 'object'
+      ? nextCategory
+      : categoryTree.find((item) => item.name === nextCategory)?.category
+    const categoryName = typeof nextCategory === 'object' ? nextCategory.name : nextCategory
     clearCatalogFilters()
-    if (nextCategory !== 'All') {
+    if (categoryName !== 'All') {
       setExpandedCategories((current) => {
         const next = new Set(current)
-        next.add(nextCategory)
+        next.add(categoryName)
         return next
       })
     }
-    onCategoryChange(nextCategory)
+    onCategoryChange(categoryName, categoryRecord)
     if (closeDrawer) setCategoryDrawerOpen(false)
   }
 
-  const selectSubcategory = (categoryName, nextSubcategory, closeDrawer = false) => {
+  const selectSubcategory = (categoryValue, subcategoryValue, closeDrawer = false) => {
+    const categoryRecord = typeof categoryValue === 'object'
+      ? categoryValue
+      : categoryTree.find((item) => item.name === categoryValue)?.category
+    const categoryName = typeof categoryValue === 'object' ? categoryValue.name : categoryValue
+    const subcategoryRecord = typeof subcategoryValue === 'object'
+      ? subcategoryValue
+      : categoryTree.find((item) => item.name === categoryName)?.subcategories.find((item) => item.name === subcategoryValue)
+    const nextSubcategory = typeof subcategoryValue === 'object' ? subcategoryValue.name : subcategoryValue
     setCatalogFilters(defaultCatalogFilters)
     setSubcategory(nextSubcategory)
-    if (activeCategory !== categoryName) onCategoryChange(categoryName)
+    onSubcategoryChange?.(categoryName, nextSubcategory, categoryRecord, subcategoryRecord)
     if (closeDrawer) setCategoryDrawerOpen(false)
   }
 
@@ -297,11 +326,12 @@ export default function ProductCatalog({
                 <CategoryNavigation
                   categoryTree={categoryTree}
                   activeCategory={activeCategory}
+                  activeCategoryId={activeCategoryId}
                   activeSubcategory={activeSubcategory}
                   expandedCategories={expandedCategories}
-                  onCategorySelect={(name) => selectCategory(name, true)}
-                  onSubcategorySelect={(categoryName, name) =>
-                    selectSubcategory(categoryName, name, true)
+                  onCategorySelect={(item) => selectCategory(item, true)}
+                  onSubcategorySelect={(categoryItem, subcategoryItem) =>
+                    selectSubcategory(categoryItem, subcategoryItem, true)
                   }
                   onToggleCategory={toggleCategory}
                 />
@@ -322,6 +352,7 @@ export default function ProductCatalog({
             <CategoryNavigation
               categoryTree={categoryTree}
               activeCategory={activeCategory}
+              activeCategoryId={activeCategoryId}
               activeSubcategory={activeSubcategory}
               expandedCategories={expandedCategories}
               onCategorySelect={selectCategory}
@@ -601,6 +632,7 @@ export default function ProductCatalog({
 function CategoryNavigation({
   categoryTree,
   activeCategory,
+  activeCategoryId = '',
   activeSubcategory,
   expandedCategories,
   onCategorySelect,
@@ -610,7 +642,9 @@ function CategoryNavigation({
   return (
     <nav aria-label="Product categories" className="space-y-1.5">
       {categoryTree.map((category) => {
-        const active = activeCategory === category.name
+        const active = activeCategoryId
+          ? String(activeCategoryId) === String(category.id)
+          : activeCategory === category.name
         const expanded = expandedCategories.has(category.name)
         const hasSubcategories = category.subcategories.length > 0
 
@@ -623,7 +657,7 @@ function CategoryNavigation({
             >
               <button
                 type="button"
-                onClick={() => onCategorySelect(category.name)}
+                onClick={() => onCategorySelect(category.category)}
                 aria-current={active && activeSubcategory === 'All' ? 'page' : undefined}
                 className={`min-w-0 flex-1 px-4 py-3 text-left text-xs font-extrabold transition ${active ? 'text-[#285d37]' : 'text-slate-700 hover:text-[#397a4a]'}`}
               >
@@ -657,7 +691,7 @@ function CategoryNavigation({
                       <button
                         key={item.name}
                         type="button"
-                        onClick={() => onSubcategorySelect(category.name, item.name)}
+                        onClick={() => onSubcategorySelect(category.category, item)}
                         aria-current={subcategoryActive ? 'page' : undefined}
                         className={`mt-0.5 block w-full rounded-xl px-3 py-2 text-left text-[10px] font-bold transition-all duration-200 ${subcategoryActive ? 'translate-x-1 bg-[#397a4a] text-white shadow-sm' : 'text-slate-500 hover:translate-x-1 hover:bg-white hover:text-[#397a4a]'}`}
                       >

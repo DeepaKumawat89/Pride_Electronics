@@ -106,6 +106,7 @@ export default function AllCategoriesPage({
               <CategoryTile
                 key={category.id}
                 category={category}
+                categories={categories}
                 productCount={categoryCounts.get(String(category.id)) || 0}
                 onSelect={onSelect}
               />

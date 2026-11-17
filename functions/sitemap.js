@@ -1,6 +1,6 @@
 const { getFirestore } = require('firebase-admin/firestore')
 const { onRequest } = require('firebase-functions/v2/https')
-const { slugify } = require('./shared/slugify')
+const { buildTaxonomyRoutes } = require('./shared/catalog-routes')
 
 const SITE_URL = 'https://pridecircuit.in'
 const db = getFirestore()
@@ -30,7 +30,9 @@ const urlEntry = ({ path, lastmod = '' }) =>
 
 const categoryForProduct = (product, categoryById, categoryByName) =>
   categoryById.get(product.categoryId) ||
-  categoryByName.get(normalizedName(product.category)) ||
+  (categoryByName.get(normalizedName(product.category))?.length === 1
+    ? categoryByName.get(normalizedName(product.category))[0]
+    : null) ||
   null
 
 const subcategoryForProduct = (
@@ -100,11 +102,11 @@ exports.sitemap = onRequest(
       const categoryById = new Map(
         categories.map((category) => [String(category.id), category]),
       )
-      const categoryByName = new Map(
-        categories
-          .filter((category) => category.name)
-          .map((category) => [normalizedName(category.name), category]),
-      )
+      const categoryByName = new Map()
+      categories.filter((category) => category.name).forEach((category) => {
+        const name = normalizedName(category.name)
+        categoryByName.set(name, [...(categoryByName.get(name) || []), category])
+      })
 
       const subcategories = subcategoriesSnapshot.docs.map((document) => {
         const data = document.data() || {}
@@ -193,6 +195,7 @@ exports.sitemap = onRequest(
         publicCategoryLastmod,
         publicSubcategoryLastmod,
       )
+      const taxonomyRoutes = buildTaxonomyRoutes(categories, subcategories)
 
       const urlsByPath = new Map()
       addUrl(urlsByPath, '/', homeLastmod)
@@ -207,56 +210,26 @@ exports.sitemap = onRequest(
         '/shipping-and-delivery-policy',
       ].forEach((path) => addUrl(urlsByPath, path))
 
-      const categoryLastmodBySlug = new Map()
-      const subcategoryLastmodByPath = new Map()
-      categories
-        .filter((category) => category.enabled && category.name)
-        .forEach((category) => {
-          const categorySlug = slugify(category.name)
-          if (!categorySlug) return
-          const subcategoryLastmod = latestLastmod(
-            ...subcategories
-              .filter(
-                (subcategory) =>
-                  String(subcategory.categoryId) === String(category.id) &&
-                  subcategory.enabled,
-              )
-              .map((subcategory) => subcategory.lastmod),
-          )
-          categoryLastmodBySlug.set(
-            categorySlug,
-            latestLastmod(
-              categoryLastmodBySlug.get(categorySlug),
-              category.lastmod,
-              subcategoryLastmod,
-            ),
-          )
-        })
+      const categoryLastmodById = new Map(
+        categories.map((category) => [String(category.id), category.lastmod]),
+      )
+      const subcategoryLastmodById = new Map(
+        subcategories.map((subcategory) => [String(subcategory.id), subcategory.lastmod]),
+      )
 
       publicProducts.forEach((product) => {
-        const categorySlug = slugify(product.categoryName)
-        if (categorySlug) {
-          categoryLastmodBySlug.set(
-            categorySlug,
-            latestLastmod(
-              categoryLastmodBySlug.get(categorySlug),
-              product.categoryRecord?.lastmod,
-              product.subcategoryRecord?.lastmod,
-              product.lastmod,
-            ),
+        const categoryId = String(product.categoryRecord?.id || '')
+        const subcategoryId = String(product.subcategoryRecord?.id || '')
+        if (categoryId) {
+          categoryLastmodById.set(
+            categoryId,
+            latestLastmod(categoryLastmodById.get(categoryId), product.lastmod),
           )
         }
-
-        if (categorySlug && product.subcategoryRecord?.name) {
-          const subcategorySlug = slugify(product.subcategoryRecord.name)
-          const subcategoryPath = `/category/${encodeURIComponent(categorySlug)}/${encodeURIComponent(subcategorySlug)}`
-          subcategoryLastmodByPath.set(
-            subcategoryPath,
-            latestLastmod(
-              subcategoryLastmodByPath.get(subcategoryPath),
-              product.subcategoryRecord.lastmod,
-              product.lastmod,
-            ),
+        if (subcategoryId) {
+          subcategoryLastmodById.set(
+            subcategoryId,
+            latestLastmod(subcategoryLastmodById.get(subcategoryId), product.lastmod),
           )
         }
 
@@ -270,15 +243,24 @@ exports.sitemap = onRequest(
         }
       })
 
-      categoryLastmodBySlug.forEach((lastmod, categorySlug) => {
+      taxonomyRoutes.categories.forEach((category) => {
+        const subcategoryLastmod = latestLastmod(
+          ...taxonomyRoutes.subcategories
+            .filter((subcategory) => String(subcategory.categoryId) === String(category.id))
+            .map((subcategory) => subcategoryLastmodById.get(String(subcategory.id))),
+        )
         addUrl(
           urlsByPath,
-          `/category/${encodeURIComponent(categorySlug)}`,
-          lastmod,
+          category.path,
+          latestLastmod(categoryLastmodById.get(String(category.id)), subcategoryLastmod),
         )
       })
-      subcategoryLastmodByPath.forEach((lastmod, path) => {
-        addUrl(urlsByPath, path, lastmod)
+      taxonomyRoutes.subcategories.forEach((subcategory) => {
+        addUrl(
+          urlsByPath,
+          subcategory.path,
+          subcategoryLastmodById.get(String(subcategory.id)),
+        )
       })
 
       const urls = [...urlsByPath.values()].sort((first, second) => {

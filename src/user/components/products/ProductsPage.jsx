@@ -6,8 +6,11 @@ export default function ProductsPage({
   filteredProducts,
   suggestedProducts,
   categories,
+  subcategories = [],
   query,
   activeCategory,
+  activeCategoryId,
+  activeSubcategory,
   sortBy,
   likedIds,
   loading,
@@ -15,6 +18,7 @@ export default function ProductsPage({
   onRetry,
   onBack,
   onCategoryChange,
+  onSubcategoryChange,
   onSortChange,
   onProductSelect,
   onLike,
@@ -44,10 +48,14 @@ export default function ProductsPage({
         products={filteredProducts}
         allProducts={products}
         categories={availableCategories}
+        subcategories={subcategories}
         suggestedProducts={suggestedProducts}
         onSuggestedCategoryChange={onCategoryChange}
         activeCategory={activeCategory}
+        activeCategoryId={activeCategoryId}
+        selectedSubcategory={activeSubcategory}
         onCategoryChange={onCategoryChange}
+        onSubcategoryChange={onSubcategoryChange}
         sortBy={sortBy}
         onSortChange={onSortChange}
         likedIds={likedIds}

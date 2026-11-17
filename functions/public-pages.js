@@ -1,6 +1,7 @@
 const { onRequest } = require('firebase-functions/v2/https')
 const { db } = require('./shared/core')
 const { slugify } = require('./shared/slugify')
+const { buildTaxonomyRoutes } = require('./shared/catalog-routes')
 
 const SITE_URL = 'https://pridecircuit.in'
 const CONTENT_PAGES = {
@@ -90,22 +91,32 @@ async function loadCatalog() {
       enabled: document.data()?.enabled !== false,
     }))
     const categoryById = new Map(categories.map((category) => [category.id, category]))
-    const categoryByName = new Map(
-      categories.map((category) => [category.name.toLowerCase(), category]),
-    )
+    const categoryByName = new Map()
+    categories.forEach((category) => {
+      const name = category.name.toLowerCase()
+      categoryByName.set(name, [...(categoryByName.get(name) || []), category])
+    })
     const subcategoryById = new Map(
       subcategories.map((subcategory) => [subcategory.id, subcategory]),
     )
     const products = productSnapshot.docs
       .map(publicProduct)
       .filter((product) => {
+        const namedCategories = categoryByName.get(product.category.toLowerCase()) || []
         const category = categoryById.get(product.categoryId) ||
-          categoryByName.get(product.category.toLowerCase())
+          (namedCategories.length === 1 ? namedCategories[0] : null)
         const subcategory = subcategoryById.get(product.subcategoryId)
         return product.enabled && category?.enabled !== false && subcategory?.enabled !== false
       })
       .sort((first, second) => timestampMillis(second.createdAt) - timestampMillis(first.createdAt))
-    return { products, categories: categories.filter((category) => category.enabled), subcategories: subcategories.filter((subcategory) => subcategory.enabled) }
+    const activeCategories = categories.filter((category) => category.enabled)
+    const activeSubcategories = subcategories.filter((subcategory) => subcategory.enabled)
+    return {
+      products,
+      categories: activeCategories,
+      subcategories: activeSubcategories,
+      taxonomyRoutes: buildTaxonomyRoutes(activeCategories, activeSubcategories),
+    }
   })
   catalogCache = { loadedAt: Date.now(), value: pending }
   try {
@@ -146,13 +157,16 @@ const productCards = (products) => products.map((product, index) => `
     <p class="seo-card-price">${escapeHtml(formatPrice(product.price))}</p>
   </article>`).join('')
 
-const categoryCards = (categories, products) => categories.map((category) => {
-  const productCount = products.filter(
-    (product) =>
-      product.categoryId === category.id ||
-      product.category.toLowerCase() === category.name.toLowerCase(),
+const categoryCards = (categories, products, taxonomyRoutes = { categories: [] }) => categories.map((category) => {
+  const categoryNameCount = categories.filter(
+    (item) => item.name.trim().toLowerCase() === category.name.trim().toLowerCase(),
   ).length
-  const path = `/category/${encodeURIComponent(slugify(category.name))}`
+  const productCount = products.filter(
+    (product) => product.categoryId
+      ? String(product.categoryId) === String(category.id)
+      : categoryNameCount === 1 && product.category.toLowerCase() === category.name.toLowerCase(),
+  ).length
+  const path = taxonomyRoutes.categories.find((item) => String(item.id) === String(category.id))?.path || `/product-category/${encodeURIComponent(slugify(category.name))}/`
   return `
     <article class="seo-card">
       <a href="${path}"><h2>${escapeHtml(category.name)}</h2></a>
@@ -213,29 +227,49 @@ const pageHtml = ({ title, description, canonicalPath, content, schema, image = 
   }
 }
 
-function renderCatalogPage(products, category = '', subcategory = '') {
-  const categoryName = text(category)
-  const subcategoryName = text(subcategory)
-  const filtered = subcategoryName
-    ? products.filter((product) => slugify(product.category) === slugify(categoryName) && slugify(product.subcategory) === slugify(subcategoryName))
-    : categoryName
-    ? products.filter((product) => slugify(product.category) === slugify(categoryName))
-    : products
+function renderCatalogPage(products, category = '', subcategory = '', taxonomyRoutes = { categories: [], subcategories: [] }, categories = []) {
+  const categoryRecord = category && typeof category === 'object' ? category : null
+  const subcategoryRecord = subcategory && typeof subcategory === 'object' ? subcategory : null
+  const categoryName = text(categoryRecord?.name || category)
+  const subcategoryName = text(subcategoryRecord?.name || subcategory)
+  const sameNameCategories = categories.filter((item) => item.name.trim().toLowerCase() === categoryName.toLowerCase())
+  const sameNameSubcategories = taxonomyRoutes.subcategories.filter((item) =>
+    String(item.categoryId) === String(categoryRecord?.id || '') &&
+    item.name.trim().toLowerCase() === subcategoryName.toLowerCase(),
+  )
+  const belongsToCategory = (product) => categoryRecord?.id
+    ? product.categoryId
+      ? String(product.categoryId) === String(categoryRecord.id)
+      : sameNameCategories.length === 1 && product.category.trim().toLowerCase() === categoryName.toLowerCase()
+    : !categoryName || slugify(product.category) === slugify(categoryName)
+  const belongsToSubcategory = (product) => !subcategoryName || (
+    belongsToCategory(product) &&
+    (subcategoryRecord?.id && product.subcategoryId
+      ? String(product.subcategoryId) === String(subcategoryRecord.id)
+      : sameNameSubcategories.length === 1 && slugify(product.subcategory) === slugify(subcategoryName))
+  )
+  const filtered = products.filter((product) => belongsToCategory(product) && belongsToSubcategory(product))
+  const categoryRoute = categoryRecord?.id
+    ? taxonomyRoutes.categories.find((item) => String(item.id) === String(categoryRecord.id))
+    : null
+  const subcategoryRoute = subcategoryRecord?.id
+    ? taxonomyRoutes.subcategories.find((item) => String(item.id) === String(subcategoryRecord.id))
+    : null
   const title = subcategoryName
     ? `${subcategoryName} ${categoryName} Products | Pride Circuit`
     : categoryName
       ? `${categoryName} Products | Pride Circuit`
-    : 'Electronic Products Online | Pride Circuit'
+      : 'Electronic Products Online | Pride Circuit'
   const description = subcategoryName
     ? `Shop ${subcategoryName} products in ${categoryName} online at Pride Circuit with clear pricing and reliable delivery across India.`
     : categoryName
       ? `Shop ${categoryName} products online at Pride Circuit with clear pricing and reliable delivery across India.`
-    : 'Browse genuine electronic components and industrial automation products online at Pride Circuit.'
+      : 'Browse genuine electronic components and industrial automation products online at Pride Circuit.'
   const canonicalPath = subcategoryName
-    ? `/category/${encodeURIComponent(slugify(categoryName))}/${encodeURIComponent(slugify(subcategoryName))}`
+    ? subcategoryRoute?.path || `${categoryRoute?.path || `/product-category/${slugify(categoryName)}/`}${encodeURIComponent(slugify(subcategoryName))}/`
     : categoryName
-      ? `/category/${encodeURIComponent(slugify(categoryName))}`
-    : '/products'
+      ? categoryRoute?.path || `/product-category/${encodeURIComponent(slugify(categoryName))}/`
+      : '/products'
   const itemList = filtered.slice(0, 100).map((product, index) => ({
     '@type': 'ListItem',
     position: index + 1,
@@ -258,20 +292,20 @@ function renderCatalogPage(products, category = '', subcategory = '') {
   })
 }
 
-function renderCategoriesPage(products, categories) {
+function renderCategoriesPage(products, categories, taxonomyRoutes = { categories: [] }) {
   const title = 'All Electronics Categories | Pride Circuit'
   const description = 'Browse every active electronics and industrial automation category available from Pride Circuit.'
   const categoryList = categories.map((category, index) => ({
     '@type': 'ListItem',
     position: index + 1,
     name: category.name,
-    url: `${SITE_URL}/category/${encodeURIComponent(slugify(category.name))}`,
+    url: `${SITE_URL}${taxonomyRoutes.categories.find((item) => String(item.id) === String(category.id))?.path || `/product-category/${encodeURIComponent(slugify(category.name))}/`}`,
   }))
   return pageHtml({
     title,
     description,
     canonicalPath: '/categories',
-    content: `<h1>Browse all categories</h1><p>${escapeHtml(description)}</p><div class="seo-grid">${categoryCards(categories, products)}</div>`,
+    content: `<h1>Browse all categories</h1><p>${escapeHtml(description)}</p><div class="seo-grid">${categoryCards(categories, products, taxonomyRoutes)}</div>`,
     schema: {
       '@context': 'https://schema.org',
       '@type': 'CollectionPage',
@@ -287,7 +321,7 @@ function renderCategoriesPage(products, categories) {
   })
 }
 
-function renderProductPage(product) {
+function renderProductPage(product, categoryPath = '') {
   const canonicalPath = productPath(product)
   const productDescription = product.description || `Shop ${product.name} from Pride Circuit.`
   const description = productDescription.slice(0, 160)
@@ -303,7 +337,7 @@ function renderProductPage(product) {
     description,
     canonicalPath,
     image: product.image,
-    content: `<article><p><a href="/category/${encodeURIComponent(slugify(product.category))}">${escapeHtml(product.category)}</a></p><h1>${escapeHtml(product.name)}</h1><img src="${escapeHtml(product.image)}"${responsiveImageAttributes(product, '(min-width: 1024px) 55vw, 100vw')} alt="${escapeHtml(product.name)}" width="640" height="480" loading="eager" fetchpriority="high" decoding="async"><p>${escapeHtml(productDescription)}</p><p>${escapeHtml(formatPrice(product.price))}${product.price > 0 ? ' (Excl. GST)' : ''}</p><p>${product.stock > 0 ? 'In stock' : 'Out of stock'}</p>${product.sku ? `<p>SKU: ${escapeHtml(product.sku)}</p>` : ''}${product.brand ? `<p>Brand: ${escapeHtml(product.brand)}</p>` : ''}</article>`,
+    content: `<article><p>${categoryPath ? `<a href="${escapeHtml(categoryPath)}">${escapeHtml(product.category)}</a>` : escapeHtml(product.category)}</p><h1>${escapeHtml(product.name)}</h1><img src="${escapeHtml(product.image)}"${responsiveImageAttributes(product, '(min-width: 1024px) 55vw, 100vw')} alt="${escapeHtml(product.name)}" width="640" height="480" loading="eager" fetchpriority="high" decoding="async"><p>${escapeHtml(productDescription)}</p><p>${escapeHtml(formatPrice(product.price))}${product.price > 0 ? ' (Excl. GST)' : ''}</p><p>${product.stock > 0 ? 'In stock' : 'Out of stock'}</p>${product.sku ? `<p>SKU: ${escapeHtml(product.sku)}</p>` : ''}${product.brand ? `<p>Brand: ${escapeHtml(product.brand)}</p>` : ''}</article>`,
     schema: {
       '@context': 'https://schema.org',
       '@type': 'Product',
@@ -322,8 +356,9 @@ exports.publicPage = onRequest(
   { region: 'asia-south1', invoker: 'public', timeoutSeconds: 30 },
   async (request, response) => {
     try {
-      const { products, categories, subcategories } = await loadCatalog()
+      const { products, categories, subcategories, taxonomyRoutes } = await loadCatalog()
       const path = String(request.path || '/').replace(/\/+$/, '') || '/'
+      const requestUrl = new URL(request.originalUrl || request.url || path, SITE_URL)
       let page
       if (CONTENT_PAGES[path]) {
         const [title, description, heading] = CONTENT_PAGES[path]
@@ -341,29 +376,57 @@ exports.publicPage = onRequest(
           title: 'Pride Circuit | Buy Electronic Components Online in India',
           description,
           canonicalPath: '/',
-          content: `<h1>Electronic components and automation products</h1><p>${escapeHtml(description)}</p><nav class="seo-nav" aria-label="Product categories"><a href="/categories">View all categories</a>${categories.map((category) => `<a href="/category/${encodeURIComponent(slugify(category.name))}">${escapeHtml(category.name)}</a>`).join('')}</nav><div class="seo-grid">${productCards(featured)}</div>`,
+          content: `<h1>Electronic components and automation products</h1><p>${escapeHtml(description)}</p><nav class="seo-nav" aria-label="Product categories"><a href="/categories">View all categories</a>${categories.map((category) => `<a href="${escapeHtml(taxonomyRoutes.categories.find((item) => String(item.id) === String(category.id))?.path || `/product-category/${encodeURIComponent(slugify(category.name))}/`)}">${escapeHtml(category.name)}</a>`).join('')}</nav><div class="seo-grid">${productCards(featured)}</div>`,
           schema: { '@context': 'https://schema.org', '@type': 'WebSite', name: 'Pride Circuit', url: `${SITE_URL}/` },
         })
       } else if (path === '/categories') {
-        page = renderCategoriesPage(products, categories)
+        page = renderCategoriesPage(products, categories, taxonomyRoutes)
       } else if (path === '/products') {
-        page = renderCatalogPage(products)
-      } else if (path.startsWith('/category/')) {
-        const segments = path.slice('/category/'.length).split('/').map(decodeURIComponent)
-        const requestedSlug = segments[0]
-        const category = categories.find((item) => slugify(item.name) === requestedSlug)
-        const subcategory = segments[1]
-          ? subcategories.find((item) => slugify(item.name) === segments[1] && categories.find((entry) => String(entry.id) === String(item.categoryId) && entry.id === category?.id))
-          : null
-        if (segments[1] && category && !subcategory) {
-          page = pageHtml({ title: 'Category not found | Pride Circuit', description: 'This product category is not available.', canonicalPath: path, content: '<h1>Category not found</h1><p><a href="/products">Browse all products</a></p>', schema: { '@context': 'https://schema.org', '@type': 'WebPage' }, status: 404 })
-        } else {
-        page = category
-          ? renderCatalogPage(products, category.name, subcategory?.name || '')
-          : pageHtml({ title: 'Category not found | Pride Circuit', description: 'This product category is not available.', canonicalPath: path, content: '<h1>Category not found</h1><p><a href="/products">Browse all products</a></p>', schema: { '@context': 'https://schema.org', '@type': 'WebPage' }, status: 404 })
+        const requestedCategory = text(requestUrl.searchParams.get('category'))
+        if (requestedCategory && requestedCategory.toLowerCase() !== 'all') {
+          const matchingCategories = taxonomyRoutes.categories.filter(
+            (category) => category.name.trim().toLowerCase() === requestedCategory.toLowerCase(),
+          )
+          if (matchingCategories.length === 1) {
+            const target = new URL(matchingCategories[0].path, SITE_URL)
+            requestUrl.searchParams.forEach((value, key) => {
+              if (key !== 'category') target.searchParams.append(key, value)
+            })
+            response.redirect(301, `${target.pathname}${target.search}`)
+            return
+          }
         }
-
-        // 2. Inside exports.publicPage -> else if (path.startsWith('/product/'))
+        page = renderCatalogPage(products)
+      } else if (path.startsWith('/product-category/') || path.startsWith('/category/')) {
+        const legacy = path.startsWith('/category/')
+        const prefix = legacy ? '/category/' : '/product-category/'
+        const segments = path.slice(prefix.length).split('/').map(decodeURIComponent)
+        const categoryMatches = legacy
+          ? taxonomyRoutes.categories.filter((item) => slugify(item.name) === segments[0])
+          : taxonomyRoutes.categories.filter((item) => item.slug === segments[0])
+        const categoryRoute = categoryMatches.length === 1 ? categoryMatches[0] : null
+        const subcategoryMatches = categoryRoute && segments[1]
+          ? taxonomyRoutes.subcategories.filter((item) =>
+              String(item.categoryId) === String(categoryRoute.id) &&
+              (legacy ? slugify(item.name) === segments[1] : item.slug === segments[1]),
+            )
+          : []
+        const subcategoryRoute = subcategoryMatches.length === 1 ? subcategoryMatches[0] : null
+        if (legacy && categoryRoute && (!segments[1] || subcategoryRoute)) {
+          const target = new URL(subcategoryRoute?.path || categoryRoute.path, SITE_URL)
+          requestUrl.searchParams.forEach((value, key) => target.searchParams.append(key, value))
+          response.redirect(301, `${target.pathname}${target.search}`)
+          return
+        }
+        if (categoryRoute && (!segments[1] || subcategoryRoute)) {
+          const category = categories.find((item) => String(item.id) === String(categoryRoute.id))
+          const subcategory = subcategoryRoute
+            ? subcategories.find((item) => String(item.id) === String(subcategoryRoute.id))
+            : null
+          page = renderCatalogPage(products, category, subcategory || '', taxonomyRoutes, categories)
+        } else {
+          page = pageHtml({ title: 'Category not found | Pride Circuit', description: 'This product category is not available.', canonicalPath: '/products', content: '<h1>Category not found</h1><p><a href="/products">Browse all products</a></p>', schema: { '@context': 'https://schema.org', '@type': 'WebPage' }, status: 404 })
+        }
       } else if (path.startsWith('/product/')) {
         const productRoutePath = path.endsWith('/reviews') ? path.slice(0, -'/reviews'.length) : path
         const routeIdentifier = decodeURIComponent(productRoutePath.slice('/product/'.length))
@@ -381,8 +444,15 @@ exports.publicPage = onRequest(
         }
 
         const product = productBySlug || productById
+        const matchingProductCategories = product
+          ? taxonomyRoutes.categories.filter((item) => item.name.trim().toLowerCase() === product.category.trim().toLowerCase())
+          : []
+        const productCategory = product && (
+          taxonomyRoutes.categories.find((item) => String(item.id) === String(product.categoryId)) ||
+          (matchingProductCategories.length === 1 ? matchingProductCategories[0] : null)
+        )
         page = product
-          ? renderProductPage(product)
+          ? renderProductPage(product, productCategory?.path || '')
           : pageHtml({ title: 'Product not found | Pride Circuit', description: 'This product is not available.', canonicalPath: path, content: '<h1>Product not found</h1><p><a href="/products">Browse all products</a></p>', schema: { '@context': 'https://schema.org', '@type': 'WebPage' }, status: 404 })
       }
       else {
@@ -403,6 +473,7 @@ exports.publicPage = onRequest(
 )
 
 exports._test = {
+  buildTaxonomyRoutes,
   pageHtml,
   renderCatalogPage,
   renderCategoriesPage,

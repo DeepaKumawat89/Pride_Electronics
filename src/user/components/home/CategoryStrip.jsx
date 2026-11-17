@@ -68,6 +68,7 @@ export default function CategoryStrip({
           <CategoryTile
             key={category.id}
             category={category}
+            categories={categories}
             productCount={productCount}
             compact
             onSelect={onSelect}

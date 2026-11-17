@@ -48,19 +48,52 @@ test('product fallback matches storefront heading typography', () => {
 })
 
 test('category directory exposes every category with canonical links', () => {
+  const categories = [
+    { id: 'components', name: 'Components' },
+    { id: 'automation', name: 'Industrial Automation' },
+  ]
+  const taxonomyRoutes = _test.buildTaxonomyRoutes(categories, [])
   const page = _test.renderCategoriesPage(
     [product],
-    [
-      { id: 'components', name: 'Components' },
-      { id: 'automation', name: 'Industrial Automation' },
-    ],
+    categories,
+    taxonomyRoutes,
   )
 
   assert.equal(page.status, 200)
   assert.match(page.html, /rel="canonical" href="https:\/\/pridecircuit\.in\/categories"/)
-  assert.match(page.html, /href="\/category\/components"/)
-  assert.match(page.html, /href="\/category\/industrial-automation"/)
+  assert.match(page.html, /href="\/product-category\/components\/"/)
+  assert.match(page.html, /href="\/product-category\/industrial-automation\/"/)
   assert.match(page.html, /"numberOfItems":2/)
+})
+
+test('category and subcategory routes are hierarchical, collision-safe, and canonical', () => {
+  const categories = [
+    { id: 'components-a', name: 'Components' },
+    { id: 'components-b', name: 'Components' },
+  ]
+  const subcategories = [
+    { id: 'sensors-a', categoryId: 'components-a', name: 'Sensors' },
+    { id: 'sensors-b', categoryId: 'components-b', name: 'Sensors' },
+  ]
+  const taxonomyRoutes = _test.buildTaxonomyRoutes(categories, subcategories)
+  const category = taxonomyRoutes.categories.find((item) => item.id === 'components-a')
+  const subcategory = taxonomyRoutes.subcategories.find((item) => item.id === 'sensors-a')
+  const page = _test.renderCatalogPage(
+    [
+      { ...product, categoryId: 'components-a', subcategoryId: 'sensors-a' },
+      { ...product, id: 'other', name: 'Other Product', categoryId: 'components-b', subcategoryId: 'sensors-b' },
+    ],
+    category,
+    subcategory,
+    taxonomyRoutes,
+    categories,
+  )
+
+  assert.match(category.path, /^\/product-category\/components-/)
+  assert.match(subcategory.path, /^\/product-category\/components-[^/]+\/sensors\//)
+  assert.ok(page.html.includes(`rel="canonical" href="https://pridecircuit.in${subcategory.path}"`))
+  assert.match(page.html, /Safe Product/)
+  assert.doesNotMatch(page.html, /Other Product/)
 })
 
 test('large catalog limits image requests without hiding product links', () => {

@@ -61,6 +61,7 @@ import {
 import { createOrderMoment } from '../utils/orderTimestamps'
 import { getProductMinimumOrderQuantity } from '../utils/productMoq'
 import { getProductPath, slugify } from '../utils/slugify'
+import { buildTaxonomyRoutes } from '../utils/catalogRoutes'
 import { getProductBySlugOrId } from '../firebase/products'
 
 const AllCategoriesPage = lazy(() => import('./components/categories/AllCategoriesPage'))
@@ -179,11 +180,23 @@ function parseLegacyProductsHash(hash) {
 }
 
 // Keep a single entry point for previously shared hash URLs. New navigation uses paths.
-function replaceLegacyHashRoute(products) {
+function replaceLegacyHashRoute(products, taxonomyRoutes) {
   const hash = window.location.hash
   const legacyProducts = parseLegacyProductsHash(hash)
   if (legacyProducts) {
-    window.history.replaceState({ prideProducts: true }, '', createProductsPath(legacyProducts.category, legacyProducts.query))
+    const categoryMatches = taxonomyRoutes.categories.filter(
+      (category) => category.name.trim().toLowerCase() === legacyProducts.category.trim().toLowerCase(),
+    )
+    const category = categoryMatches.length === 1 ? categoryMatches[0] : null
+    const extraParams = new URLSearchParams(window.location.search)
+    extraParams.delete('category')
+    if (legacyProducts.query) extraParams.set('query', legacyProducts.query)
+    const targetPath = category?.path || createProductsPath(legacyProducts.category, legacyProducts.query)
+    const target = new URL(targetPath, window.location.origin)
+    extraParams.forEach((value, key) => {
+      if (!target.searchParams.has(key)) target.searchParams.append(key, value)
+    })
+    window.history.replaceState({ prideProducts: true }, '', `${target.pathname}${target.search}`)
     return true
   }
   const legacyContentPage = LEGACY_CONTENT_PAGE_HASHES[hash]
@@ -221,12 +234,15 @@ function parsePublicPath(pathname) {
   if (path === '/products') return { type: 'products', categorySlug: '' }
   const contentPage = getContentPageFromPath(path)
   if (contentPage) return { type: 'content', contentPage }
-  if (path.startsWith('/category/')) {
-    const segments = path.slice('/category/'.length).split('/').map(decodeURIComponent)
+  if (path.startsWith('/product-category/') || path.startsWith('/category/')) {
+    const legacy = path.startsWith('/category/')
+    const prefix = legacy ? '/category/' : '/product-category/'
+    const segments = path.slice(prefix.length).split('/').map(decodeURIComponent)
     return {
       type: 'category',
       categorySlug: segments[0],
       subcategorySlug: segments[1] || '',
+      legacy,
     }
   }
   if (path.startsWith('/product/')) {
@@ -270,6 +286,7 @@ export default function UserApp({
   invoiceSettings = initialInvoiceSettings,
   adminSettings = initialAdminSettings,
   categories = [],
+  subcategories = [],
   reviews = [],
   onNewOrder,
   onCreateReturnRequest,
@@ -279,12 +296,20 @@ export default function UserApp({
   onBeSellerClick,
 }) {
   const cart = useCart(null, products)
+  const taxonomyRoutes = useMemo(
+    () => buildTaxonomyRoutes(categories, subcategories),
+    [categories, subcategories],
+  )
   const hydrateCart = cart.hydrate
   const cartPersistence = cart.persistence
   const cartPersistenceRef = useRef(cartPersistence)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('All')
+  const [categoryId, setCategoryId] = useState('')
+  const [categoryRoutePath, setCategoryRoutePath] = useState('')
   const [subcategory, setSubcategory] = useState('')
+  const [subcategoryId, setSubcategoryId] = useState('')
+  const [subcategoryRoutePath, setSubcategoryRoutePath] = useState('')
   const [sortBy, setSortBy] = useState('newest')
   const [productsOpen, setProductsOpen] = useState(false)
   const [categoriesOpen, setCategoriesOpen] = useState(false)
@@ -460,7 +485,7 @@ export default function UserApp({
   useEffect(() => {
     let active = true
     const handleHistoryBack = async (event) => {
-      replaceLegacyHashRoute(products)
+      replaceLegacyHashRoute(products, taxonomyRoutes)
       const shouldResetScroll =
         event?.type === 'popstate' || !historyRouteSynced.current
       historyRouteSynced.current = true
@@ -609,21 +634,47 @@ export default function UserApp({
       }
       if (publicPath?.type === 'products' || publicPath?.type === 'category') {
         const routeParams = new URLSearchParams(window.location.search)
-        const pathCategory =
-          publicPath.type === 'category'
-            ? categories.find(
-                (item) => publicSlug(item.name) === publicPath.categorySlug,
-              ) ||
-              products.find(
-                (product) => publicSlug(product.category) === publicPath.categorySlug,
-              )
-            : null
-        const pathSubcategory = publicPath.type === 'category' && publicPath.subcategorySlug
-          ? subcategories.find((item) => publicSlug(item.name) === publicPath.subcategorySlug && categories.find((entry) => String(entry.id) === String(item.categoryId) && publicSlug(entry.name) === publicPath.categorySlug))
-          : null
-        const requestedCategory = publicPath.type === 'category'
-          ? pathCategory?.name
-          : routeParams.get('category') || ''
+        let selectedCategoryRoute = null
+        let selectedSubcategoryRoute = null
+        if (publicPath.type === 'category') {
+          const categoryMatches = publicPath.legacy
+            ? taxonomyRoutes.categories.filter((item) => publicSlug(item.name) === publicPath.categorySlug)
+            : taxonomyRoutes.categories.filter((item) => item.slug === publicPath.categorySlug)
+          if (categoryMatches.length === 1) selectedCategoryRoute = categoryMatches[0]
+          if (selectedCategoryRoute && publicPath.subcategorySlug) {
+            const subcategoryMatches = taxonomyRoutes.subcategories.filter((item) =>
+              String(item.categoryId) === String(selectedCategoryRoute.id) &&
+              (publicPath.legacy
+                ? publicSlug(item.name) === publicPath.subcategorySlug
+                : item.slug === publicPath.subcategorySlug),
+            )
+            if (subcategoryMatches.length === 1) selectedSubcategoryRoute = subcategoryMatches[0]
+          }
+          if (selectedCategoryRoute && (publicPath.legacy || !publicPath.subcategorySlug || selectedSubcategoryRoute)) {
+            const cleanPath = selectedSubcategoryRoute?.path || selectedCategoryRoute.path
+            const cleanUrl = new URL(cleanPath, window.location.origin)
+            routeParams.forEach((value, key) => cleanUrl.searchParams.append(key, value))
+            if (publicPath.legacy || window.location.pathname.replace(/\/$/, '') !== cleanPath.replace(/\/$/, '')) {
+              window.history.replaceState(window.history.state, '', `${cleanUrl.pathname}${cleanUrl.search}`)
+            }
+          }
+        } else {
+          const requestedCategory = routeParams.get('category') || ''
+          if (requestedCategory && requestedCategory !== 'All') {
+            const categoryMatches = taxonomyRoutes.categories.filter(
+              (item) => item.name.trim().toLowerCase() === requestedCategory.trim().toLowerCase(),
+            )
+            if (categoryMatches.length === 1) {
+              selectedCategoryRoute = categoryMatches[0]
+              const cleanUrl = new URL(selectedCategoryRoute.path, window.location.origin)
+              routeParams.forEach((value, key) => {
+                if (key !== 'category') cleanUrl.searchParams.append(key, value)
+              })
+              window.history.replaceState(window.history.state, '', `${cleanUrl.pathname}${cleanUrl.search}`)
+            }
+          }
+        }
+        const requestedCategory = selectedCategoryRoute?.name || routeParams.get('category') || ''
         productsHistoryActive.current = true
         productHistoryActive.current = false
         productReturnSection.current = null
@@ -632,7 +683,11 @@ export default function UserApp({
         setReviewsOpen(false)
         setAccountSection(null)
         setCategory(requestedCategory || 'All')
-        setSubcategory(pathSubcategory?.name || '')
+        setCategoryId(selectedCategoryRoute?.id || '')
+        setCategoryRoutePath(selectedCategoryRoute?.path || '')
+        setSubcategory(selectedSubcategoryRoute?.name || '')
+        setSubcategoryId(selectedSubcategoryRoute?.id || '')
+        setSubcategoryRoutePath(selectedSubcategoryRoute?.path || '')
         setQuery(routeParams.get('query') || '')
         resetScroll()
         return
@@ -664,7 +719,7 @@ export default function UserApp({
       active = false
       window.removeEventListener('popstate', handleHistoryBack)
     }
-  }, [authStatus, categories, products, productsLoading])
+  }, [authStatus, categories, products, productsLoading, subcategories, taxonomyRoutes])
 
   const notify = (message) => {
     setToast(message)
@@ -865,12 +920,12 @@ export default function UserApp({
 
   const filteredProducts = useMemo(() => {
     const matchingProducts = products
-      .filter((product) => category === 'All' || product.category === category)
-      .filter((product) => !subcategory || product.subcategory === subcategory)
+      .filter((product) => category === 'All' || (categoryId && product.categoryId ? String(product.categoryId) === String(categoryId) : product.category === category))
+      .filter((product) => !subcategory || (subcategoryId && product.subcategoryId ? String(product.subcategoryId) === String(subcategoryId) : product.subcategory === subcategory))
       .filter((product) => matchesProductQuery(product, query))
 
     return sortCatalogProducts(matchingProducts, sortBy)
-  }, [products, query, category, subcategory, sortBy])
+  }, [products, query, category, categoryId, subcategory, subcategoryId, sortBy])
 
   const suggestedProducts = useMemo(() => {
     const normalizedQuery = normalizeSearchQuery(query)
@@ -924,6 +979,11 @@ export default function UserApp({
     resetToStorefront()
     setQuery('')
     setCategory('All')
+    setCategoryId('')
+    setCategoryRoutePath('')
+    setSubcategory('')
+    setSubcategoryId('')
+    setSubcategoryRoutePath('')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -960,11 +1020,11 @@ export default function UserApp({
   }
 
   const navigateToProducts = (nextCategory = 'All', nextQuery = '') => {
-    const productsHash = createProductsPath(nextCategory, nextQuery)
+    const productsPath = createProductsPath(nextCategory, nextQuery)
     if (!productsOpen) {
       productsReturnCatalog.current = { query, category }
     }
-    if (`${window.location.pathname}${window.location.search}` !== productsHash) {
+    if (`${window.location.pathname}${window.location.search}` !== productsPath) {
       window.history.pushState(
         {
           prideProducts: true,
@@ -972,7 +1032,7 @@ export default function UserApp({
           category: nextCategory,
         },
         '',
-        productsHash,
+        productsPath,
       )
     }
     productsHistoryActive.current = true
@@ -985,6 +1045,11 @@ export default function UserApp({
     setAccountSection(null)
     setQuery(nextQuery)
     setCategory(nextCategory)
+    setCategoryId('')
+    setCategoryRoutePath('')
+    setSubcategory('')
+    setSubcategoryId('')
+    setSubcategoryRoutePath('')
     setProductsOpen(true)
     window.scrollTo({ top: 0, behavior: 'auto' })
   }
@@ -992,6 +1057,10 @@ export default function UserApp({
   const navigateToCategory = (selectedCategory) => {
     const nextCategory = selectedCategory?.name || String(selectedCategory || '')
     if (!nextCategory) return
+    const categoryRoute = selectedCategory?.id
+      ? taxonomyRoutes.categories.find((item) => String(item.id) === String(selectedCategory.id))
+      : taxonomyRoutes.categories.find((item) => item.name.trim().toLowerCase() === nextCategory.trim().toLowerCase())
+    if (!categoryRoute) return
     if (!productsOpen) {
       productsReturnCatalog.current = { query, category }
     }
@@ -1002,7 +1071,7 @@ export default function UserApp({
         category: nextCategory,
       },
       '',
-      `/category/${encodeURIComponent(publicSlug(nextCategory))}`,
+      categoryRoute.path,
     )
     productsHistoryActive.current = true
     setSuccessfulOrder(null)
@@ -1014,7 +1083,11 @@ export default function UserApp({
     setAccountSection(null)
     setQuery('')
     setCategory(nextCategory)
+    setCategoryId(categoryRoute.id)
+    setCategoryRoutePath(categoryRoute.path)
     setSubcategory('')
+    setSubcategoryId('')
+    setSubcategoryRoutePath('')
     setProductsOpen(true)
     window.scrollTo({ top: 0, behavior: 'auto' })
   }
@@ -1061,38 +1134,72 @@ export default function UserApp({
     navigateHome()
   }
 
-  const handleHomeCategory = (nextCategory) => {
-    setQuery('')
-    setCategory(nextCategory)
-    requestAnimationFrame(() =>
-      document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' }),
-    )
-  }
-
-  const handleProductsCategory = (nextCategory) => {
-    setCategory(nextCategory)
+  const handleProductsCategory = (nextCategory, selectedCategoryRecord) => {
+    const categoryName = typeof nextCategory === 'object' ? nextCategory.name : nextCategory
+    const categoryRoute = categoryName === 'All'
+      ? null
+      : selectedCategoryRecord?.id || (typeof nextCategory === 'object' && nextCategory.id)
+        ? taxonomyRoutes.categories.find((item) => String(item.id) === String(selectedCategoryRecord?.id || nextCategory.id))
+        : taxonomyRoutes.categories.find((item) => item.name.trim().toLowerCase() === String(categoryName).trim().toLowerCase())
+    if (categoryName !== 'All' && !categoryRoute) return
+    const nextPath = categoryRoute?.path || createProductsPath('All', query)
+    const nextUrl = new URL(nextPath, window.location.origin)
+    if (query.trim()) nextUrl.searchParams.set('query', query.trim())
     setSubcategory('')
-    const productsHash = createProductsPath(nextCategory, query)
+    setSubcategoryRoutePath('')
     window.history.replaceState(
       {
         ...window.history.state,
         prideProducts: true,
-        category: nextCategory,
+        category: categoryName,
       },
       '',
-      productsHash,
+      `${nextUrl.pathname}${nextUrl.search}`,
     )
+    setCategory(categoryName)
+    setCategoryId(categoryRoute?.id || '')
+    setCategoryRoutePath(categoryRoute?.path || '')
+    setSubcategoryId('')
     requestAnimationFrame(() =>
       document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' }),
     )
   }
 
+  const handleProductsSubcategory = (categoryName, nextSubcategory, categoryRecord, subcategoryRecord) => {
+    const selectedCategoryRoute = categoryRecord?.id
+      ? taxonomyRoutes.categories.find((item) => String(item.id) === String(categoryRecord.id))
+      : taxonomyRoutes.categories.find((item) => item.name.trim().toLowerCase() === String(categoryName).trim().toLowerCase())
+    const selectedSubcategoryRoute = subcategoryRecord?.id
+      ? taxonomyRoutes.subcategories.find((item) => String(item.id) === String(subcategoryRecord.id))
+      : taxonomyRoutes.subcategories.find((item) =>
+          String(item.categoryId) === String(selectedCategoryRoute?.id) &&
+          item.name.trim().toLowerCase() === String(nextSubcategory).trim().toLowerCase(),
+        )
+    if (!selectedCategoryRoute || !selectedSubcategoryRoute) return
+    const nextUrl = new URL(selectedSubcategoryRoute.path, window.location.origin)
+    if (query.trim()) nextUrl.searchParams.set('query', query.trim())
+    window.history.replaceState(
+      { ...window.history.state, prideProducts: true, category: categoryName, subcategory: nextSubcategory },
+      '',
+      `${nextUrl.pathname}${nextUrl.search}`,
+    )
+    setCategory(categoryName)
+    setCategoryId(selectedCategoryRoute.id)
+    setCategoryRoutePath(selectedCategoryRoute.path)
+    setSubcategory(nextSubcategory)
+    setSubcategoryId(selectedSubcategoryRoute.id)
+    setSubcategoryRoutePath(selectedSubcategoryRoute.path)
+  }
+
   const handleProductsSearch = (nextQuery) => {
     setQuery(nextQuery)
+    const nextUrl = new URL(categoryRoutePath || createProductsPath('All'), window.location.origin)
+    if (nextQuery.trim()) nextUrl.searchParams.set('query', nextQuery.trim())
+    else nextUrl.searchParams.delete('query')
     window.history.replaceState(
       { ...window.history.state, prideProducts: true, category },
       '',
-      createProductsPath(category, nextQuery),
+      `${nextUrl.pathname}${nextUrl.search}`,
     )
     requestAnimationFrame(() =>
       document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' }),
@@ -1117,6 +1224,10 @@ export default function UserApp({
           .getElementById('catalog')
           ?.scrollIntoView({ behavior: 'smooth' }),
       )
+      return
+    }
+    if (window.location.pathname.startsWith('/product-category/')) {
+      handleProductsSearch(nextQuery)
       return
     }
     navigateToProducts('All', nextQuery)
@@ -1981,7 +2092,12 @@ export default function UserApp({
       {isProductRoute && liveSelectedProduct && <ProductSeo product={liveSelectedProduct} />}
       {isProductRoute && publicProductNotFound && <ProductSeo product={null} notFound />}
       {!isProductRoute && !liveSelectedProduct && productsOpen && (
-        <CatalogSeo category={category} subcategory={subcategory} products={filteredProducts} />
+        <CatalogSeo
+          category={category}
+          subcategory={subcategory}
+          routePath={subcategoryRoutePath || categoryRoutePath}
+          products={filteredProducts}
+        />
       )}
       <Header
         products={products}
@@ -2142,8 +2258,11 @@ export default function UserApp({
             filteredProducts={filteredProducts}
             suggestedProducts={suggestedProducts}
             categories={categories}
+            subcategories={subcategories}
             query={query}
             activeCategory={category}
+            activeCategoryId={categoryId}
+            activeSubcategory={subcategory}
             sortBy={sortBy}
             likedIds={user ? likedIds : []}
             loading={productsLoading}
@@ -2153,6 +2272,7 @@ export default function UserApp({
             onQueryChange={setQuery}
             onSearchSubmit={handleProductsSearch}
             onCategoryChange={handleProductsCategory}
+            onSubcategoryChange={handleProductsSubcategory}
             onSortChange={setSortBy}
             onProductSelect={navigateToProduct}
             onLike={handleLike}
