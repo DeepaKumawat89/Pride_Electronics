@@ -1,6 +1,7 @@
 const { getFirestore } = require('firebase-admin/firestore')
 const { onRequest } = require('firebase-functions/v2/https')
 const { buildTaxonomyRoutes } = require('./shared/catalog-routes')
+const { productPath } = require('./shared/product-routes')
 
 const SITE_URL = 'https://pridecircuit.in'
 const db = getFirestore()
@@ -233,11 +234,11 @@ exports.sitemap = onRequest(
           )
         }
 
-        const identifier = product.slug || product.id
-        if (identifier) {
+        // Product detail URLs in the sitemap must always use the stored canonical slug.
+        if (product.slug) {
           addUrl(
             urlsByPath,
-            `/product/${encodeURIComponent(identifier)}`,
+            productPath(product),
             product.lastmod,
           )
         }

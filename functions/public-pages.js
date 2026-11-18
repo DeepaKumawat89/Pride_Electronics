@@ -2,6 +2,7 @@ const { onRequest } = require('firebase-functions/v2/https')
 const { db } = require('./shared/core')
 const { slugify } = require('./shared/slugify')
 const { buildTaxonomyRoutes } = require('./shared/catalog-routes')
+const { productPath } = require('./shared/product-routes')
 
 const SITE_URL = 'https://pridecircuit.in'
 const CONTENT_PAGES = {
@@ -22,6 +23,18 @@ const timestampMillis = (value) => {
 }
 
 const text = (value) => String(value || '').replace(/\s+/g, ' ').trim()
+const plainText = (value) => String(value || '')
+  .replace(/&nbsp;|&#160;|&#xA0;/gi, ' ')
+  .replace(/&amp;/gi, '&')
+  .replace(/&lt;/gi, '<')
+  .replace(/&gt;/gi, '>')
+  .replace(/&quot;/gi, '"')
+  .replace(/&#39;|&apos;/gi, "'")
+  .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+  .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+  .replace(/<[^>]*>/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
 const escapeHtml = (value) =>
   text(value)
     .replaceAll('&', '&amp;')
@@ -52,7 +65,7 @@ const publicProduct = (document) => {
     id: document.id,
     slug: text(data.slug),
     name: text(data.name) || 'Electronic component',
-    description: text(data.description),
+    description: String(data.description ?? ''),
     categoryId: text(data.categoryId),
     category: text(data.category),
     subcategoryId: text(data.subcategoryId),
@@ -128,9 +141,6 @@ async function loadCatalog() {
     throw error
   }
 }
-
-const productPath = (product) =>
-  `/product/${encodeURIComponent(product.slug || product.id)}`
 
 const responsiveImageAttributes = (product, sizes) => {
   const thumbnail = text(product.thumbnail)
@@ -324,7 +334,7 @@ function renderCategoriesPage(products, categories, taxonomyRoutes = { categorie
 function renderProductPage(product, categoryPath = '') {
   const canonicalPath = productPath(product)
   const productDescription = product.description || `Shop ${product.name} from Pride Circuit.`
-  const description = productDescription.slice(0, 160)
+  const description = plainText(product.description) || plainText(productDescription)
   const offer = product.price > 0 ? {
     '@type': 'Offer',
     price: product.price.toFixed(2),
@@ -333,7 +343,7 @@ function renderProductPage(product, categoryPath = '') {
     url: `${SITE_URL}${canonicalPath}`,
   } : undefined
   return pageHtml({
-    title: `${product.name} | Pride Circuit`,
+    title: product.name,
     description,
     canonicalPath,
     image: product.image,
@@ -342,7 +352,7 @@ function renderProductPage(product, categoryPath = '') {
       '@context': 'https://schema.org',
       '@type': 'Product',
       name: product.name,
-      description: productDescription,
+      description,
       image: [product.image],
       sku: product.sku || undefined,
       brand: product.brand ? { '@type': 'Brand', name: product.brand } : undefined,
@@ -357,8 +367,13 @@ exports.publicPage = onRequest(
   async (request, response) => {
     try {
       const { products, categories, subcategories, taxonomyRoutes } = await loadCatalog()
-      const path = String(request.path || '/').replace(/\/+$/, '') || '/'
+      const requestedPath = String(request.path || '/') || '/'
+      const path = requestedPath.replace(/\/+$/, '') || '/'
       const requestUrl = new URL(request.originalUrl || request.url || path, SITE_URL)
+      if (path.startsWith('/product/') && requestedPath !== path) {
+        response.redirect(301, `${path}${requestUrl.search}`)
+        return
+      }
       let page
       if (CONTENT_PAGES[path]) {
         const [title, description, heading] = CONTENT_PAGES[path]
@@ -439,7 +454,8 @@ exports.publicPage = onRequest(
           : null
 
         if (productById && productById.slug && productById.slug !== identifier) {
-          response.redirect(301, productPath(productById))
+          const reviewsSuffix = path.endsWith('/reviews') ? '/reviews' : ''
+          response.redirect(301, `${productPath(productById)}${reviewsSuffix}${requestUrl.search}`)
           return
         }
 

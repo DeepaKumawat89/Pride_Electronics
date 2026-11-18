@@ -5,6 +5,18 @@ import { getProductPath } from '../../../utils/slugify'
 const SITE_URL = 'https://pridecircuit.in'
 
 const textValue = (value) => String(value || '').replace(/\s+/g, ' ').trim()
+const plainText = (value) => String(value || '')
+  .replace(/&nbsp;|&#160;|&#xA0;/gi, ' ')
+  .replace(/&amp;/gi, '&')
+  .replace(/&lt;/gi, '<')
+  .replace(/&gt;/gi, '>')
+  .replace(/&quot;/gi, '"')
+  .replace(/&#39;|&apos;/gi, "'")
+  .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+  .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+  .replace(/<[^>]*>/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
 
 const setMeta = (attribute, name, content) => {
   let element = document.head.querySelector(`meta[${attribute}="${name}"]`)
@@ -70,10 +82,8 @@ export default function ProductSeo({ product, notFound = false }) {
     }
 
     const name = textValue(product.name) || 'Product'
-    const productDescription =
-      textValue(product.description) ||
-      `Shop ${name} from Pride Circuit.`
-    const description = productDescription.slice(0, 160)
+    const productDescription = textValue(product.description) || `Shop ${name} from Pride Circuit.`
+    const description = plainText(product.description) || plainText(productDescription)
     const canonicalUrl = `${SITE_URL}${getProductPath(product)}`
     const images = [
       product.image,
@@ -90,7 +100,7 @@ export default function ProductSeo({ product, notFound = false }) {
       '@type': 'Product',
       url: canonicalUrl,
       name,
-      description: productDescription,
+      description,
       image: [...new Set(images)],
       ...(textValue(product.sku) ? { sku: textValue(product.sku) } : {}),
       ...(textValue(product.brand || product.manufacturer)
@@ -132,18 +142,18 @@ export default function ProductSeo({ product, notFound = false }) {
     document.head.appendChild(structuredData)
 
     const previousTitle = document.title
-    document.title = `${name} | Pride Circuit`
+    document.title = name
     const restore = [
       setMeta('name', 'description', description),
       setMeta('name', 'robots', 'index,follow'),
-      setMeta('property', 'og:title', `${name} | Pride Circuit`),
+      setMeta('property', 'og:title', name),
       setMeta('property', 'og:description', description),
       setMeta('property', 'og:type', 'product'),
       setMeta('property', 'og:url', canonicalUrl),
       setMeta('property', 'og:image', images[0] || `${SITE_URL}/favicon-192x192.png`),
       setMeta('property', 'og:image:alt', name),
       setMeta('name', 'twitter:card', 'summary_large_image'),
-      setMeta('name', 'twitter:title', `${name} | Pride Circuit`),
+      setMeta('name', 'twitter:title', name),
       setMeta('name', 'twitter:description', description),
       setMeta('name', 'twitter:url', canonicalUrl),
       setMeta('name', 'twitter:image', images[0] || `${SITE_URL}/favicon-192x192.png`),

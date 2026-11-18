@@ -210,7 +210,12 @@ function replaceLegacyHashRoute(products, taxonomyRoutes) {
     return true
   }
   if (hash === '#reviews' && window.location.pathname.startsWith('/product/')) {
-    window.history.replaceState(window.history.state, '', `${window.location.pathname}/reviews`)
+    const productPath = window.location.pathname.replace(/\/+$/, '')
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${productPath}/reviews${window.location.search}`,
+    )
     return true
   }
   if (hash.startsWith(LEGACY_PRODUCT_HASH_PREFIX)) {
@@ -219,7 +224,11 @@ function replaceLegacyHashRoute(products, taxonomyRoutes) {
     const identifier = decodeURIComponent(isReviewsPage ? legacyProduct.slice(0, -LEGACY_PRODUCT_REVIEWS_SUFFIX.length) : legacyProduct)
     const product = products.find((item) => String(item.id) === identifier || String(item.slug || '') === identifier)
     if (product) {
-      window.history.replaceState({ prideProduct: product.id }, '', `${getProductPath(product)}${isReviewsPage ? '/reviews' : ''}`)
+      window.history.replaceState(
+        { prideProduct: product.id },
+        '',
+        `${getProductPath(product)}${isReviewsPage ? '/reviews' : ''}${window.location.search}`,
+      )
       return true
     }
   }
@@ -619,7 +628,7 @@ export default function UserApp({
           window.history.replaceState(
             { prideProduct: resolvedProduct.id },
             '',
-            getProductPath(resolvedProduct),
+            `${getProductPath(resolvedProduct)}${publicPath.reviews ? '/reviews' : ''}${window.location.search}`,
           )
         }
         setProductRouteStatus('ready')
