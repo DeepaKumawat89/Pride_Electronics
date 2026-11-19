@@ -8,12 +8,10 @@ const {
   requireActiveCustomer,
   validateProfile,
 } = require('../shared/core')
-const { placeOrderHandler } = require('../orders/place-order-handler')
 const { saveAccountStateHandler } = require('../account/save-account-state')
 const { removeCartItemsHandler } = require('../account/remove-cart-items')
 const { getMyCouponUsageHandler } = require('../account/get-my-coupon-usage')
 const { createReturnHandler } = require('../orders/create-return')
-const { cancelOrderHandler } = require('../orders/cancel-order')
 const { submitOrderFeedbackHandler } = require('../orders/submit-order-feedback')
 
 const updateUserProfile = onCall(callableOptions, async (request) => {
@@ -21,7 +19,6 @@ const updateUserProfile = onCall(callableOptions, async (request) => {
   const operationRequest = operation
     ? { ...request, data: request.data?.payload || {} }
     : request
-  if (operation === 'placeOrder') return placeOrderHandler(operationRequest)
   if (operation === 'getCouponUsage') return getMyCouponUsageHandler(operationRequest)
   if (operation === 'saveAccountState') {
     return saveAccountStateHandler(operationRequest)
@@ -30,7 +27,6 @@ const updateUserProfile = onCall(callableOptions, async (request) => {
     return removeCartItemsHandler(operationRequest)
   }
   if (operation === 'createReturn') return createReturnHandler(operationRequest)
-  if (operation === 'cancelOrder') return cancelOrderHandler(operationRequest)
   if (operation === 'submitOrderFeedback') {
     return submitOrderFeedbackHandler(operationRequest)
   }

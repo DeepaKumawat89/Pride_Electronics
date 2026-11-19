@@ -25,7 +25,6 @@ const require = createRequire(import.meta.url)
 const {
   calculateOrderQuote,
   itemSignature,
-  normalizePaymentConfiguration,
   normalizeRequestedItems,
 } = require('../functions/checkout.js')
 const {
@@ -50,6 +49,7 @@ const quoteFor = (overrides = {}) =>
   calculateOrderQuote({
     requestedItems: [{ productId: 'product-1', quantity: 2 }],
     products: [product],
+    deliveryId: 'office_pickup',
     shippingSettings: {
       standardCharge: 99,
       freeShippingThreshold: 999,
@@ -70,6 +70,13 @@ test('backend quote uses current product price and preserves a purchase snapshot
   const changedQuote = quoteFor({ products: [{ ...product, price: 1250 }] })
   assert.equal(changedQuote.total, 2950)
   assert.equal(quote.items[0].price, 1000)
+})
+
+test('backend quote still requires an explicit supported delivery method', () => {
+  assert.throws(
+    () => quoteFor({ deliveryId: '' }),
+    (error) => error.code === 'invalid-delivery-method',
+  )
 })
 
 test('checkout rejects products without a valid current Firebase price', () => {
@@ -169,7 +176,10 @@ test('backend quote authoritatively calculates coupon, shipping, and GST', () =>
 })
 
 test('express shipping and out-of-stock changes are enforced by the quote', () => {
-  assert.equal(quoteFor({ deliveryId: 'express' }).shipping, 199)
+  assert.equal(quoteFor({
+    deliveryId: 'delivery_express',
+    shippingAddress: { city: 'Pune' },
+  }).shipping, 199)
   assert.throws(
     () => quoteFor({ products: [{ ...product, reservedStock: 5 }] }),
     (error) => error.code === 'insufficient-stock',
@@ -241,6 +251,7 @@ test('browser and backend totals use the same paise rounding', () => {
   const backend = calculateOrderQuote({
     requestedItems: [{ productId: decimalProduct.id, quantity: 3 }],
     products: [decimalProduct],
+    deliveryId: 'office_pickup',
     shippingSettings,
     taxSettings,
   })
@@ -254,19 +265,6 @@ test('checkout compares rupee totals using integer paise', () => {
   assert.equal(paymentAmountMatchesCheckout(18000, 1800000, 1800000), true)
   assert.equal(paymentAmountMatchesCheckout(18000, 1800000, 1800100), false)
   assert.equal(paymentAmountMatchesCheckout(18000, 1800100, 1800000), false)
-})
-
-test('server settings keep online payments disabled until gateway integration', () => {
-  assert.deepEqual(normalizePaymentConfiguration(), {
-    onlinePaymentsEnabled: false,
-    testMode: true,
-    autoCapture: true,
-    codEnabled: true,
-    cardsEnabled: true,
-    upiEnabled: true,
-    netBankingEnabled: true,
-    walletsEnabled: true,
-  })
 })
 
 test('account-state backend keeps only bounded, masked user-owned data', () => {

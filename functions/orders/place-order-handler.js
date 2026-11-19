@@ -1,5 +1,4 @@
 const {
-  FieldValue,
   db,
   adminAuth,
   HttpsError,
@@ -26,8 +25,8 @@ const {
   formatOrderTotal,
   indiaOrderMoment,
   ORDER_REQUEST_PATTERN,
-  removePurchasedCartItems,
 } = require('../shared/core')
+const { couponReservationReferenceForOrder } = require('../payments/coupon-reservations')
 
 async function placeOrderHandler(request) {
   const allowDisabledCustomer = request.allowDisabledCustomer === true
@@ -38,19 +37,13 @@ async function placeOrderHandler(request) {
   const authUser = activeCustomer?.authUser || await adminAuth.getUser(uid)
   const submittedOrder = cleanObject(request.data?.order)
   const isCashfree = request.allowCashfree === true
-  if (
-    authUser.disabled &&
-    (isCashfree || /cash|cod/i.test(submittedOrder.paymentMethod || ''))
-  ) {
+  if (authUser.disabled && isCashfree) {
     throw new HttpsError('permission-denied', 'This customer account is suspended.')
   }
-  if (
-    (isCashfree && submittedOrder.paymentMethod !== 'Cashfree') ||
-    (!isCashfree && !/cash|cod/i.test(submittedOrder.paymentMethod || ''))
-  ) {
+  if (!isCashfree || submittedOrder.paymentMethod !== 'Cashfree') {
     throw new HttpsError(
       'failed-precondition',
-      'Choose Cash on Delivery or Cashfree online payment to continue.',
+      'Online payment through Cashfree is required to place an order.',
     )
   }
   const items = normalizeOrderItems(submittedOrder.items)
@@ -73,14 +66,14 @@ async function placeOrderHandler(request) {
     : 'cart'
   const orderReference = db.doc(`orders/${uid}_${requestId}`)
   const now = new Date().toISOString()
+  const reservationDeadline = new Date(Date.parse(now) + 2 * 60 * 60 * 1000).toISOString()
 
   const savedOrder = await db.runTransaction(async (transaction) => {
     const existingOrder = await transaction.get(orderReference)
     if (existingOrder.exists) {
       const existing = existingOrder.data()
       if (existing.userId === uid && existing.clientRequestId === requestId) {
-        const expectedPaymentMethod = isCashfree ? 'Cashfree' : 'Cash on Delivery'
-        if (existing.paymentMethod !== expectedPaymentMethod) {
+        if (existing.paymentMethod !== 'Cashfree') {
           throw new HttpsError(
             'failed-precondition',
             'This checkout was already started with another payment method. Restart checkout to continue.',
@@ -141,6 +134,8 @@ async function placeOrderHandler(request) {
 
     let couponDocument = null
     let couponUsageReference = null
+    let couponUsageDocument = null
+    let couponReservationReference = null
     let couponUsage = 0
     const couponCode = String(submittedOrder.couponCode || '').trim().toUpperCase()
     if (couponCode) {
@@ -150,9 +145,17 @@ async function placeOrderHandler(request) {
       if (!couponDocument) validateActiveCoupon(null)
       if (couponDocument) {
         couponUsageReference = db.doc(`couponUsages/${couponDocument.id}_${uid}`)
-        const couponUsageDocument = await transaction.get(couponUsageReference)
+        couponUsageDocument = await transaction.get(couponUsageReference)
         couponUsage = Number(couponUsageDocument.data()?.count || 0)
-        validateActiveCoupon(couponDocument.data(), couponUsage)
+        const couponData = couponDocument.data()
+        const reservedUserUsage = Number(couponUsageDocument.data()?.reservedCount || 0)
+        validateActiveCoupon(couponData, couponUsage,
+          Number(couponData.reservedUsageCount || 0), reservedUserUsage)
+        couponReservationReference = couponReservationReferenceForOrder(orderReference.id)
+        const priorReservation = await transaction.get(couponReservationReference)
+        if (priorReservation.exists) {
+          throw new HttpsError('already-exists', 'A coupon reservation already exists for this checkout.')
+        }
       }
     }
 
@@ -247,7 +250,7 @@ async function placeOrderHandler(request) {
           availableBefore: Math.max(0, stock - reservedBefore),
           availableAfter: Math.max(0, stock - reservedBefore - quantity),
           reference: orderReference.id,
-          note: 'Stock reserved during Cash on Delivery order placement',
+          note: 'Stock reserved for a Cashfree payment order',
           timestamp: now,
           createdAt: now,
           updatedAt: now,
@@ -260,27 +263,34 @@ async function placeOrderHandler(request) {
       )
     })
 
-    if (couponDocument) {
+    if (couponDocument && couponUsageReference && couponReservationReference) {
+      const coupon = couponDocument.data()
       transaction.update(couponDocument.ref, {
-        usageCount: FieldValue.increment(1),
+        reservedUsageCount: Number(coupon.reservedUsageCount || 0) + 1,
         updatedAt: now,
       })
-      transaction.set(
-        couponUsageReference,
-        {
-          couponId: couponDocument.id,
-          code: couponCode,
-          userId: uid,
-          count: couponUsage + 1,
-          updatedAt: now,
-        },
-        { merge: true },
-      )
+      transaction.set(couponUsageReference, {
+        couponId: couponDocument.id,
+        code: coupon.code || couponCode,
+        userId: uid,
+        count: couponUsage,
+        reservedCount: Number(couponUsageDocument.data()?.reservedCount || 0) + 1,
+        updatedAt: now,
+      }, { merge: true })
+      transaction.create(couponReservationReference, {
+        orderId: orderReference.id,
+        couponId: couponDocument.id,
+        code: coupon.code || couponCode,
+        userId: uid,
+        status: 'reserved',
+        createdAt: now,
+        updatedAt: now,
+      })
     }
 
     const paymentStatus = 'Pending'
     const orderStatus = 'Pending'
-    const paymentMethod = isCashfree ? 'Cashfree' : 'Cash on Delivery'
+    const paymentMethod = 'Cashfree'
     const invoiceSettings = normalizeInvoiceSettings(
       invoiceSettingsDocument.exists ? invoiceSettingsDocument.data() : {},
     )
@@ -427,10 +437,9 @@ async function placeOrderHandler(request) {
       paymentCurrency: 'INR',
       paymentDate: null,
       paymentMethod,
-      paymentEnvironment: isCashfree ? 'Cashfree Sandbox' : 'Cash on Delivery',
-      ...(isCashfree ? {
-        paymentExpiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-      } : {}),
+      paymentEnvironment: 'Cashfree Production',
+      paymentExpiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      paymentReservationDeadline: reservationDeadline,
       createdAt: now,
       updatedAt: now,
       statusHistory: [
@@ -448,26 +457,8 @@ async function placeOrderHandler(request) {
       updatedAt: now,
     })
     transaction.create(orderReference, cleanObject(order))
-    const remainingCartItems = removePurchasedCartItems(
-      userDocument.data()?.cartItems,
-      quote.items,
-      checkoutMode,
-    )
-    transaction.set(
-      userReference,
-      {
-        cartItems: remainingCartItems,
-        ordersCount: FieldValue.increment(1),
-        totalSpentValue: FieldValue.increment(quote.total),
-        lastOrderAt: now,
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    )
     return order
   })
-
-  if (!isCashfree) return { order: savedOrder }
 
   const { createCashfreePaymentOrder } = require('../payments/cashfree-create-order')
   return createCashfreePaymentOrder({

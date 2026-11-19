@@ -2,7 +2,6 @@ const { updateUserProfile } = require('./authentication/update-user-profile')
 const {
   releaseExpiredStockReservations,
 } = require('./payments/release-expired-stock-reservations')
-const { placeOrder } = require('./orders/place-order')
 const { saveAccountState } = require('./account/save-account-state')
 const { removeCartItems } = require('./account/remove-cart-items')
 const { getMyCouponUsage } = require('./account/get-my-coupon-usage')
@@ -20,12 +19,13 @@ const { sitemap } = require('./sitemap')
 const { publicPage } = require('./public-pages')
 const { createCashfreeOrder } = require('./payments/create-cashfree-order')
 const { cashfreePaymentWebhook } = require('./payments/cashfree-webhook')
+const { verifyCashfreePayment } = require('./payments/verify-cashfree-payment')
+const { requestCashfreeRefund } = require('./payments/request-cashfree-refund')
 const { onProductCreated, onProductUpdated } = require('./product-triggers')
 
 module.exports = {
   updateUserProfile,
   releaseExpiredStockReservations,
-  placeOrder,
   saveAccountState,
   removeCartItems,
   getMyCouponUsage,
@@ -39,6 +39,8 @@ module.exports = {
   publicPage,
   createCashfreeOrder,
   cashfreePaymentWebhook,
+  verifyCashfreePayment,
+  requestCashfreeRefund,
   onProductCreated,
   onProductUpdated,
 }

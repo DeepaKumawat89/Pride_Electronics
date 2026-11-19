@@ -390,8 +390,8 @@ export default function OrderDetailsView({
               <dl className="mt-4 space-y-3 text-[10px]">
                 <div><dt className="text-slate-400">Payment method</dt><dd className="mt-0.5 font-bold text-slate-700">{order.paymentMethod || 'Online payment'}</dd></div>
                 <div><dt className="text-slate-400">Payment status</dt><dd className={`mt-0.5 font-bold ${['paid', 'successful', 'captured'].includes(String(order.paymentStatus || '').toLowerCase()) ? 'text-emerald-700' : ['failed', 'cancelled'].includes(String(order.paymentStatus || '').toLowerCase()) ? 'text-red-600' : 'text-amber-700'}`}>{order.paymentStatus || 'Pending'}</dd></div>
-                {(order.transactionId || order.paymentId || order.razorpayPaymentId) && (
-                  <div><dt className="text-slate-400">Transaction ID</dt><dd className="mt-0.5 break-all font-mono text-[9px] font-semibold text-slate-600">{order.transactionId || order.paymentId || order.razorpayPaymentId}</dd></div>
+                {(order.transactionId || order.paymentId) && (
+                  <div><dt className="text-slate-400">Transaction ID</dt><dd className="mt-0.5 break-all font-mono text-[9px] font-semibold text-slate-600">{order.transactionId || order.paymentId}</dd></div>
                 )}
                 {order.trackingId && (
                   <div><dt className="text-slate-400">Tracking ID</dt><dd className="mt-0.5 break-all font-mono text-[9px] font-semibold text-slate-600">{order.trackingId}</dd></div>

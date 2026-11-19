@@ -9,6 +9,15 @@ const updateInvoiceSettingsRecord = httpsCallable(
   adminFunctions,
   'updateInvoiceSettings',
 )
+const requestCashfreeRefundRecord = httpsCallable(
+  adminFunctions,
+  'requestCashfreeRefund',
+)
+
+export async function requestCashfreeRefund(orderId, paymentId = '') {
+  const result = await requestCashfreeRefundRecord({ orderId, paymentId })
+  return result.data
+}
 
 export async function updateCustomerAccountStatus(userId, status) {
   const result = await updateCustomerStatusRecord({

@@ -5,13 +5,16 @@ const normalizedText = (value) => String(value || '').trim().toLowerCase()
 export const getPaymentTransactionId = (order) =>
   order.transactionId ||
   order.paymentId ||
-  order.razorpayPaymentId ||
   `PAY-${String(order.id || 'UNKNOWN').replace(/^ORD-?/i, '')}`
 
 export function getPaymentStatus(order, refund) {
-  if (refund || normalizedText(order.paymentStatus) === 'refunded') {
+  const refundState = normalizedText(refund?.providerStatus || refund?.status)
+  if (refundState === 'success' || normalizedText(order.paymentStatus) === 'refunded') {
     return 'Refunded'
   }
+  if (['pending', 'pending_approval', 'onhold', 'processing'].includes(refundState) || normalizedText(order.paymentStatus) === 'refund pending') return 'Refund Pending'
+  if (['failed', 'cancelled', 'rejected', 'request_failed', 'action required'].includes(refundState) ||
+      ['refund failed', 'refund action required'].includes(normalizedText(order.paymentStatus))) return 'Refund Action Required'
   const paymentStatus = normalizedText(order.paymentStatus)
   if (paymentStatus === 'cancelled') return 'Cancelled'
   if (['failed', 'declined'].includes(paymentStatus)) {
@@ -24,9 +27,6 @@ export function getPaymentStatus(order, refund) {
   ) {
     return 'Successful'
   }
-  if (/cash|cod|pay on delivery/i.test(order.paymentMethod || '')) {
-    return order.status === 'Delivered' ? 'Successful' : 'Pending'
-  }
   return ['Confirmed', 'Processing', 'Packed', 'Shipped', 'Out for Delivery', 'Delivered'].includes(
     order.status,
   )
@@ -35,11 +35,16 @@ export function getPaymentStatus(order, refund) {
 }
 
 export function createPaymentRecords(orders, refunds = []) {
-  const refundByOrder = new Map(
-    refunds.map((refund) => [String(refund.orderId), refund]),
-  )
+  const refundsByOrder = new Map()
+  refunds.forEach((refund) => {
+    const key = String(refund.orderId)
+    refundsByOrder.set(key, [...(refundsByOrder.get(key) || []), refund])
+  })
   return orders.map((order) => {
-    const refund = refundByOrder.get(String(order.id))
+    const candidates = refundsByOrder.get(String(order.id)) || []
+    const refund = candidates.find((record) =>
+      ['PENDING', 'PENDING_APPROVAL', 'ONHOLD', 'PROCESSING', 'FAILED', 'CANCELLED', 'REJECTED', 'REQUEST_FAILED'].includes(String(record.providerStatus || '').toUpperCase()),
+    ) || candidates.find((record) => String(record.providerStatus || '').toUpperCase() === 'SUCCESS')
     return {
       id: getPaymentTransactionId(order),
       orderId: order.orderNumber || order.id,

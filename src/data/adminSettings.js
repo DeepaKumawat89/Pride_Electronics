@@ -13,17 +13,6 @@ export const initialAdminSettings = {
     currency: 'INR',
     orderPrefix: 'ORD',
   },
-  payment: {
-    onlinePaymentsEnabled: false,
-    testMode: true,
-    autoCapture: true,
-    codEnabled: true,
-    cardsEnabled: true,
-    upiEnabled: true,
-    netBankingEnabled: true,
-    walletsEnabled: true,
-    refundWindowDays: 7,
-  },
   notifications: {
     newOrders: true,
     lowStock: true,

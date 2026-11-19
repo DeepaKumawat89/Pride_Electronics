@@ -59,6 +59,7 @@ import {
 import {
   updateCustomerAccountStatus,
   updateInvoiceSettings as saveInvoiceSettings,
+  requestCashfreeRefund,
 } from './firebase/adminData'
 import {
   categoryForProduct,
@@ -823,9 +824,29 @@ function App() {
   }
 
   // Handler for Admin action on Order Status
-  const handleUpdateOrderStatus = (orderId, newStatus, options = {}) => {
+  const handleUpdateOrderStatus = async (orderId, newStatus, options = {}) => {
     const order = ordersList.find((item) => item.id === orderId)
     if (!order) return
+    const paymentIsConfirmed = ['paid', 'successful', 'captured'].includes(
+      String(order.paymentStatus || '').toLowerCase(),
+    )
+    if (
+      order.paymentMethod === 'Cashfree' &&
+      !paymentIsConfirmed &&
+      ['Confirmed', 'Processing', 'Packed', 'Shipped', 'Out for Delivery', 'Delivered'].includes(newStatus)
+    ) {
+      setProductsError('This Cashfree order cannot move to fulfillment until payment is verified.')
+      return
+    }
+    if (newStatus === 'Refunded' && order.paymentMethod === 'Cashfree') {
+      try {
+        await requestCashfreeRefund(orderId)
+        setProductsError('Cashfree refund requested. The order will update after Cashfree confirms it.')
+      } catch (error) {
+        setProductsError(error.message || 'Unable to request the Cashfree refund.')
+      }
+      return
+    }
     const transition = transitionOrderInventory(
       productsList,
       order,
@@ -890,6 +911,13 @@ function App() {
   const handleUpdateReturn = (requestId, action, options = {}) => {
     const currentRequest = returnsList.find((item) => item.id === requestId)
     if (!currentRequest) return
+    if (action === 'complete_refund') {
+      const order = ordersList.find((item) => item.id === currentRequest.orderId)
+      if (order?.paymentMethod === 'Cashfree') {
+        void handleUpdateOrderStatus(order.id, 'Refunded')
+        return
+      }
+    }
     const result = transitionReturnRequest(
       returnsList,
       requestId,
@@ -916,6 +944,15 @@ function App() {
   }
 
   const handleCancelOrder = cancelCustomerOrder
+
+  const handleRequestCashfreeRefund = async (orderId, paymentId = '') => {
+    try {
+      await requestCashfreeRefund(orderId, paymentId)
+      setProductsError('Cashfree refund requested. The order will update after Cashfree confirms it.')
+    } catch (error) {
+      setProductsError(error.message || 'Unable to request the Cashfree refund.')
+    }
+  }
 
   const handleSubmitOrderFeedback = submitCustomerOrderFeedback
 
@@ -1256,6 +1293,7 @@ function App() {
             onDeleteProduct={handleDeleteProduct}
             onAdjustStock={handleAdjustStock}
             onUpdateOrderStatus={handleUpdateOrderStatus}
+            onRequestCashfreeRefund={handleRequestCashfreeRefund}
             onUpdateReturn={handleUpdateReturn}
             onAddCoupon={handleAddCoupon}
             onUpdateCoupon={handleUpdateCoupon}

@@ -180,12 +180,10 @@ export default function CheckoutPage({
   const [couponAttempted, setCouponAttempted] = useState(Boolean(initialCouponCode))
   const [paymentError, setPaymentError] = useState('')
   const [paying, setPaying] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState('Cash on Delivery')
   const [deliveryId, setDeliveryId] = useState('office_pickup')
 
-  const primaryActionLabel = orderConfirmationAttempt
-    ? 'Confirm Order'
-    : paymentMethod === 'Cashfree' ? 'Pay securely' : 'Place Order'
+  const cashfreePaymentsEnabled = import.meta.env.VITE_CASHFREE_PAYMENTS_ENABLED === 'true'
+  const primaryActionLabel = orderConfirmationAttempt ? 'Confirm Order' : 'Pay securely'
 
   // Active delivery address computation
   const selectedDeliveryAddress = useManualDeliveryAddress
@@ -547,7 +545,7 @@ export default function CheckoutPage({
       address: checkoutDeliveryAddress,
       billingAddress: checkoutBillingAddress,
       gstProfile: checkoutAddresses?.gstProfile || null,
-      payment: { type: paymentMethod },
+      payment: { type: 'Cashfree' },
       discount: checkoutPricing.couponDiscount,
       shipping: checkoutPricing.shipping,
       tax: checkoutPricing.tax,
@@ -583,8 +581,7 @@ export default function CheckoutPage({
 
     const selectedCheckout = {
       ...checkoutDetails,
-      paymentMethod,
-      ...(paymentMethod === 'Cash on Delivery' ? { cod: true } : {}),
+      paymentMethod: 'Cashfree',
     }
     try {
       await onPlaceOrder(selectedCheckout)
@@ -1399,23 +1396,15 @@ export default function CheckoutPage({
             <section className="rounded-2xl bg-white p-5 shadow-sm border border-slate-200/80">
               <div className="mb-5 border-b border-slate-100 pb-4">
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#397a4a]">Payment method</span>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {[
-                    { value: 'Cash on Delivery', title: 'Cash on Delivery', detail: 'Pay when your order arrives' },
-                    { value: 'Cashfree', title: 'Pay Online', detail: 'Cards, UPI and net banking · Sandbox' },
-                  ].map((method) => (
-                    <button
-                      key={method.value}
-                      type="button"
-                      onClick={() => setPaymentMethod(method.value)}
-                      aria-pressed={paymentMethod === method.value}
-                      className={`rounded-xl border p-3 text-left transition ${paymentMethod === method.value ? 'border-[#397a4a] bg-[#f2f8f2] ring-1 ring-[#397a4a]' : 'border-slate-200 bg-white hover:border-slate-300'}`}
-                    >
-                      <strong className="block text-xs font-extrabold text-slate-900">{method.title}</strong>
-                      <span className="mt-1 block text-[9px] font-semibold text-slate-500">{method.detail}</span>
-                    </button>
-                  ))}
+                <div className="mt-3 rounded-xl border border-[#397a4a] bg-[#f2f8f2] p-3">
+                    <strong className="block text-xs font-extrabold text-slate-900">Pay securely with Cashfree</strong>
+                    <span className="mt-1 block text-[9px] font-semibold text-slate-500">Cards, UPI and net banking</span>
                 </div>
+                {!cashfreePaymentsEnabled && (
+                  <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-800">
+                    Online payments are not available yet. Please check back later.
+                  </p>
+                )}
               </div>
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#397a4a]">Price Breakdown</span>
@@ -1508,15 +1497,15 @@ export default function CheckoutPage({
               <button
                 type="button"
                 onClick={submitOrder}
-                disabled={!items.length || hasUnavailableItems || minimumOrderNotMet || paying}
+                disabled={!cashfreePaymentsEnabled || !items.length || hasUnavailableItems || minimumOrderNotMet || paying}
                 className="mt-4 flex h-13 w-full items-center justify-center gap-2 rounded-full bg-[#253329] px-6 text-sm font-extrabold text-white shadow-md transition hover:bg-[#397a4a] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
               >
                 <LockKeyhole size={16} />
                 {paying
                   ? orderConfirmationAttempt
                     ? 'Confirming Order…'
-                    : paymentMethod === 'Cashfree' ? 'Opening secure checkout…' : 'Placing Order…'
-                  : `${paymentMethod === 'Cashfree' ? 'Pay securely' : primaryActionLabel} · ${formatCurrency(checkoutTotal)}`}
+                    : 'Opening secure checkout…'
+                  : `${primaryActionLabel} · ${formatCurrency(checkoutTotal)}`}
               </button>
             </section>
 

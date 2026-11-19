@@ -48,6 +48,7 @@ export default function AdminApp({
   onDeleteProduct,
   onAdjustStock,
   onUpdateOrderStatus,
+  onRequestCashfreeRefund,
   onUpdateReturn,
   onAddCoupon,
   onUpdateCoupon,
@@ -211,6 +212,7 @@ export default function AdminApp({
         <OrdersPage
           orders={orders}
           onUpdateOrderStatus={onUpdateOrderStatus}
+          onRequestCashfreeRefund={onRequestCashfreeRefund}
           searchQuery={searchQuery}
         />
       )}

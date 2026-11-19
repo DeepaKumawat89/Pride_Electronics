@@ -164,9 +164,10 @@ const sections = [
     '9. Refund Method and Processing',
     <>
       <p>
-        Checkout may offer Cash on Delivery and Cashfree hosted online payment
-        in sandbox mode. The method for an approved refund will be communicated
-        after the return or cancellation is reviewed. Pride Circuit will not ask for a card PIN, CVV, UPI
+        Cashfree hosted checkout processes online payments when enabled. Refunds
+        for an approved return or cancellation are submitted through the
+        original Cashfree transaction and tracked until Cashfree confirms the
+        result. Pride Circuit will not ask for a card PIN, CVV, UPI
         PIN, one-time password, or complete card number to process a refund.
       </p>
       <p>

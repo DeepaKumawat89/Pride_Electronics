@@ -369,7 +369,25 @@ service cloud.firestore {
 
     match /orders/{orderId} {
       allow read: if isAdmin() || owns(resource.data);
-      allow write: if isAdmin();
+      allow create, delete: if false;
+      allow update: if isAdmin() && (
+        !resource.data.keys().hasAny(['paymentMethod']) ||
+        resource.data.paymentMethod != 'Cashfree' ||
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'paymentMethod', 'paymentEnvironment', 'paymentStatus',
+          'paymentAmountPaise', 'paymentCurrency', 'paymentDate',
+          'paymentMethodDetail', 'transactionId', 'cashfreeOrderId',
+          'cashfreeOrderStatus', 'paymentExpiresAt', 'paymentException',
+          'duplicateCashfreePaymentIds'
+        ]) &&
+        (
+          resource.data.paymentMethod != 'Cashfree' ||
+          resource.data.paymentStatus == 'Paid' ||
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'status', 'inventoryState'
+          ])
+        )
+      );
     }
 
     match /returns/{returnId} {
@@ -378,7 +396,18 @@ service cloud.firestore {
     }
 
     match /refunds/{refundId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow create: if isAdmin() && (
+        !request.resource.data.keys().hasAny(['provider']) ||
+        request.resource.data.provider != 'cashfree'
+      );
+      allow update: if isAdmin() &&
+        (!resource.data.keys().hasAny(['provider']) || resource.data.provider != 'cashfree') &&
+        (!request.resource.data.keys().hasAny(['provider']) ||
+          request.resource.data.provider != 'cashfree');
+      allow delete: if isAdmin() && (
+        !resource.data.keys().hasAny(['provider']) || resource.data.provider != 'cashfree'
+      );
     }
 
     match /inventoryHistory/{entryId} {

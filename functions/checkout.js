@@ -147,26 +147,6 @@ const taxComponentsFor = (taxableValue, gstRate, supplyType) => {
   return { cgst, sgst, igst: 0, gstAmount }
 }
 
-const DEFAULT_PAYMENT_CONFIGURATION = Object.freeze({
-  onlinePaymentsEnabled: false,
-  testMode: true,
-  autoCapture: true,
-  codEnabled: true,
-  cardsEnabled: true,
-  upiEnabled: true,
-  netBankingEnabled: true,
-  walletsEnabled: true,
-})
-
-function normalizePaymentConfiguration(value = {}) {
-  return Object.fromEntries(
-    Object.entries(DEFAULT_PAYMENT_CONFIGURATION).map(([key, fallback]) => [
-      key,
-      typeof value?.[key] === 'boolean' ? value[key] : fallback,
-    ]),
-  )
-}
-
 const appliesToProduct = (coupon, product) => {
   const products = Array.isArray(coupon?.applicableProducts)
     ? coupon.applicableProducts
@@ -676,13 +656,11 @@ function payableAmountPaiseForQuote(quote = {}) {
 }
 
 module.exports = {
-  DEFAULT_PAYMENT_CONFIGURATION,
   MINIMUM_ORDER_MESSAGE,
   MINIMUM_ORDER_VALUE,
   calculateOrderQuote,
   itemSignature,
   money,
-  normalizePaymentConfiguration,
   normalizeRequestedItems,
   validateMinimumOrderQuantities,
   payableAmountPaiseForQuote,

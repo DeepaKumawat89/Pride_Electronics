@@ -46,7 +46,10 @@ import {
   subscribeToUserOrders,
   subscribeToUserReturns,
 } from '../firebase/storeData'
-import { getCustomerCouponUsage } from '../firebase/customerData'
+import {
+  getCustomerCouponUsage,
+  verifyCustomerCashfreePayment,
+} from '../firebase/customerData'
 import {
   productHasVariants,
   variantCartKey,
@@ -370,6 +373,8 @@ export default function UserApp({
   const accountSaveQueue = useRef(Promise.resolve())
   const accountSaveRevision = useRef(0)
   const productReturnSection = useRef(null)
+  const finalizedPaidOrderIds = useRef(new Set())
+  const finalizePaidOrderLocallyRef = useRef(null)
   const productHistoryActive = useRef(false)
   const productsHistoryActive = useRef(false)
   const productsReturnCatalog = useRef(null)
@@ -412,13 +417,47 @@ export default function UserApp({
     canonical.href = canonicalUrl
   }, [contentPage])
 
+  const finalizePaidOrderLocally = (order) => {
+    if (!order?.id || !['paid', 'successful', 'captured'].includes(
+      String(order.paymentStatus || '').toLowerCase(),
+    ) || finalizedPaidOrderIds.current.has(order.id)) return
+    finalizedPaidOrderIds.current.add(order.id)
+    if (order.couponCode) {
+      setCouponUsage((current) => ({
+        ...current,
+        [order.couponCode]: Number(current[order.couponCode] || 0) + 1,
+      }))
+    }
+    if ((order.checkoutMode || 'cart') !== 'cart') return
+    const remainingCartItems = removePurchasedItems(
+      cartPersistenceRef.current.cartItems,
+      order.items,
+    )
+    const updatedAccount = normalizeAccountState({
+      ...accountStateRef.current,
+      cartItems: remainingCartItems,
+    })
+    clearTimeout(accountSaveTimer.current)
+    cartPersistenceRef.current = {
+      ...cartPersistenceRef.current,
+      cartItems: remainingCartItems,
+    }
+    accountStateRef.current = updatedAccount
+    accountSnapshot.current = JSON.stringify(updatedAccount)
+    cart.removeMany(order.items.map((item) =>
+      variantCartKey(item.productId, item.variantId),
+    ))
+  }
+  finalizePaidOrderLocallyRef.current = finalizePaidOrderLocally
+
   useEffect(() => {
     if (!successfulOrder?.id) return
     const latestOrder = localOrders.find((order) => order.id === successfulOrder.id)
-    if (latestOrder && JSON.stringify(latestOrder) !== JSON.stringify(successfulOrder)) {
-      setSuccessfulOrder(latestOrder)
-      sessionStorage.setItem(ORDER_SUCCESS_SESSION_KEY, JSON.stringify(latestOrder))
-    }
+    if (!latestOrder) return
+    finalizePaidOrderLocallyRef.current?.(latestOrder)
+    if (JSON.stringify(latestOrder) === JSON.stringify(successfulOrder)) return
+    setSuccessfulOrder(latestOrder)
+    sessionStorage.setItem(ORDER_SUCCESS_SESSION_KEY, JSON.stringify(latestOrder))
   }, [localOrders, successfulOrder])
 
   const rememberIntendedRoute = (path) => {
@@ -1893,8 +1932,7 @@ export default function UserApp({
   }
 
   const handlePlaceOrder = async (checkoutDetails = {}) => {
-    const isCashfreeOrder = checkoutDetails.paymentMethod === 'Cashfree'
-    if (isCashfreeOrder) await loadCashfreeScript()
+    await loadCashfreeScript()
     const placedMoment = createOrderMoment()
     const order = {
       clientRequestId: checkoutDetails.requestId,
@@ -1925,57 +1963,29 @@ export default function UserApp({
         checkoutDetails.billingAddress || checkoutDetails.address || null,
       gstProfile: checkoutDetails.gstProfile || null,
       deliveryId: checkoutDetails.delivery?.id || 'standard',
-      paymentMethod: isCashfreeOrder ? 'Cashfree' : 'Cash on Delivery',
-      paymentEnvironment: isCashfreeOrder ? 'Cashfree Sandbox' : 'Cash on Delivery',
+      paymentMethod: 'Cashfree',
+      paymentEnvironment: 'Cashfree Production',
       items: activeCheckoutItems.map(checkoutItemRequest),
     }
     const placedResult = (await onNewOrder?.(order)) || { order }
     const savedOrder = placedResult.order || placedResult
-    if (isCashfreeOrder) {
-      if (!placedResult.paymentSessionId || typeof window.Cashfree !== 'function') {
-        throw new Error('Cashfree checkout could not be loaded. Please try again.')
-      }
-      const cashfree = window.Cashfree({ mode: placedResult.cashfreeMode || 'sandbox' })
-      await cashfree.checkout({
-        paymentSessionId: placedResult.paymentSessionId,
-        redirectTarget: '_modal',
-      })
+    sessionStorage.setItem(ORDER_SUCCESS_SESSION_KEY, JSON.stringify(savedOrder))
+    if (!placedResult.paymentSessionId || typeof window.Cashfree !== 'function') {
+      throw new Error('Cashfree checkout could not be loaded. Please try again.')
     }
+    const cashfree = window.Cashfree({ mode: 'production' })
+    await cashfree.checkout({
+      paymentSessionId: placedResult.paymentSessionId,
+      redirectTarget: '_modal',
+    })
+    const verification = await verifyCustomerCashfreePayment(savedOrder.id)
+    if (verification.order) Object.assign(savedOrder, verification.order)
+    finalizePaidOrderLocally(savedOrder)
     setOrders((current) =>
       current.some((item) => item.id === savedOrder.id)
         ? current
         : [savedOrder, ...current],
     )
-    if (savedOrder.couponCode) {
-      setCouponUsage((current) => ({
-        ...current,
-        [savedOrder.couponCode]: Number(current[savedOrder.couponCode] || 0) + 1,
-      }))
-    }
-    const placedCheckoutMode =
-      savedOrder.checkoutMode || order.checkoutMode
-    if (placedCheckoutMode === 'cart') {
-      const remainingCartItems = removePurchasedItems(
-        cartPersistenceRef.current.cartItems,
-        savedOrder.items,
-      )
-      const updatedAccount = normalizeAccountState({
-        ...accountStateRef.current,
-        cartItems: remainingCartItems,
-      })
-      clearTimeout(accountSaveTimer.current)
-      cartPersistenceRef.current = {
-        ...cartPersistenceRef.current,
-        cartItems: remainingCartItems,
-      }
-      accountStateRef.current = updatedAccount
-      accountSnapshot.current = JSON.stringify(updatedAccount)
-      cart.removeMany(
-        savedOrder.items.map((item) =>
-          variantCartKey(item.productId, item.variantId),
-        ),
-      )
-    }
     sessionStorage.setItem(ORDER_SUCCESS_SESSION_KEY, JSON.stringify(savedOrder))
     orderSuccessHistoryActive.current = true
     window.history.replaceState(
@@ -2011,6 +2021,23 @@ export default function UserApp({
     } catch (error) {
       notify(error.message || 'Unable to cancel the order')
       return false
+    }
+  }
+
+  const handleVerifyCashfreeOrder = async () => {
+    if (!successfulOrder?.id) return
+    try {
+      const result = await verifyCustomerCashfreePayment(successfulOrder.id)
+      const verifiedOrder = result.order
+      if (!verifiedOrder) return
+      finalizePaidOrderLocally(verifiedOrder)
+      setSuccessfulOrder(verifiedOrder)
+      setOrders((current) => current.map((order) =>
+        order.id === verifiedOrder.id ? verifiedOrder : order,
+      ))
+      sessionStorage.setItem(ORDER_SUCCESS_SESSION_KEY, JSON.stringify(verifiedOrder))
+    } catch (error) {
+      notify(error.message || 'Payment status is still being confirmed.')
     }
   }
 
@@ -2203,6 +2230,7 @@ export default function UserApp({
         ) : successfulOrder && authStatus === 'authenticated' && user ? (
           <OrderSuccessPage
             order={successfulOrder}
+            onVerifyPayment={handleVerifyCashfreeOrder}
             onContinueShopping={closeOrderSuccess}
             onViewOrders={viewSuccessfulOrder}
           />
@@ -2227,7 +2255,6 @@ export default function UserApp({
             }
             shippingSettings={shippingSettings}
             taxSettings={invoiceSettings.tax}
-            paymentSettings={adminSettings.payment}
             storeName={adminSettings.store.name}
           />
         ) : liveSelectedProduct && reviewsOpen ? (

@@ -165,21 +165,15 @@ const sections = [
     content: (
       <>
         <p>
-          Checkout may offer Cash on Delivery and Cashfree hosted online
-          payment in sandbox mode. The available method is shown before an
-          order is placed. Sandbox payments are for integration testing and do
-          not represent production payment availability.
+          Online payment is processed through Cashfree hosted checkout when
+          enabled. Payment status is confirmed by Pride Circuit's server using
+          verified Cashfree updates; a browser redirect alone does not confirm
+          payment.
         </p>
         <p>
           Cashfree processes online payment details on its hosted checkout.
-          Pride Circuit records the resulting payment status and transaction
-          reference against the order. A browser redirect alone does not
-          confirm payment; confirmation is based on verified provider updates.
-        </p>
-        <p>
-          Cash on Delivery orders remain subject to order acceptance, product
-          availability, delivery serviceability, and the final amount shown at
-          checkout.
+          Pride Circuit records the verified payment status and transaction
+          reference against the order.
         </p>
         <p>
           Never disclose a card security code, UPI PIN, online-banking password,

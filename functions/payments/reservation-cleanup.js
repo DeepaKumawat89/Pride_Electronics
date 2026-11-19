@@ -9,7 +9,13 @@ const {
   inventoryForItem,
   syncVariantReservedStock,
   inventoryUpdateFor,
+  indiaOrderMoment,
 } = require('../shared/core')
+const { cashfreeClientId, cashfreeClientSecret } = require('./cashfree-secrets')
+const { getCashfreePayments } = require('./cashfree-api')
+const { reconcileVerifiedCashfreePayment } = require('./cashfree-settlement')
+const { reconcilePendingCashfreeRefunds } = require('./cashfree-refund-service')
+const { loadCouponReservation, releaseCouponReservation } = require('./coupon-reservations')
 
 async function releaseStockReservation({
   reservationId,
@@ -143,10 +149,54 @@ async function expirePendingCashfreeOrders() {
     .get()
   for (const orderSnapshot of expired.docs) {
     const orderReference = orderSnapshot.ref
+    const initialOrder = orderSnapshot.data()
+    if (
+      initialOrder.paymentMethod === 'Cashfree' &&
+      initialOrder.cashfreeOrderId
+    ) {
+      const payments = await getCashfreePayments(initialOrder.cashfreeOrderId, {
+        cashfreeClientId,
+        cashfreeClientSecret,
+      })
+      const successfulPayment = payments.find(
+        (payment) => String(payment.payment_status || '').toUpperCase() === 'SUCCESS',
+      )
+      if (successfulPayment) {
+        await reconcileVerifiedCashfreePayment({
+          orderReference,
+          providerOrderId: initialOrder.cashfreeOrderId,
+          payment: successfulPayment,
+        })
+        continue
+      }
+      const stillProcessing = payments.some(
+        (payment) => String(payment.payment_status || '').toUpperCase() === 'PENDING',
+      )
+      if (stillProcessing) {
+        const createdAtValue = initialOrder.createdAt
+        const fallbackCreatedAt = createdAtValue?.toDate
+          ? createdAtValue.toDate().getTime()
+          : Date.parse(createdAtValue || '')
+        const savedDeadline = Date.parse(initialOrder.paymentReservationDeadline || '')
+        const deadline = Number.isFinite(savedDeadline)
+          ? savedDeadline
+          : (Number.isFinite(fallbackCreatedAt) ? fallbackCreatedAt : Date.now()) + 2 * 60 * 60 * 1000
+        const currentTime = Date.now()
+        if (deadline > currentTime) {
+          await orderReference.set({
+            paymentReservationDeadline: new Date(deadline).toISOString(),
+            paymentExpiresAt: new Date(Math.min(currentTime + 15 * 60 * 1000, deadline)).toISOString(),
+            updatedAt: new Date().toISOString(),
+          }, { merge: true })
+          continue
+        }
+      }
+    }
     await db.runTransaction(async (transaction) => {
       const orderDocument = await transaction.get(orderReference)
       if (!orderDocument.exists) return
       const order = orderDocument.data()
+      const couponReservation = await loadCouponReservation(transaction, orderDocument.id)
       if (
         order.paymentMethod !== 'Cashfree' ||
         order.status !== 'Pending' ||
@@ -199,6 +249,7 @@ async function expirePendingCashfreeOrders() {
         updatedAt: now,
         statusHistory: [...(order.statusHistory || []), { status: 'Cancelled', ...moment }],
       })
+      releaseCouponReservation(transaction, couponReservation, now)
     })
   }
 }
@@ -240,6 +291,7 @@ async function releaseExpiredStockReservationsHandler() {
     throw new Error('Expired reservation cleanup was only partially successful.')
   }
   await expirePendingCashfreeOrders()
+  await reconcilePendingCashfreeRefunds()
 }
 
 module.exports = { releaseExpiredStockReservationsHandler }

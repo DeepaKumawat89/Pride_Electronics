@@ -3,8 +3,9 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import { userAuth, userFunctions, userStorage } from './firebase'
 
 const operationGateway = httpsCallable(userFunctions, 'updateUserProfile')
-const placeOrderGateway = httpsCallable(userFunctions, 'placeOrder')
 const createCashfreeOrderGateway = httpsCallable(userFunctions, 'createCashfreeOrder')
+const verifyCashfreePaymentGateway = httpsCallable(userFunctions, 'verifyCashfreePayment')
+const cancelOrderGateway = httpsCallable(userFunctions, 'cancelOrder')
 const getOrderInvoiceGateway = httpsCallable(userFunctions, 'getOrderInvoice')
 const callOperation = (operation, payload = {}) =>
   operationGateway({ operation, payload })
@@ -37,13 +38,19 @@ const messageFor = (error, fallback) => {
 
 export async function placeCustomerOrder(order) {
   try {
-    const gateway = order?.paymentMethod === 'Cashfree'
-      ? createCashfreeOrderGateway
-      : placeOrderGateway
-    const result = await gateway({ order })
+    const result = await createCashfreeOrderGateway({ order: { ...order, paymentMethod: 'Cashfree' } })
     return result.data
   } catch (error) {
     throw messageFor(error, 'Unable to place the order. Please try again.')
+  }
+}
+
+export async function verifyCustomerCashfreePayment(orderId) {
+  try {
+    const result = await verifyCashfreePaymentGateway({ orderId })
+    return result.data
+  } catch (error) {
+    throw messageFor(error, 'Unable to verify the payment yet. Please try again.')
   }
 }
 
@@ -79,7 +86,7 @@ export async function createCustomerReturn(orderId, details) {
 
 export async function cancelCustomerOrder(orderId) {
   try {
-    const result = await callOperation('cancelOrder', { orderId })
+    const result = await cancelOrderGateway({ orderId })
     return result.data.order
   } catch (error) {
     throw messageFor(error, 'Unable to cancel the order.')

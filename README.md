@@ -50,31 +50,12 @@ address; the validated public checkout tax fields are mirrored to
 saved from the corresponding admin screens; subsequent updates are persisted
 to Firestore rather than browser storage.
 
-## Production checkout deployment
+## Checkout and payment
 
-The storefront currently accepts Cash on Delivery while the new online payment
-gateway is pending merchant verification and implementation. Order placement
-continues to calculate pricing and GST on the server, reserve inventory in the
-same Firestore transaction, create the invoice snapshot, and remove purchased
-cart items. The generic `releaseExpiredStockReservations` scheduled function
-remains available to clean up historical abandoned online-checkout holds.
-
-Deploy the index and backend before deploying the updated browser bundle:
-
-```bash
-firebase deploy --only firestore:indexes
-firebase deploy --only functions:releaseExpiredStockReservations,functions:placeOrder
-npm run build
-firebase deploy --only hosting
-```
-
-The scheduled cleanup requires a billing-enabled Firebase project and the
-Cloud Scheduler API. No payment-gateway credentials are used by this codebase
-until the approved Cashfree integration is implemented separately.
-
-The production Razorpay retirement, secret cleanup, data-preservation rules,
-and safe targeted deployment sequence are documented in
-[`docs/cashfree-readiness-deployment.md`](docs/cashfree-readiness-deployment.md).
+Checkout uses Cashfree hosted online payment. The production integration is
+fail-closed and remains disabled until production credentials and Cashfree
+dashboard settings are verified. Order totals, GST, invoices, payment status,
+and stock reservations are handled by the backend.
 
 ## Storefront structure
 

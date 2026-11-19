@@ -9,7 +9,6 @@ const { isAdmin, requireAdmin, requireUser } = require('../authz')
 const {
   calculateOrderQuote,
   itemSignature,
-  normalizePaymentConfiguration,
   normalizeRequestedItems,
   payableAmountPaiseForQuote,
   roundMoney,
@@ -257,7 +256,12 @@ const validateShippingAddress = (value = {}) => {
   return normalized
 }
 
-const validateActiveCoupon = (coupon, usageCount = 0) => {
+const validateActiveCoupon = (
+  coupon,
+  usageCount = 0,
+  reservedUsageCount = 0,
+  reservedUserUsageCount = 0,
+) => {
   if (!coupon || coupon.enabled === false) {
     throw new HttpsError('failed-precondition', 'The selected coupon is no longer valid.')
   }
@@ -270,13 +274,13 @@ const validateActiveCoupon = (coupon, usageCount = 0) => {
   }
   if (
     Number(coupon.usageLimit) > 0 &&
-    Number(coupon.usageCount || 0) >= Number(coupon.usageLimit)
+    Number(coupon.usageCount || 0) + Number(reservedUsageCount || 0) >= Number(coupon.usageLimit)
   ) {
     throw new HttpsError('failed-precondition', 'The selected coupon has reached its usage limit.')
   }
   if (
     Number(coupon.perUserLimit) > 0 &&
-    Number(usageCount) >= Number(coupon.perUserLimit)
+    Number(usageCount) + Number(reservedUserUsageCount || 0) >= Number(coupon.perUserLimit)
   ) {
     throw new HttpsError('failed-precondition', 'You have reached this coupon usage limit.')
   }
@@ -337,7 +341,6 @@ module.exports = {
   requireUser,
   calculateOrderQuote,
   itemSignature,
-  normalizePaymentConfiguration,
   normalizeRequestedItems,
   payableAmountPaiseForQuote,
   roundMoney,
